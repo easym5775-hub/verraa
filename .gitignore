@@ -18,6 +18,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# supabase CLI local cache (project link, temp versions) - never commit
+supabase/.temp/
+
 # editor / OS
 .vscode/*
 !.vscode/extensions.json

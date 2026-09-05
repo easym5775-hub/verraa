@@ -394,6 +394,47 @@ function clean(row: Row): Row {
   return out;
 }
 
+/* ---------------- Edge Function error translation ---------------- */
+
+/**
+ * The `create-client-account` Edge Function is required for client account
+ * lifecycle (create / reset-password / delete). When it is not deployed, the
+ * Supabase gateway answers 404 WITHOUT CORS headers, so the browser blocks
+ * the response and supabase-js surfaces `FunctionsFetchError: "Failed to send
+ * a request to the Edge Function"` (or `FunctionsRelayError`). Translate those
+ * cryptic errors into an actionable message instead.
+ */
+export function isFunctionUnreachable(e: unknown): boolean {
+  const name = e instanceof Error ? e.name : (e as { name?: string })?.name ?? "";
+  const msg = e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? e ?? "");
+  return (
+    name === "FunctionsFetchError" ||
+    name === "FunctionsRelayError" ||
+    /failed to send a request to the edge function|relay error invoking|requested function was not found|not_found/i.test(msg)
+  );
+}
+
+export function friendlyFunctionError(e: unknown): Error {
+  if (isFunctionUnreachable(e)) {
+    return new Error(
+      "Client accounts service isn't deployed yet. Deploy it with: supabase functions deploy create-client-account (then set SUPABASE_SERVICE_ROLE_KEY as a function secret).",
+    );
+  }
+  const msg = e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? "");
+  if (/edge function is not configured/i.test(msg)) {
+    return new Error(
+      "Client accounts service is missing its key. Set SUPABASE_SERVICE_ROLE_KEY as an Edge Function secret (supabase secrets set ...).",
+    );
+  }
+  if (/invalid or expired session|missing authorization/i.test(msg)) {
+    return new Error("Your session expired — sign out and sign back in, then try again.");
+  }
+  if (/only coaches can manage/i.test(msg)) {
+    return new Error("Only coaches can manage client accounts.");
+  }
+  return e instanceof Error ? e : new Error(msg || "Couldn't reach the client accounts service.");
+}
+
 /* ---------------- Backend interface ---------------- */
 
 export interface Backend {
@@ -833,9 +874,18 @@ class SupabaseBackend implements Backend {
   }
 
   async createClientAccount(input: NewClientInput): Promise<Client> {
-    const { data, error } = await supabase.functions.invoke("create-client-account", {
-      body: { action: "create", ...input },
-    });
+    let data: unknown;
+    let error: { name?: string; message?: string } | null;
+    try {
+      const res = await supabase.functions.invoke("create-client-account", {
+        body: { action: "create", ...input },
+      });
+      data = res.data;
+      error = res.error as { name?: string; message?: string } | null;
+    } catch (e) {
+      // Network-level failure (offline, blocked request, paused project).
+      throw friendlyFunctionError(e);
+    }
     if (error) {
       // Surface structured limit errors even when the function gateway wraps them.
       const msg = error.message ?? "";
@@ -848,7 +898,7 @@ class SupabaseBackend implements Backend {
         }
         throw new Error(msg);
       }
-      throw new Error(msg);
+      throw friendlyFunctionError(error);
     }
     const body = data as { ok?: boolean; client?: Row; error?: string };
     if (!body?.ok || !body.client) {
@@ -867,18 +917,40 @@ class SupabaseBackend implements Backend {
   }
 
   async resetClientPassword(clientId: string, newPassword: string): Promise<void> {
-    const { data, error } = await supabase.functions.invoke("create-client-account", {
-      body: { action: "reset-password", clientId, password: newPassword },
-    });
-    if (error) throw new Error(error.message);
+    let data: unknown;
+    let error: { name?: string; message?: string } | null;
+    try {
+      const res = await supabase.functions.invoke("create-client-account", {
+        body: { action: "reset-password", clientId, password: newPassword },
+      });
+      data = res.data;
+      error = res.error as { name?: string; message?: string } | null;
+    } catch (e) {
+      throw friendlyFunctionError(e);
+    }
+    if (error) throw friendlyFunctionError(error);
     const body = data as { ok?: boolean; error?: string };
     if (!body?.ok) throw new Error(body?.error ?? "Couldn't reset the password.");
   }
 
   async deleteClientAccount(clientId: string): Promise<void> {
-    const { data } = await supabase.functions.invoke("create-client-account", {
-      body: { action: "delete", clientId },
-    });
+    let data: unknown;
+    try {
+      const res = await supabase.functions.invoke("create-client-account", {
+        body: { action: "delete", clientId },
+      });
+      if (res.error) {
+        // Unreachable (not deployed / offline): rethrow raw so the catch below
+        // translates it — never silently delete data while orphaning the login.
+        if (isFunctionUnreachable(res.error)) throw res.error;
+        data = undefined; // function ran but reported a problem → RLS fallback below
+      } else {
+        data = res.data;
+      }
+    } catch (e) {
+      if (isFunctionUnreachable(e)) throw friendlyFunctionError(e);
+      data = undefined;
+    }
     const body = data as { ok?: boolean } | undefined;
     if (!body?.ok) {
       // Fallback: RLS-scoped delete (auth user stays, data cascades).

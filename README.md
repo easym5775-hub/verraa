@@ -96,3 +96,23 @@ npm run dev        # start dev server
 npm run build      # production build
 npm run typecheck  # tsc --noEmit
 ```
+
+## Troubleshooting
+
+### "Client accounts service isn't deployed yet" when creating a client
+
+Creating / resetting / deleting a client login goes through the
+`create-client-account` Edge Function — it cannot work until the function is
+deployed and has its secret. Fix (one time per Supabase project):
+
+```bash
+supabase link --project-ref <your-project-ref>
+supabase functions deploy create-client-account
+supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
+```
+
+Verify: `POST https://<project>.supabase.co/functions/v1/create-client-account`
+without credentials should answer `401 Missing Authorization header` (the
+function is alive). If it answers `{"code":"NOT_FOUND",...}`, the function is
+still not deployed. Get the service-role key from Dashboard → Project Settings
+→ API → `service_role` (never put it in `.env` or frontend code).
