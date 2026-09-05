@@ -469,28 +469,134 @@ class SupabaseBackend implements Backend {
     return () => data.subscription.unsubscribe();
   }
 
+  /**
+   * Translate raw Supabase Auth errors into short, user-facing messages.
+   * Supabase messages are technical ("Invalid login credentials") and vary
+   * by version — normalise the ones coaches hit most often.
+   */
+  private friendlyAuthError(err: { message?: string } | null, fallback: string): Error {
+    const raw = (err?.message ?? "").trim();
+    const low = raw.toLowerCase();
+    if (!raw) return new Error(fallback);
+    if (low.includes("user already registered") || low.includes("already been registered") || low.includes("already exists")) {
+      return new Error("This email is already registered. Try signing in instead.");
+    }
+    if (low.includes("invalid login credentials") || low.includes("invalid email or password")) {
+      return new Error("Invalid email or password. Double-check and try again.");
+    }
+    if (low.includes("email not confirmed") || low.includes("email not verified") || low.includes("confirmation")) {
+      return new Error("Please confirm your email first — check your inbox for the verification link, then sign in.");
+    }
+    if (low.includes("password should be at least") || low.includes("password is too short") || low.includes("weak password")) {
+      return new Error("Password must be at least 6 characters.");
+    }
+    if (low.includes("invalid email") || low.includes("email address") && low.includes("invalid")) {
+      return new Error("Enter a valid email address.");
+    }
+    if (low.includes("rate limit") || low.includes("too many requests") || low.includes("email rate limit")) {
+      return new Error("Too many attempts — wait a minute and try again.");
+    }
+    if (low.includes("network") || low.includes("fetch failed") || low.includes("failed to fetch")) {
+      return new Error("Can't reach the server. Check your connection and try again.");
+    }
+    return new Error(raw);
+  }
+
+  /** Best-effort STARTER subscription for a brand-new coach (never blocks signup). */
+  private async ensureCoachSubscription(userId: string): Promise<void> {
+    try {
+      const { data: existing } = await supabase
+        .from("coach_subscriptions")
+        .select("id")
+        .eq("coach_id", userId)
+        .limit(1)
+        .maybeSingle();
+      if (existing) return;
+      // Price comes from coach_plans when readable; falls back to the canonical default.
+      let price = 1999;
+      try {
+        const { data: plan } = await supabase.from("coach_plans").select("price").eq("id", "STARTER").maybeSingle();
+        if (plan && typeof (plan as Row).price === "number") price = Number((plan as Row).price);
+      } catch {
+        /* keep default */
+      }
+      const start = todayISO();
+      const end = new Date(start + "T12:00:00");
+      end.setDate(end.getDate() + 30);
+      const endIso = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
+      await supabase.from("coach_subscriptions").insert({
+        coach_id: userId,
+        plan_name: "STARTER",
+        status: "ACTIVE",
+        start_date: start,
+        end_date: endIso,
+        price,
+        auto_renew: false,
+      });
+    } catch {
+      /* best-effort only — limits fall back to STARTER defaults server-side */
+    }
+  }
+
   async coachSignUp(email: string, password: string, name: string, remember: boolean): Promise<void> {
     setRemember(remember);
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) throw new Error(error.message);
+    const cleanEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) throw new Error("Enter a valid email address.");
+    if (password.length < 6) throw new Error("Password must be at least 6 characters.");
+    const { data, error } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password,
+      options: { data: { role: "coach", name: name.trim() || "Coach" } },
+    });
+    if (error) throw this.friendlyAuthError(error, "Couldn't create your account.");
     const userId = data.user?.id;
-    if (userId) {
-      const { error: insErr } = await supabase.from("coaches").upsert({ id: userId, name, email });
-      if (insErr) throw new Error(insErr.message);
+    if (!userId) throw new Error("Couldn't create your account. Try again.");
+    // When "Confirm email" is ON in Supabase Auth, there is no session yet —
+    // the coach row is created by the DB trigger (0008) or on first sign-in
+    // self-heal. Tell the UI so it can show "check your inbox" instead of an error.
+    if (!data.session) {
+      const err = new Error("EMAIL_CONFIRMATION_REQUIRED: check your inbox for the verification link, then sign in.");
+      (err as { code?: string }).code = "EMAIL_CONFIRMATION_REQUIRED";
+      throw err;
     }
+    // Session exists (email confirmation OFF): create the coach profile row now.
+    // RLS `coaches_all` allows this because auth.uid() === userId here.
+    const { error: insErr } = await supabase.from("coaches").upsert({ id: userId, name: name.trim() || "Coach", email: cleanEmail });
+    if (insErr) throw new Error(insErr.message);
+    await this.ensureCoachSubscription(userId);
   }
 
   async coachSignIn(email: string, password: string, remember: boolean): Promise<void> {
     setRemember(remember);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw new Error(error.message);
+    const cleanEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) throw new Error("Enter a valid email address.");
+    if (!password) throw new Error("Enter your password.");
+    const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+    if (error) throw this.friendlyAuthError(error, "Couldn't sign you in.");
+    // Self-heal: a coach created while email-confirmation was ON (or before
+    // the 0008 trigger existed) may have an auth user but no coaches row.
+    // resolveRole() also heals, but doing it here makes the first sign-in instant.
+    try {
+      const userId = await this.getSessionUserId();
+      if (userId) await this.ensureCoachRow(userId);
+    } catch {
+      /* non-fatal — resolveRole retries on boot */
+    }
   }
 
   async clientSignIn(username: string, password: string, remember: boolean): Promise<void> {
     setRemember(remember);
-    const { data, error } = await supabase.rpc("client_login_email", { p_username: username });
-    if (error) throw new Error(error.message);
-    const email = typeof data === "string" ? data : "";
+    const clean = username.trim().toLowerCase();
+    if (!clean) throw new Error("Enter your username.");
+    if (!password) throw new Error("Enter your password.");
+    let email = "";
+    try {
+      const { data, error } = await supabase.rpc("client_login_email", { p_username: clean });
+      if (error) throw error;
+      email = typeof data === "string" ? data : "";
+    } catch {
+      throw new Error("Can't reach the server. Check your connection and try again.");
+    }
     if (!email) throw new Error("Invalid username or password.");
     const { error: signErr } = await supabase.auth.signInWithPassword({ email, password });
     if (signErr) throw new Error("Invalid username or password.");
@@ -499,12 +605,53 @@ class SupabaseBackend implements Backend {
   async ownerSignIn(email: string, password: string, remember: boolean): Promise<void> {
     setRemember(remember);
     // Production: real Supabase Auth. The owners table (RLS-scoped) resolves the role.
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw new Error(error.message);
+    const cleanEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) throw new Error("Enter a valid email address.");
+    if (!password) throw new Error("Enter your password.");
+    const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+    if (error) throw this.friendlyAuthError(error, "Couldn't sign you in.");
   }
 
   async signOut(): Promise<void> {
     await supabase.auth.signOut();
+  }
+
+  /**
+   * Self-heal for coaches whose auth.users row exists but whose public.coaches
+   * row is missing (signed up while email-confirmation was ON, or created
+   * before the auto-create trigger). Runs as the user themselves, so the
+   * `coaches_all` RLS policy (id = auth.uid()) permits the insert.
+   * Returns the coach row when it exists or was just created, else null.
+   */
+  private async ensureCoachRow(userId: string): Promise<Row | null> {
+    const { data: existing } = await supabase.from("coaches").select("id, name, email").eq("id", userId).maybeSingle();
+    if (existing) return existing as Row;
+    // Only heal users that look like coaches: never steal client/owner accounts.
+    const { data: clientRow } = await supabase.from("clients").select("id").eq("id", userId).maybeSingle();
+    if (clientRow) return null;
+    const { data: ownerRow } = await supabase.from("owners").select("id").eq("id", userId).maybeSingle();
+    if (ownerRow) return null;
+    let name = "Coach";
+    let email = "";
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const meta = (userData.user?.user_metadata ?? {}) as Record<string, unknown>;
+      if (userData.user?.id !== userId) return null;
+      // Clients created via the Edge Function carry role=client — never convert them.
+      if (String(meta.role ?? "").toLowerCase() === "client") return null;
+      if (typeof meta.name === "string" && meta.name.trim()) name = meta.name.trim().slice(0, 80);
+      email = String(userData.user?.email ?? "");
+    } catch {
+      return null;
+    }
+    const { data: created, error } = await supabase
+      .from("coaches")
+      .upsert({ id: userId, name, email }, { onConflict: "id" })
+      .select("id, name, email")
+      .maybeSingle();
+    if (error || !created) return null;
+    await this.ensureCoachSubscription(userId);
+    return created as Row;
   }
 
   async resolveRole(userId: string): Promise<RoleInfo | null> {
@@ -521,6 +668,18 @@ class SupabaseBackend implements Backend {
     if (clientRow) {
       const client = rowToClient(clientRow as Row);
       return { role: "client", userId, coachId: client.coachId, name: client.name, email: client.email, client };
+    }
+    // Last resort: heal an orphaned coach account (see ensureCoachRow), so a
+    // previously-stuck coach lands in their dashboard instead of signed-out.
+    const healed = await this.ensureCoachRow(userId).catch(() => null);
+    if (healed) {
+      return {
+        role: "coach",
+        userId,
+        coachId: userId,
+        name: String(healed.name ?? "Coach"),
+        email: String(healed.email ?? ""),
+      };
     }
     return null;
   }

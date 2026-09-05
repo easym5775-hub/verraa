@@ -1,0 +1,10 @@
+# Supabase CLI config — minimal, only what `supabase db push` /
+# `supabase functions deploy` need. The project itself is linked via
+# `supabase link --project-ref <ref>` (ref = first part of your project URL).
+#
+# verify_jwt stays true (default): the gateway rejects unauthenticated calls
+# before they reach the function; the function additionally verifies the
+# coach JWT itself via admin.auth.getUser().
+[functions.create-client-account]
+enabled = true
+verify_jwt = true

@@ -226,6 +226,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setMe(null);
           setState(EMPTY);
           setPhase("signed-out");
+          // Stale session with no profile row (e.g. email not confirmed yet):
+          // clear it so a fresh sign-in/sign-up can proceed instead of looping.
+          try {
+            await backend.signOut();
+          } catch {
+            /* non-fatal */
+          }
           return;
         }
         const baseState = await backend.load();

@@ -47,9 +47,13 @@ create table if not exists public.clients (
   coach_notes       jsonb not null default '[]'::jsonb,
   nutrition_targets jsonb,
   created_at        timestamptz not null default now(),
-  updated_at        timestamptz not null default now(),
-  unique (coach_id, lower(username))
+  updated_at        timestamptz not null default now()
 );
+
+-- Per-coach username uniqueness (expression index — Postgres does not
+-- allow function calls inside an inline UNIQUE table constraint).
+create unique index if not exists clients_coach_username_key
+  on public.clients (coach_id, lower(username));
 
 alter table public.clients enable row level security;
 

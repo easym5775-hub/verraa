@@ -7,6 +7,7 @@ import { useId, useState, type FormEvent } from "react";
 import {
   ArrowRight,
   Check,
+  CheckCircle2,
   Dumbbell,
   Eye,
   EyeOff,
@@ -35,6 +36,7 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
   const [showClientPassword, setShowClientPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
 
   const emailId = useId();
@@ -43,25 +45,44 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
   const userId = useId();
   const clientPassId = useId();
 
+  const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
     if (busy) return;
     setError("");
+    setNotice("");
+    // Instant client-side validation — no network round-trip for obvious mistakes.
+    if (role === "coach") {
+      if (!email.trim()) { setError("Enter your email address."); return; }
+      if (!isEmail(email)) { setError("Enter a valid email address."); return; }
+      if (!password) { setError("Enter your password."); return; }
+      if (mode === "signup" && password.length < 6) { setError("Password must be at least 6 characters."); return; }
+      if (mode === "signup" && name.trim().length > 80) { setError("Name is too long (max 80 characters)."); return; }
+    } else {
+      if (!username.trim()) { setError("Enter your username."); return; }
+      if (username.trim().length < 3) { setError("Username must be at least 3 characters."); return; }
+      if (!clientPassword) { setError("Enter your password."); return; }
+    }
     setBusy(true);
     try {
       if (role === "coach") {
-        if (!email.trim()) throw new Error("Enter your email address.");
-        if (!password) throw new Error("Enter your password.");
         if (mode === "signup") await coachSignUp(email.trim(), password, name.trim() || "Coach", remember);
         else await coachSignIn(email.trim(), password, remember);
       } else {
-        if (!username.trim()) throw new Error("Enter your username.");
-        if (!clientPassword) throw new Error("Enter your password.");
         await clientSignIn(username.trim(), clientPassword, remember);
       }
       // store's onAuthChange listener boots the session.
     } catch (err) {
-      setError(errorMessage(err));
+      const msg = errorMessage(err);
+      // Email-confirmation ON: the account exists, the coach just needs to
+      // click the link first. Show guidance, not a scary red error.
+      if (msg.includes("EMAIL_CONFIRMATION_REQUIRED")) {
+        setMode("signin");
+        setNotice("Account created — check your inbox for the verification link, then sign in.");
+      } else {
+        setError(msg);
+      }
     } finally {
       setBusy(false);
     }
@@ -167,6 +188,7 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
                 onClick={() => {
                   setRole("coach");
                   setError("");
+                  setNotice("");
                 }}
                 className={`flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl text-sm font-bold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/60 ${
                   role === "coach"
@@ -182,6 +204,7 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
                 onClick={() => {
                   setRole("client");
                   setError("");
+                  setNotice("");
                 }}
                 className={`flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl text-sm font-bold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/60 ${
                   role === "client"
@@ -229,7 +252,7 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
                   )}
                   <div>
                     <label htmlFor={passId} className={labelCls}>
-                      Password
+                      Password{mode === "signup" ? " (min. 6 characters)" : ""}
                     </label>
                     <div className="relative">
                       <input
@@ -241,6 +264,7 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
                         placeholder="••••••••"
                         autoComplete={mode === "signup" ? "new-password" : "current-password"}
                         required
+                        minLength={mode === "signup" ? 6 : undefined}
                         aria-invalid={!!error}
                       />
                       <button
@@ -270,7 +294,8 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
                   <button
                     type="button"
                     className="cursor-pointer rounded-lg py-1 text-center text-[13px] font-bold text-mist-400 transition hover:text-volt-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50"
-                    onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+                    onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); setNotice(""); }}
+                    disabled={busy}
                   >
                     {mode === "signin" ? "No account yet? Create one" : "Already have an account? Sign in"}
                   </button>
@@ -340,6 +365,15 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
                 </>
               )}
 
+              {notice && (
+                <p
+                  role="status"
+                  className="flex items-start gap-2 rounded-xl border border-volt-400/25 bg-volt-400/[0.08] px-3.5 py-2.5 text-[13px] font-semibold leading-5 text-volt-300"
+                >
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                  {notice}
+                </p>
+              )}
               {error && (
                 <p
                   role="alert"
