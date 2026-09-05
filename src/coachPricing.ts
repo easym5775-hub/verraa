@@ -221,7 +221,7 @@ export function validatePlanChange(
 
 /* ---------------- errors & messages ---------------- */
 
-/** Structured error thrown when the client limit blocks creation (both backends use this shape). */
+/** Structured error thrown when the client limit blocks creation (thrown by the backend limit checks). */
 export class PlanLimitError extends Error {
   count: number;
   limit: number;

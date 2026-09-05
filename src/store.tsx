@@ -42,7 +42,6 @@ import {
 } from "./coachPricing";
 import {
   backend,
-  isDemoMode,
   type RoleInfo,
   checkInToRow,
   clientToRow,
@@ -68,7 +67,6 @@ export interface ToastItem {
 interface Store {
   phase: Phase;
   me: RoleInfo | null;
-  isDemo: boolean;
   state: AppState;
 
   toasts: ToastItem[];
@@ -126,7 +124,6 @@ interface Store {
   markAllNotificationsRead: (clientId: string) => void;
 
   updateCoachName: (name: string) => Promise<void>;
-  resetData: () => Promise<void>;
 
   /* ---- Coach pricing & limits (centralized, real backend data) ---- */
   coachPlans: CoachPlanConfig[];
@@ -332,7 +329,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         toast(`${client.name} added — their login works right away`);
         return client;
       } catch (e) {
-        // Normalize backend limit rejections (edge function / trigger / demo)
+        // Normalize backend limit rejections (edge function / trigger)
         // into a structured PlanLimitError so the UI can offer an upgrade path
         // instead of a dead-end toast.
         if (isPlanLimitError(e)) throw e;
@@ -855,7 +852,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [mutate],
   );
 
-  /* ---------------- coach profile / demo ---------------- */
+  /* ---------------- coach profile ---------------- */
 
   const updateCoachName = useCallback(
     async (name: string) => {
@@ -871,26 +868,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [toast],
   );
-
-  const resetData = useCallback(async () => {
-    if (!isDemoMode) {
-      toast("Reset is only available in demo mode.", "warn");
-      return;
-    }
-    localStorage.removeItem("forge-demo-data-v1");
-    localStorage.removeItem("forge-demo-coach-subs-v1");
-    localStorage.removeItem("forge-demo-coach-status-v1");
-    localStorage.removeItem("forge-demo-coach-plans-v1");
-    localStorage.removeItem("forge-demo-sub-history-v1");
-    localStorage.removeItem("forge-demo-audit-v1");
-    activeUserRef.current = null;
-    const userId = await getSessionUserId();
-    if (userId) {
-      activeUserRef.current = null;
-      await bootSession(userId);
-    }
-    toast("Demo data restored");
-  }, [bootSession, toast]);
 
   /* ---------------- coach pricing derived state (single source of truth) ---------------- */
 
@@ -922,7 +899,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       value={{
         phase,
         me,
-        isDemo: isDemoMode,
         state,
         toasts,
         toast,
@@ -968,7 +944,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         markNotificationRead,
         markAllNotificationsRead,
         updateCoachName,
-        resetData,
         coachPlans,
         myCoachSubscription,
         myCoachPlan,

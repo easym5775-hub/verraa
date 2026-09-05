@@ -96,7 +96,7 @@ const fromJsonCell = <T,>(raw: unknown): T | undefined => {
   }
 };
 
-const getCoachId = (cfg: ConnectionConfig) => cfg.coachId ?? "coach-demo-0001";
+const getCoachId = (cfg: ConnectionConfig) => cfg.coachId ?? "";
 
 const clientToRow = (c: Client, cfg: ConnectionConfig): Row => ({
   id: c.id,

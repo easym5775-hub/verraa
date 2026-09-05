@@ -83,7 +83,8 @@ drop policy if exists coach_subscriptions_coach_update on public.coach_subscript
 create policy coach_subscriptions_coach_update on public.coach_subscriptions
   for update using (coach_id = auth.uid());
 
--- Admin/Owner policy - will be handled in application layer for demo mode
+-- Admin/Owner policy — enforced in the application layer via the owners
+-- table lookup plus RLS, and by Supabase Auth role resolution.
 -- In production, you would create an 'owners' table and add policies like:
 -- create policy coach_subscriptions_owner_all on public.coach_subscriptions
 --   for all using (exists (select 1 from owners where owners.user_id = auth.uid()));

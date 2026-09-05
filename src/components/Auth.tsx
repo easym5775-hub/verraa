@@ -17,7 +17,6 @@ import {
   AlertTriangle,
   Loader2,
 } from "lucide-react";
-import { DEMO_COACH_EMAIL, DEMO_PASSWORD, isDemoMode } from "../services/backend";
 import { coachSignIn, coachSignUp, clientSignIn } from "../services/auth";
 import { errorMessage } from "../lib";
 import { btnPrimary, inputCls, labelCls } from "./ui";
@@ -207,7 +206,7 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="coach@forge.fit"
+                      placeholder="you@example.com"
                       autoComplete="email"
                       required
                       aria-invalid={!!error}
@@ -352,31 +351,6 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
               )}
             </form>
 
-            {isDemoMode && (
-              <details className="group mt-5 overflow-hidden rounded-2xl border border-volt-400/15 bg-volt-400/[0.04]">
-                <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-xs font-bold uppercase tracking-[0.12em] text-volt-300 transition hover:bg-volt-400/[0.06] [&::-webkit-details-marker]:hidden">
-                  Demo credentials
-                  <span className="rounded-full bg-volt-400/10 px-2 py-0.5 text-[10px] text-volt-300">
-                    one-click copy
-                  </span>
-                </summary>
-                <div className="space-y-1 border-t border-volt-400/10 px-4 py-3 text-xs leading-6 text-mist-400">
-                  <p>
-                    Coach: <span className="font-bold text-mist-100">{DEMO_COACH_EMAIL}</span>
-                    {" / "}
-                    <span className="font-bold text-mist-100">{DEMO_PASSWORD}</span>
-                  </p>
-                  <p>
-                    Clients: <span className="font-bold text-mist-100">ahmed</span>,{" "}
-                    <span className="font-bold text-mist-100">sara</span>,{" "}
-                    <span className="font-bold text-mist-100">omar</span>
-                    {" / "}
-                    <span className="font-bold text-mist-100">{DEMO_PASSWORD}</span>
-                  </p>
-                </div>
-              </details>
-            )}
-
             {onShowAdmin && (
               <div className="mt-5 flex justify-center">
                 <button
@@ -390,7 +364,7 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
             )}
           </div>
           <p className="mt-4 text-center text-xs text-mist-500">
-            Protected by your workspace · Demo data stays in your browser
+            Protected by your workspace · Secured by Supabase
           </p>
         </div>
       </main>

@@ -224,12 +224,6 @@ export function OwnerDashboard({ setView }: { setView: (v: OwnerView) => void })
         </div>
       )}
 
-      {/* Info Box for Demo Mode */}
-      <div className="rise mt-6 rounded-2xl border border-night-700 bg-night-850/30 p-5">
-        <p className="text-xs text-mist-500">
-          <span className="font-bold text-volt-300">Demo Mode:</span> This dashboard shows real data from your current session. In production with Supabase, this would display aggregated data from all coaches and clients in your SaaS.
-        </p>
-      </div>
     </>
   );
 }

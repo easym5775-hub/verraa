@@ -135,11 +135,11 @@ export function OwnerCoachesView() {
     }
 
     items.push(
-      ...(coach.status !== "ACTIVE" ? [{ type: "item", label: "Activate Account", icon: UserCheck, onClick: () => {
+      ...(coach.status !== "ACTIVE" ? [{ type: "item" as const, label: "Activate Account", icon: UserCheck, onClick: () => {
         setConfirmAction({ type: "activate", coachId: coach.id, coachName: coach.name });
         setDropdownOpen(null);
       }}] : []),
-      ...(coach.status !== "SUSPENDED" ? [{ type: "item", label: "Suspend Account", icon: UserX, onClick: () => {
+      ...(coach.status !== "SUSPENDED" ? [{ type: "item" as const, label: "Suspend Account", icon: UserX, onClick: () => {
         setConfirmAction({ type: "suspend", coachId: coach.id, coachName: coach.name });
         setDropdownOpen(null);
       }, danger: true }] : []),

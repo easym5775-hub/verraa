@@ -4,7 +4,6 @@
 
 import { useId, useState, type FormEvent } from "react";
 import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, Shield, AlertTriangle, Loader2 } from "lucide-react";
-import { DEMO_OWNER_EMAIL, DEMO_OWNER_PASSWORD, isDemoMode } from "../services/backend";
 import { ownerSignIn } from "../services/auth";
 import { errorMessage } from "../lib";
 import { btnPrimary, inputCls, labelCls } from "./ui";
@@ -87,7 +86,7 @@ export function AdminAuth({ onBack }: { onBack: () => void }) {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@forge.demo"
+                placeholder="owner@example.com"
                 autoComplete="email"
                 required
                 aria-invalid={!!error}
@@ -140,22 +139,6 @@ export function AdminAuth({ onBack }: { onBack: () => void }) {
               </p>
             )}
           </form>
-
-          {isDemoMode && (
-            <details className="mt-5 overflow-hidden rounded-2xl border border-volt-400/15 bg-volt-400/[0.04]">
-              <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-xs font-bold uppercase tracking-[0.12em] text-volt-300 [&::-webkit-details-marker]:hidden">
-                Demo credentials
-              </summary>
-              <div className="space-y-1 border-t border-volt-400/10 px-4 py-3 text-xs leading-6 text-mist-400">
-                <p>
-                  Email: <span className="font-bold text-mist-100">{DEMO_OWNER_EMAIL}</span>
-                </p>
-                <p>
-                  Password: <span className="font-bold text-mist-100">{DEMO_OWNER_PASSWORD}</span>
-                </p>
-              </div>
-            </details>
-          )}
         </div>
       </main>
     </div>

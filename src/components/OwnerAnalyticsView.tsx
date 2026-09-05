@@ -80,7 +80,7 @@ export function OwnerAnalyticsView() {
     const totalSubsAtStart = coachSubscriptions.length;
     const churnRate = totalSubsAtStart > 0 ? ((expiredSubs.length / totalSubsAtStart) * 100).toFixed(1) : "0";
     
-    // Growth metrics (simplified for demo)
+    // Growth metrics (month-over-month new coaches / revenue)
     const newCoachesThisMonth = coaches.filter((c) => {
       const created = new Date(c.createdAt || "2024-01-01");
       const monthAgo = new Date();

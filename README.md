@@ -3,18 +3,18 @@
 A fitness-coaching platform with two roles (**Coach** and **Client**), backed by
 **Supabase** (Auth + Postgres + Edge Functions) with a clean, swappable data layer.
 
-## Quick start (demo mode — no setup)
+## Quick start (production — Supabase required)
 
 ```bash
 npm install
+cp .env.example .env
+# fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then:
 npm run dev
 ```
 
-With no Supabase credentials set, the app runs in a clearly-labelled **demo mode**:
-data lives in the browser and is seeded with a coach and three clients.
-
-- **Coach** sign-in: any email + password `demo1234`
-- **Client** sign-in: username `ahmed`, `sara` or `omar` + password `demo1234`
+The app uses **Supabase as the only authentication and data source**
+(Auth + Postgres + Edge Functions). There is no demo mode and no demo
+fallback: if Supabase is unreachable the app shows an error state.
 
 ## Going live with Supabase
 
@@ -41,10 +41,9 @@ data lives in the browser and is seeded with a coach and three clients.
 ```
 UI (React)
   └─ store.tsx            — CRUD actions, optimistic local state + persist
-       └─ services/backend.ts — Backend interface (SupabaseBackend | DemoBackend)
-            ├─ Supabase: Postgres via RLS-scoped queries + Edge Function for
-            │            client account lifecycle (create / reset / delete)
-            └─ Demo:     localStorage, so the app runs with zero setup
+       └─ services/backend.ts — Backend interface (SupabaseBackend, the only implementation)
+            └─ Supabase: Postgres via RLS-scoped queries + Edge Function for
+                         client account lifecycle (create / reset / delete)
 ```
 
 - **Both roles are Supabase Auth users.** `auth.uid()` scopes everything via RLS;

@@ -69,7 +69,7 @@ export function CoachShell({
   onLogout: () => void;
   children: ReactNode;
 }) {
-  const { state, me, isDemo } = useApp();
+  const { state, me } = useApp();
 
   const isActive = (id: CoachView) => view === id || (view === "client" && id === "clients");
   const meta = VIEW_META[view] ?? VIEW_META.dashboard;
@@ -97,14 +97,10 @@ export function CoachShell({
             </p>
           </div>
           <span
-            className={`ms-auto inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${
-              isDemo
-                ? "border-volt-400/20 bg-volt-400/[0.07] text-volt-300"
-                : "border-moss-400/20 bg-moss-400/[0.08] text-moss-300"
-            }`}
+            className="ms-auto inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wider border-moss-400/20 bg-moss-400/[0.08] text-moss-300"
           >
-            <span className={`h-1.5 w-1.5 rounded-full ${isDemo ? "bg-volt-400" : "bg-moss-400"}`} />
-            {isDemo ? "Demo" : "Live"}
+            <span className="h-1.5 w-1.5 rounded-full bg-moss-400" />
+            Live
           </span>
         </div>
 
@@ -160,10 +156,10 @@ export function CoachShell({
         <div className="p-3">
           <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3.5">
             <div className="flex items-center gap-3">
-              <Avatar name={me?.name ?? "Coach"} className="h-10 w-10 text-xs" status={isDemo ? "away" : "online"} />
+              <Avatar name={me?.name ?? "Coach"} className="h-10 w-10 text-xs" status="online" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13.5px] font-bold text-mist-100">{me?.name ?? "Coach"}</p>
-                <p className="truncate text-xs text-mist-500">{me?.email ?? (isDemo ? "Demo workspace" : "Coach workspace")}</p>
+                <p className="truncate text-xs text-mist-500">{me?.email ?? "Coach workspace"}</p>
               </div>
             </div>
             <button
@@ -204,7 +200,7 @@ export function CoachShell({
                 <span className="kbd">⌘K</span>
               </button>
               <span className="hidden items-center gap-2 rounded-full border border-white/[0.07] bg-white/[0.03] px-3 py-1.5 text-xs font-bold text-mist-300 xl:inline-flex">
-                <span className={`h-1.5 w-1.5 rounded-full ${isDemo ? "bg-volt-400" : "bg-moss-400"}`} />
+                <span className="h-1.5 w-1.5 rounded-full bg-moss-400" />
                 {state.clients.length} clients
               </span>
               <Avatar name={me?.name ?? "Coach"} className="h-9 w-9 text-[11px]" />

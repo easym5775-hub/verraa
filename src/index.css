@@ -145,7 +145,7 @@ input[type="file"] {
   font: inherit;
 }
 
-/* details/summary — used for collapsible demo creds etc. */
+/* details/summary — used for collapsible sections etc. */
 details > summary {
   list-style: none;
 }
