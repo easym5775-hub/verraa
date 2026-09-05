@@ -1,0 +1,551 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+@theme {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Barlow Condensed", "Manrope", sans-serif;
+
+  --color-night-400: #55705f;
+  --color-night-500: #3a5045;
+  --color-night-600: #2a3a32;
+  --color-night-700: #1e2b23;
+  --color-night-800: #16201a;
+  --color-night-850: #111915;
+  --color-night-900: #0c1210;
+  --color-night-950: #080c0a;
+
+  --color-mist-100: #e9f0eb;
+  --color-mist-200: #d2ddd5;
+  --color-mist-300: #b6c6bb;
+  --color-mist-400: #9db2a4;
+  --color-mist-500: #879d8f;
+
+  --color-volt-200: #eafba0;
+  --color-volt-300: #dcf770;
+  --color-volt-400: #cdf14b;
+  --color-volt-500: #b9e32c;
+  --color-volt-600: #97be1b;
+  --color-volt-700: #74951a;
+
+  --color-moss-300: #8fd6ac;
+  --color-moss-400: #63bd8c;
+  --color-moss-500: #41a371;
+  --color-moss-600: #2f855b;
+  --color-moss-700: #276b4b;
+  --color-moss-900: #12291d;
+
+  --color-warn-300: #f6d18a;
+  --color-warn-400: #f2c063;
+  --color-warn-500: #e8a93f;
+
+  --color-danger-300: #f8a89e;
+  --color-danger-400: #f58a7e;
+  --color-danger-500: #ef6b5e;
+
+  /* premium-minimal shadows — quieter, layered */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-md: 0 2px 8px -2px rgba(0, 0, 0, 0.42), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 4px 16px -4px rgba(0, 0, 0, 0.45), 0 20px 44px -20px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 8px 28px -8px rgba(0, 0, 0, 0.55), 0 32px 72px -24px rgba(0, 0, 0, 0.65);
+  --shadow-glow-volt: 0 6px 20px -8px rgba(205, 241, 75, 0.45);
+
+  /* radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+
+  /* transitions */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 220ms;
+  --duration-slow: 380ms;
+}
+
+html {
+  font-family: var(--font-sans);
+  scroll-behavior: smooth;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background-color: var(--color-night-950);
+  background-image:
+    radial-gradient(1100px 520px at 85% -10%, rgba(65, 163, 113, 0.08), transparent 65%),
+    radial-gradient(800px 480px at -10% 110%, rgba(205, 241, 75, 0.045), transparent 60%);
+  background-attachment: fixed;
+  color: var(--color-mist-100);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv02", "cv11", "ss01";
+  line-height: 1.55;
+}
+
+::selection {
+  background: var(--color-volt-400);
+  color: var(--color-night-950);
+}
+
+/* visible, consistent keyboard focus — key for a professional feel */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-volt-400);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-night-600);
+  border-radius: 8px;
+  border: 2px solid var(--color-night-950);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-night-500);
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* dark autofill — keep inputs legible when the browser fills them */
+input:-webkit-autofill,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--color-mist-100);
+  -webkit-box-shadow: 0 0 0 1000px var(--color-night-900) inset;
+  caret-color: var(--color-mist-100);
+}
+
+/* native date/time pickers follow the dark theme */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  color-scheme: dark;
+}
+
+/* file inputs inherit the font */
+input[type="file"] {
+  font: inherit;
+}
+
+/* details/summary — used for collapsible demo creds etc. */
+details > summary {
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* dialog + popover panels get the thin scrollbar treatment */
+[role="dialog"]::-webkit-scrollbar,
+[role="menu"]::-webkit-scrollbar {
+  width: 8px;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+.text-stroke {
+  -webkit-text-stroke: 1.5px var(--color-night-500);
+  color: transparent;
+}
+@supports not (-webkit-text-stroke: 1px black) {
+  .text-stroke {
+    color: var(--color-mist-500);
+  }
+}
+
+/* ---------- ambient layers (quieter, premium) ---------- */
+
+.app-glow {
+  background:
+    radial-gradient(900px 480px at 88% -8%, rgba(65, 163, 113, 0.09), transparent 65%),
+    radial-gradient(720px 420px at -6% 108%, rgba(205, 241, 75, 0.045), transparent 60%),
+    radial-gradient(600px 380px at 30% 118%, rgba(47, 133, 91, 0.06), transparent 60%);
+}
+
+.dot-grid {
+  background-image: radial-gradient(rgba(233, 240, 235, 0.038) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(to bottom, black 0%, transparent 78%);
+}
+
+.noise::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  opacity: 0.022;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(100px);
+  opacity: 0.38;
+  animation: orb-drift 28s ease-in-out infinite alternate;
+}
+.orb-a {
+  width: 420px;
+  height: 420px;
+  background: rgba(47, 133, 91, 0.16);
+}
+.orb-b {
+  width: 340px;
+  height: 340px;
+  background: rgba(205, 241, 75, 0.07);
+  animation-delay: -9s;
+}
+.orb-c {
+  width: 380px;
+  height: 380px;
+  background: rgba(65, 163, 113, 0.1);
+  animation-delay: -17s;
+}
+
+@keyframes orb-drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(40px, 28px, 0) scale(1.08);
+  }
+}
+
+/* ---------- motion (softer, faster-feeling) ---------- */
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.rise {
+  animation: rise-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-pop {
+  animation: pop-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-modal {
+  animation: modal-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-dropdown {
+  animation: dropdown-in 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: top center;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade {
+  animation: fade-in 0.2s ease both;
+}
+/* compat alias used by older components */
+.animate-fade-in {
+  animation: fade-in 0.2s ease both;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-toast {
+  animation: toast-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes bar-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+.bar-grow {
+  animation: bar-grow 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: bottom;
+}
+
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.grow-x {
+  animation: grow-x 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: left;
+}
+
+@keyframes ring-pulse {
+  0% {
+    opacity: 0.65;
+    transform: scale(0.5);
+  }
+  75% {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+.ring-pulse {
+  animation: ring-pulse 2s ease-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes tick-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.78);
+  }
+}
+.tick-pulse {
+  animation: tick-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes marquee-x {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.ticker-track {
+  animation: marquee-x 28s linear infinite;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+
+@keyframes skeleton-sheen {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(
+    100deg,
+    var(--color-night-800) 40%,
+    var(--color-night-700) 50%,
+    var(--color-night-800) 60%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-sheen 1.6s linear infinite;
+}
+
+/* ---------- surfaces (premium minimal) ---------- */
+
+.surface {
+  border: 1px solid rgba(233, 240, 235, 0.07);
+  background: linear-gradient(180deg, rgba(22, 32, 26, 0.72), rgba(17, 25, 21, 0.72));
+  backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-sm);
+}
+
+.surface-solid {
+  border: 1px solid rgba(233, 240, 235, 0.07);
+  background: var(--color-night-850);
+  box-shadow: var(--shadow-sm);
+}
+
+.surface-elevated {
+  border: 1px solid rgba(233, 240, 235, 0.09);
+  background: linear-gradient(180deg, rgba(28, 40, 33, 0.92), rgba(18, 26, 22, 0.94));
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(18px);
+}
+
+.hairline {
+  border-color: rgba(233, 240, 235, 0.07);
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-mist-500);
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+.divider-soft {
+  border-color: rgba(233, 240, 235, 0.07);
+}
+
+.icon-tile {
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  border: 1px solid rgba(233, 240, 235, 0.08);
+  background: rgba(233, 240, 235, 0.045);
+  color: var(--color-volt-300);
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(233, 240, 235, 0.12);
+  background: rgba(233, 240, 235, 0.05);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--color-mist-400);
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.card-lift {
+  transition:
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.22s ease,
+    box-shadow 0.22s ease,
+    background-color 0.22s ease;
+}
+.card-lift:hover {
+  transform: translateY(-1px);
+  border-color: rgba(205, 241, 75, 0.18);
+  box-shadow: var(--shadow-md);
+}
+
+/* form focus helper for custom controls */
+.control-focus:focus-visible {
+  outline: 2px solid var(--color-volt-400);
+  outline-offset: 2px;
+}
+
+/* Dropdown search fields — the wrapper carries the focus ring
+   (via focus-within), so the inner input must not draw the global
+   focus-visible outline around itself. Unlayered + more specific
+   than the global rule above, so it reliably wins. */
+.client-search-field:focus,
+.client-search-field:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ---------- reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton {
+    animation: none;
+    background: var(--color-night-700);
+  }
+  .ring-pulse,
+  .tick-pulse,
+  .ticker-track,
+  .bar-grow,
+  .grow-x,
+  .animate-pop,
+  .animate-modal,
+  .animate-dropdown,
+  .animate-fade,
+  .animate-fade-in,
+  .animate-toast,
+  .animate-rise,
+  .rise {
+    animation: none !important;
+  }
+}
