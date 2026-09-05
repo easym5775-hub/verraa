@@ -627,7 +627,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       };
       mutate(
         (s) => ({ ...s, subscriptions: [...s.subscriptions, next] }),
-        () => backend.insert("subscriptions", subscriptionToRow(next)),
+        () => backend.insert("subscriptions", { id: next.id, coach_id: next.coachId, ...subscriptionToRow(next) }),
         "Subscription renewed — history preserved",
       );
       addNotification({ clientId: sub.clientId, kind: "subscription", text: "Your subscription was renewed" });

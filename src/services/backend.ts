@@ -232,7 +232,10 @@ export const subscriptionToRow = (s: Subscription): Row => ({
   end_date: s.endDate,
   price: s.price,
   payment_status: s.paymentStatus,
-  created_at: s.createdAt,
+  // subscriptions.created_at is timestamptz — it needs an ISO string, NOT a
+  // JS millisecond number (sending 1788626199611 fails with
+  // "date/time field value out of range").
+  created_at: new Date(s.createdAt).toISOString(),
 });
 
 export const rowToSubscription = (r: Row): Subscription => ({
@@ -244,7 +247,9 @@ export const rowToSubscription = (r: Row): Subscription => ({
   endDate: String(r.end_date ?? todayISO()),
   price: Number(r.price) || 0,
   paymentStatus: (r.payment_status as Subscription["paymentStatus"]) ?? "Pending",
-  createdAt: Number(r.created_at) || 0,
+  // created_at comes back as an ISO string from Postgres (legacy rows may
+  // carry a raw number) — normalize both to ms.
+  createdAt: typeof r.created_at === "number" ? r.created_at : Date.parse(String(r.created_at ?? "")) || 0,
 });
 
 export const paymentToRow = (p: Payment): Row => ({
