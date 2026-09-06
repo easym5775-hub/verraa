@@ -128,7 +128,7 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
             {bellOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setBellOpen(false)} aria-hidden="true" />
-                <div role="dialog" aria-label="Notifications" className="animate-dropdown absolute end-0 top-12 z-50 w-[320px] overflow-hidden rounded-[20px] border border-white/10 bg-night-900/95 shadow-xl backdrop-blur-xl">
+                <div role="dialog" aria-label="Notifications" className="animate-dropdown absolute end-0 top-12 z-50 w-[320px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[20px] border border-white/10 bg-night-900/95 shadow-xl backdrop-blur-xl">
                   <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-3">
                     <p className="text-[13px] font-bold uppercase tracking-[0.12em] text-mist-100">Notifications</p>
                     {unread > 0 && (
@@ -548,14 +548,14 @@ function TodayTab({
         <div className="relative flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-mist-500">Your program</p>
-            <h1 className="mt-1 font-display text-[44px] font-bold uppercase leading-[0.92] text-mist-100 sm:text-[54px]">
+            <h1 className="mt-1 font-display text-[36px] font-bold uppercase leading-[0.92] text-mist-100 sm:text-[54px]">
               Day {dn} <span className="text-volt-400">· {WEEK_DAYS[dn - 1]}</span>
             </h1>
             <p className="mt-2 text-sm text-mist-400">
               {todayPlan.length > 0 ? `${todayPlan.length} exercise${todayPlan.length > 1 ? "s" : ""} today` : "Recovery day"} · {kcal > 0 ? `${kcal.toLocaleString("en-US")} kcal planned` : "no meals assigned"}
             </p>
           </div>
-          <button className={`${btnPrimary} h-12`} onClick={onCheckIn}>
+          <button className={`${btnPrimary} h-12 w-full sm:w-auto`} onClick={onCheckIn}>
             <Camera className="h-5 w-5" /> Submit daily check-in
           </button>
         </div>
@@ -565,10 +565,10 @@ function TodayTab({
         <SectionCard title="Today's sessions" icon={<ClipboardList className="h-4.5 w-4.5" />} bodyCls="p-3">
           <ul className="grid gap-2">
             {sessionsToday.map((s) => (
-              <li key={s.id} className="flex items-center gap-3 rounded-xl border border-night-700 bg-night-800 p-3 transition hover:border-night-500">
-                <span className="font-display text-lg font-bold text-mist-100 tnum">{s.time}</span>
-                <span className="text-sm font-semibold text-mist-300">{s.type}</span>
-                <Badge className="ms-auto border-night-600 bg-night-700 text-mist-300">{s.status}</Badge>
+              <li key={s.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-night-700 bg-night-800 p-3 transition hover:border-night-500">
+                <span className="shrink-0 font-display text-lg font-bold text-mist-100 tnum">{fmtTime(s.time)}</span>
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-mist-300">{s.type}</span>
+                <Badge className="shrink-0 border-night-600 bg-night-700 text-mist-300">{s.status}</Badge>
               </li>
             ))}
           </ul>
@@ -604,7 +604,7 @@ function TodayTab({
                     {item.notes && <p className="mt-1 text-[11px] italic text-mist-500">Coach: "{item.notes}"</p>}
                   </div>
                   {ex?.videoUrl && (
-                    <a href={ex.videoUrl} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-night-700 px-2.5 py-2 text-[11px] font-bold text-volt-300 transition hover:bg-night-600">
+                    <a href={ex.videoUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-lg bg-night-700 px-2.5 py-2 text-[11px] font-bold text-volt-300 transition hover:bg-night-600">
                       <Play className="h-3 w-3" /> Video
                     </a>
                   )}
@@ -734,11 +734,11 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-mist-400">Weight (kg) *</label>
-            <input className="h-10 w-full rounded-lg border border-night-600 bg-night-800 px-3 text-sm text-mist-100 outline-none transition focus:border-volt-400" type="number" step="0.1" min="0" placeholder={last ? `last: ${last.weight}` : "e.g. 74.5"} value={weight} onChange={(e) => setWeight(e.target.value)} />
+            <input className="h-11 w-full rounded-lg border border-night-600 bg-night-800 px-3 text-base text-mist-100 outline-none transition focus:border-volt-400 sm:text-sm" type="number" step="0.1" min="0" placeholder={last ? `last: ${last.weight}` : "e.g. 74.5"} value={weight} onChange={(e) => setWeight(e.target.value)} inputMode="decimal" />
           </div>
           <div>
             <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-mist-400">Waist (cm)</label>
-            <input className="h-10 w-full rounded-lg border border-night-600 bg-night-800 px-3 text-sm text-mist-100 outline-none transition focus:border-volt-400" type="number" step="0.1" min="0" placeholder={last?.waist !== undefined ? `last: ${last.waist}` : "optional"} value={waist} onChange={(e) => setWaist(e.target.value)} />
+            <input className="h-11 w-full rounded-lg border border-night-600 bg-night-800 px-3 text-base text-mist-100 outline-none transition focus:border-volt-400 sm:text-sm" type="number" step="0.1" min="0" placeholder={last?.waist !== undefined ? `last: ${last.waist}` : "optional"} value={waist} onChange={(e) => setWaist(e.target.value)} inputMode="decimal" />
           </div>
           <div className="sm:col-span-2">
             <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-mist-400">Mood</label>
@@ -746,10 +746,10 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
           </div>
           <div>
             <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-mist-400">Water intake (liters)</label>
-            <input className="h-10 w-full rounded-lg border border-night-600 bg-night-800 px-3 text-sm text-mist-100 outline-none transition focus:border-volt-400" type="number" step="0.1" min="0" value={water} onChange={(e) => setWater(e.target.value)} />
-            <div className="mt-2 flex gap-1.5">
+            <input className="h-11 w-full rounded-lg border border-night-600 bg-night-800 px-3 text-base text-mist-100 outline-none transition focus:border-volt-400 sm:text-sm" type="number" step="0.1" min="0" value={water} onChange={(e) => setWater(e.target.value)} inputMode="decimal" />
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {[1.5, 2, 2.5, 3].map((v) => (
-                <button key={v} type="button" onClick={() => setWater(String(v))} className={`cursor-pointer rounded-md border px-2.5 py-1 text-[11px] font-bold transition ${water === String(v) ? "border-sky-400 bg-sky-400/15 text-sky-300" : "border-night-600 bg-night-800 text-mist-400 hover:border-night-500"}`}>
+                <button key={v} type="button" onClick={() => setWater(String(v))} aria-pressed={water === String(v)} className={`min-h-[36px] min-w-[44px] cursor-pointer rounded-md border px-2.5 py-1 text-[11px] font-bold transition ${water === String(v) ? "border-sky-400 bg-sky-400/15 text-sky-300" : "border-night-600 bg-night-800 text-mist-400 hover:border-night-500"}`}>
                   {v}L
                 </button>
               ))}
@@ -852,13 +852,13 @@ function ProgressTab({ checkIns, sessionsCount }: { checkIns: Parameters<typeof 
 
 function MiniKpi({ icon, label, value, unit, tone }: { icon: ReactNode; label: string; value: string; unit: string; tone?: string }) {
   return (
-    <div className="rounded-xl border border-night-700 bg-night-850 p-4">
-      <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-mist-500">
-        <span className="text-volt-400">{icon}</span> {label}
+    <div className="min-w-0 rounded-xl border border-night-700 bg-night-850 p-3 sm:p-4">
+      <p className="flex min-w-0 items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-mist-500">
+        <span className="shrink-0 text-volt-400">{icon}</span> <span className="truncate">{label}</span>
       </p>
-      <p className={`mt-1 font-display text-[30px] font-bold leading-8 tnum ${tone ?? "text-mist-100"}`}>
+      <p className={`mt-1 truncate font-display text-[26px] font-bold leading-8 tnum sm:text-[30px] ${tone ?? "text-mist-100"}`}>
         {value}
-        <span className="text-sm font-semibold text-mist-500"> {unit}</span>
+        <span className="text-xs font-semibold text-mist-500 sm:text-sm"> {unit}</span>
       </p>
     </div>
   );
@@ -895,7 +895,7 @@ function ChatTab({ clientId }: { clientId: string }) {
   };
 
   return (
-    <div className="rise flex h-[calc(100vh-230px)] min-h-96 flex-col overflow-hidden rounded-xl border border-night-700 bg-night-850">
+    <div className="rise flex h-[calc(100dvh-300px)] min-h-[320px] flex-col overflow-hidden rounded-xl border border-night-700 bg-night-850 sm:h-[calc(100vh-230px)] sm:min-h-96">
       <header className="flex items-center gap-2.5 border-b border-night-700 px-5 py-3.5">
         <MessageCircle className="h-4.5 w-4.5 text-volt-400" />
         <h2 className="font-display text-lg font-semibold uppercase tracking-wide text-mist-100">Chat with your coach</h2>
@@ -1012,13 +1012,13 @@ function SubscriptionTab({ clientId }: { clientId: string }) {
         ) : (
           <ul className="grid gap-1.5">
             {payments.map((p) => (
-              <li key={p.id} className="flex items-center gap-3 rounded-lg border border-night-700 bg-night-800 px-3.5 py-2.5">
-                <span className="w-24 shrink-0 text-xs font-bold text-mist-300">{fmtDate(p.date)}</span>
-                <span className="font-display text-lg font-bold text-mist-100 tnum">
+              <li key={p.id} className="flex min-w-0 items-center gap-2.5 rounded-lg border border-night-700 bg-night-800 px-3 py-2.5 sm:gap-3 sm:px-3.5">
+                <span className="shrink-0 text-xs font-bold text-mist-300">{fmtDate(p.date)}</span>
+                <span className="min-w-0 flex-1 truncate font-display text-lg font-bold text-mist-100 tnum">
                   {fmtMoney(p.amount)} <span className="text-xs font-semibold text-mist-500">EGP</span>
                 </span>
-                <span className="ms-auto text-xs font-semibold text-mist-400">{p.method}</span>
-                <Badge className="border-moss-400/25 bg-moss-400/10 text-moss-300">Paid</Badge>
+                <span className="hidden shrink-0 text-xs font-semibold text-mist-400 sm:inline">{p.method}</span>
+                <Badge className="shrink-0 border-moss-400/25 bg-moss-400/10 text-moss-300">Paid</Badge>
               </li>
             ))}
           </ul>

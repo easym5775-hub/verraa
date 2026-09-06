@@ -38,27 +38,38 @@ export function WeightLine({ entries }: { entries: CheckIn[] }) {
   const area = `${line} L${x(n - 1).toFixed(1)},${H - padB} L${x(0).toFixed(1)},${H - padB} Z`;
   const last = sorted[n - 1];
 
+  const pickAt = (clientX: number, el: SVGSVGElement) => {
+    const rect = el.getBoundingClientRect();
+    const px = ((clientX - rect.left) / rect.width) * W;
+    let best = 0;
+    let bd = Infinity;
+    sorted.forEach((_, i) => {
+      const d = Math.abs(x(i) - px);
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
+    });
+    setHover(best);
+  };
+
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
-      className="w-full"
+      className="w-full touch-pan-y"
       role="img"
       aria-label="Weight trend"
       onMouseLeave={() => setHover(null)}
-      onMouseMove={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const px = ((e.clientX - rect.left) / rect.width) * W;
-        let best = 0;
-        let bd = Infinity;
-        sorted.forEach((_, i) => {
-          const d = Math.abs(x(i) - px);
-          if (d < bd) {
-            bd = d;
-            best = i;
-          }
-        });
-        setHover(best);
+      onMouseMove={(e) => pickAt(e.clientX, e.currentTarget)}
+      onTouchStart={(e) => {
+        const t = e.touches[0];
+        if (t) pickAt(t.clientX, e.currentTarget);
       }}
+      onTouchMove={(e) => {
+        const t = e.touches[0];
+        if (t) pickAt(t.clientX, e.currentTarget);
+      }}
+      onTouchEnd={() => setHover(null)}
     >
       <defs>
         <linearGradient id="wgArea" x1="0" y1="0" x2="0" y2="1">

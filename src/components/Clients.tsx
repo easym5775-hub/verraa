@@ -146,7 +146,7 @@ export function ClientsView({
           </p>
         </div>
         <button
-          className={`${btnPrimary} h-11`}
+          className={`${btnPrimary} h-11 w-full sm:w-auto`}
           onClick={() => {
             setEditing(null);
             setFormOpen(true);
@@ -166,7 +166,7 @@ export function ClientsView({
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
+              className={`min-h-[36px] cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
                 filter === f ? "bg-volt-400 text-night-950" : "bg-night-800 text-mist-400 hover:text-mist-100"
               }`}
             >
@@ -198,7 +198,8 @@ export function ClientsView({
             </EmptyState>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[860px] text-sm">
               <thead>
                 <tr className="border-b border-night-700 bg-night-800/50 text-[11px] font-bold uppercase tracking-wider text-mist-500">
@@ -257,7 +258,7 @@ export function ClientsView({
                       )}
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1 opacity-60 transition group-hover:opacity-100">
+                      <div className="flex items-center justify-end gap-1 opacity-100 transition lg:opacity-60 lg:group-hover:opacity-100">
                         <button className="grid h-8 w-8 cursor-pointer place-items-center rounded-xl text-mist-400 transition-all duration-200 hover:bg-night-700 hover:text-volt-300" title="Open profile" onClick={() => go("client", c.id)}>
                           <User className="h-4 w-4" />
                         </button>
@@ -287,6 +288,74 @@ export function ClientsView({
               </tbody>
             </table>
           </div>
+          <ul className="grid gap-2 p-3 md:hidden">
+            {filtered.map(({ client: c, subInfo, last }) => (
+              <li key={c.id}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => go("client", c.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") go("client", c.id);
+                  }}
+                  className="cursor-pointer rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3.5 transition hover:border-white/[0.13] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50"
+                  aria-label={`Open ${c.name}'s profile`}
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Avatar name={c.name} photo={c.photo} className="h-11 w-11 shrink-0 text-xs" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-mist-100">{c.name}</p>
+                      <p className="truncate text-[11px] text-mist-500">@{c.username} · {c.phone || c.email || "—"}</p>
+                    </div>
+                    <Badge className={`${STATUS_META[c.status].chip} shrink-0`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${STATUS_META[c.status].dot}`} />
+                      {c.status}
+                    </Badge>
+                  </div>
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                    <Badge className={GOAL_META[c.goal].chip}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${GOAL_META[c.goal].dot}`} />
+                      {c.goal}
+                    </Badge>
+                    {subInfo.sub ? (
+                      <Badge className={SUB_STATE_META[subInfo.state].chip}>{subInfo.state} · {remainingLabel(subInfo.daysLeft)}</Badge>
+                    ) : (
+                      <Badge className={SUB_STATE_META["No Subscription"].chip}>No subscription</Badge>
+                    )}
+                    <span className="ms-auto text-[11px] font-semibold text-mist-500">
+                      {last ? `${last.weight} kg · ${relDay(last.date)}` : "no check-ins"}
+                    </span>
+                  </div>
+                  <div className="mt-2.5 flex items-center gap-1 border-t border-white/[0.06] pt-2.5" onClick={(e) => e.stopPropagation()}>
+                    <button className="grid h-10 min-w-[44px] flex-1 cursor-pointer place-items-center rounded-xl text-xs font-bold text-mist-300 transition hover:bg-white/[0.06] hover:text-volt-300" title="Open profile" aria-label={`Open ${c.name}'s profile`} onClick={() => go("client", c.id)}>
+                      Profile
+                    </button>
+                    <button className="grid h-10 w-10 cursor-pointer place-items-center rounded-xl text-mist-400 transition hover:bg-white/[0.06] hover:text-volt-300" title="Workout plan" aria-label={`Open ${c.name}'s workout plan`} onClick={() => go("plans", c.id)}>
+                      <ClipboardList className="h-4 w-4" />
+                    </button>
+                    <button className="grid h-10 w-10 cursor-pointer place-items-center rounded-xl text-mist-400 transition hover:bg-white/[0.06] hover:text-volt-300" title="Meals" aria-label={`Open ${c.name}'s meals`} onClick={() => go("meals", c.id)}>
+                      <UtensilsCrossed className="h-4 w-4" />
+                    </button>
+                    <button
+                      className="grid h-10 w-10 cursor-pointer place-items-center rounded-xl text-mist-400 transition hover:bg-white/[0.06] hover:text-mist-100"
+                      title="Edit"
+                      aria-label={`Edit ${c.name}`}
+                      onClick={() => {
+                        setEditing(c);
+                        setFormOpen(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button className="grid h-10 w-10 cursor-pointer place-items-center rounded-xl text-mist-400 transition hover:bg-danger-500/15 hover:text-danger-300" title="Delete" aria-label={`Delete ${c.name}`} onClick={() => setDeleting(c)}>
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+          </>
         )}
       </div>
 

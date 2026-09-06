@@ -180,7 +180,7 @@ export function CoachShell({
       <div className="min-w-0 flex-1">
         {/* desktop topbar */}
         <div className="sticky top-0 z-30 hidden border-b border-white/[0.06] bg-night-950/75 backdrop-blur-xl lg:block">
-          <div className="mx-auto flex h-[64px] w-full max-w-[1200px] items-center gap-4 px-8">
+          <div className="mx-auto flex h-[64px] w-full max-w-[1440px] items-center gap-4 px-6 lg:px-8">
             <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-2 text-[13px]">
               <span className="font-semibold text-mist-500">{meta.section}</span>
               <span aria-hidden="true" className="text-mist-500/50">
@@ -248,7 +248,7 @@ export function CoachShell({
 
         <main
           id="main-content"
-          className="relative z-10 mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6 lg:px-8 lg:py-10"
+          className="relative z-10 mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"
         >
           <div className="flex flex-col gap-6 lg:gap-8">{children}</div>
         </main>

@@ -310,7 +310,7 @@ export function SectionCard({
   children,
   footer,
   className = "",
-  bodyCls = "p-6",
+  bodyCls = "p-4 sm:p-6",
   delay = 0,
 }: {
   title: string;
@@ -329,7 +329,7 @@ export function SectionCard({
       className={`rise overflow-hidden rounded-[20px] border border-white/[0.07] bg-night-900/60 shadow-sm backdrop-blur-xl ${className}`}
       style={{ animationDelay: `${delay}ms` }}
     >
-      <header className="flex items-center gap-3 border-b border-white/[0.06] px-6 py-4">
+      <header className="flex items-center gap-2.5 border-b border-white/[0.06] px-4 py-3.5 sm:gap-3 sm:px-6 sm:py-4">
         {icon && (
           <span className="icon-tile h-9 w-9 shrink-0" aria-hidden="true">
             {icon}
@@ -342,7 +342,7 @@ export function SectionCard({
         {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
       </header>
       <div className={bodyCls}>{children}</div>
-      {footer && <div className="border-t border-white/[0.06] bg-white/[0.015] px-6 py-3.5">{footer}</div>}
+      {footer && <div className="border-t border-white/[0.06] bg-white/[0.015] px-4 py-3 sm:px-6 sm:py-3.5">{footer}</div>}
     </section>
   );
 }
@@ -359,7 +359,7 @@ export function EmptyState({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-[20px] border border-dashed border-white/10 bg-white/[0.015] px-6 py-14 text-center">
+    <div className="flex flex-col items-center justify-center gap-3 rounded-[20px] border border-dashed border-white/10 bg-white/[0.015] px-5 py-8 text-center sm:px-6 sm:py-10">
       <div className="icon-tile h-14 w-14 !rounded-2xl" aria-hidden="true">
         {icon}
       </div>
@@ -462,7 +462,7 @@ export function Modal({
         tabIndex={-1}
         className={`animate-modal relative max-h-[92dvh] w-full overflow-y-auto rounded-t-[22px] border border-white/10 bg-night-900 shadow-xl outline-none sm:rounded-[22px] ${maxW}`}
       >
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/[0.07] bg-night-900/90 px-6 py-4 backdrop-blur-xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-white/[0.07] bg-night-900/90 px-4 py-3.5 backdrop-blur-xl sm:gap-4 sm:px-6 sm:py-4">
           <div className="min-w-0">
             <h3 id={titleId} className="truncate text-[15px] font-bold tracking-tight text-mist-100">
               {title}
@@ -482,7 +482,7 @@ export function Modal({
             <X className="h-[18px] w-[18px]" />
           </button>
         </div>
-        <div className="px-6 py-5">{children}</div>
+        <div className="px-4 py-4 sm:px-6 sm:py-5">{children}</div>
       </div>
     </div>,
     document.body,
