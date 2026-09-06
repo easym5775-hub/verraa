@@ -10,15 +10,13 @@ import { errorMessage } from "../lib";
 import { btnPrimary, inputCls, labelCls } from "./ui";
 
 export function AdminAuth({ onBack }: { onBack: () => void }) {
-  // Single admin account — the email is fixed, only the password is typed.
-  const [email] = useState(ADMIN_EMAIL);
+  // Single admin account — password only, the email is fixed in code.
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const emailId = useId();
   const passId = useId();
 
   const submit = async (e?: FormEvent) => {
@@ -27,9 +25,8 @@ export function AdminAuth({ onBack }: { onBack: () => void }) {
     setError("");
     setBusy(true);
     try {
-      if (!email.trim()) throw new Error("Enter your email address.");
       if (!password) throw new Error("Enter your password.");
-      await ownerSignIn(email.trim(), password, remember);
+      await ownerSignIn(ADMIN_EMAIL, password, remember);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -75,25 +72,9 @@ export function AdminAuth({ onBack }: { onBack: () => void }) {
             <p className="text-[17px] font-extrabold tracking-tight text-mist-100">Owner sign in</p>
           </div>
 
-          <p className="mt-1 text-[13px] leading-5 text-mist-400">Single admin account — enter its password to access the SaaS administration dashboard.</p>
+          <p className="mt-1 text-[13px] leading-5 text-mist-400">Enter the admin password to access the SaaS administration dashboard.</p>
 
           <form onSubmit={(e) => void submit(e)} className="animate-pop mt-6 grid gap-4">
-            <div>
-              <label htmlFor={emailId} className={labelCls}>
-                Email
-              </label>
-              <input
-                id={emailId}
-                className={`${inputCls} opacity-60`}
-                type="email"
-                value={email}
-                readOnly
-                disabled
-                autoComplete="email"
-                aria-readonly="true"
-              />
-              <p className="mt-1.5 text-[11px] font-semibold text-mist-500">Fixed admin account — cannot be changed.</p>
-            </div>
             <div>
               <label htmlFor={passId} className={labelCls}>
                 Password
