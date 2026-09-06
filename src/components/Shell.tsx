@@ -3,7 +3,7 @@
    Premium-minimal: grouped nav, glass topbar, generous whitespace.
    ================================================================ */
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Camera,
   ClipboardList,
@@ -12,10 +12,12 @@ import {
   LayoutGrid,
   Library,
   LogOut,
+  Menu,
   Search,
   Settings as SettingsIcon,
   UtensilsCrossed,
   Users,
+  X,
 } from "lucide-react";
 import type { CoachView } from "../types";
 import { useApp } from "../store";
@@ -56,8 +58,6 @@ const VIEW_META: Record<string, { section: string; label: string }> = {
   settings: { section: "Manage", label: "Settings" },
 };
 
-const FLAT_NAV = SECTIONS.flatMap((s) => s.items);
-
 export function CoachShell({
   view,
   setView,
@@ -73,9 +73,33 @@ export function CoachShell({
 
   const isActive = (id: CoachView) => view === id || (view === "client" && id === "clients");
   const meta = VIEW_META[view] ?? VIEW_META.dashboard;
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreActive = view === "meals" || view === "library" || view === "pricing" || view === "settings";
+
+  // Lock body scroll + close on Escape while the More sheet is open.
+  useEffect(() => {
+    if (!moreOpen) return;
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMoreOpen(false);
+    };
+    window.addEventListener("keydown", h);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", h);
+      document.body.style.overflow = prev;
+    };
+  }, [moreOpen]);
+
+  const go = (v: CoachView) => {
+    setMoreOpen(false);
+    setView(v);
+    // Mobile-only: desktop keeps its exact current behavior (no scroll jump).
+    if (typeof window !== "undefined" && window.innerWidth < 1024) window.scrollTo(0, 0);
+  };
 
   return (
-    <div className="noise relative flex min-h-screen">
+    <div className="coach-shell noise relative flex min-h-screen">
       <div className="app-glow pointer-events-none fixed inset-0" />
       <div className="dot-grid pointer-events-none fixed inset-0 opacity-40" />
 
@@ -117,7 +141,7 @@ export function CoachShell({
                   return (
                     <button
                       key={item.id}
-                      onClick={() => setView(item.id)}
+                      onClick={() => go(item.id)}
                       aria-current={active ? "page" : undefined}
                       title={item.hint}
                       className={`group flex min-h-[44px] cursor-pointer items-center gap-3 rounded-xl px-3 text-start text-[13.5px] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-night-950 ${
@@ -191,7 +215,7 @@ export function CoachShell({
             <div className="ms-auto flex items-center gap-2.5">
               <button
                 type="button"
-                onClick={() => setView("clients")}
+                onClick={() => go("clients")}
                 className="hidden h-10 items-center gap-2.5 rounded-xl border border-white/[0.07] bg-white/[0.03] px-3.5 text-[13px] text-mist-500 transition hover:border-white/[0.12] hover:text-mist-300 md:flex md:w-64"
                 aria-label="Search clients"
               >
@@ -208,52 +232,135 @@ export function CoachShell({
           </div>
         </div>
 
-        {/* mobile top bar */}
+        {/* mobile top bar — single compact row (nav moved to bottom bar) */}
         <div className="sticky top-0 z-30 border-b border-white/[0.06] bg-night-950/85 backdrop-blur-xl lg:hidden">
-          <div className="flex items-center gap-2.5 px-4 pt-3">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-volt-400 text-night-950 shadow-[0_8px_20px_-8px_rgba(205,241,75,0.5)]">
+          <div className="flex h-16 items-center gap-2.5 px-4">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-volt-400 text-night-950 shadow-[0_8px_20px_-8px_rgba(205,241,75,0.5)]">
               <Dumbbell className="h-[18px] w-[18px]" strokeWidth={2.4} />
             </span>
-            <div className="min-w-0">
-              <p className="font-display text-lg font-bold uppercase leading-none text-mist-100">Verraa</p>
-              <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.2em] text-mist-500">
-                {meta.section} · {meta.label}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-extrabold tracking-tight text-mist-100">{meta.label}</p>
+              <p className="truncate text-[10px] font-bold uppercase tracking-[0.2em] text-mist-500">
+                {meta.section}
               </p>
             </div>
             <button
-              onClick={onLogout}
-              className="ms-auto grid h-10 w-10 cursor-pointer place-items-center rounded-xl border border-white/[0.08] text-mist-400 transition hover:border-danger-500/30 hover:text-danger-300"
-              aria-label="Sign out"
+              onClick={() => setMoreOpen(true)}
+              aria-label="Open profile and more sections"
+              className="shrink-0 cursor-pointer rounded-xl transition active:scale-95"
             >
-              <LogOut className="h-4 w-4" />
+              <Avatar name={me?.name ?? "Coach"} className="h-9 w-9 text-[11px]" />
             </button>
           </div>
-          <nav aria-label="Primary" className="no-scrollbar flex gap-2 overflow-x-auto px-4 py-3">
-            {FLAT_NAV.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setView(item.id)}
-                aria-current={isActive(item.id) ? "page" : undefined}
-                className={`h-10 shrink-0 whitespace-nowrap rounded-full px-4 text-[13px] font-bold transition-all duration-200 ${
-                  isActive(item.id)
-                    ? "bg-volt-400 text-night-950 shadow-[0_4px_14px_-4px_rgba(205,241,75,0.45)]"
-                    : "border border-white/[0.07] bg-white/[0.03] text-mist-400 hover:text-mist-100"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
         </div>
 
         <main
           id="main-content"
-          className="relative z-10 mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"
+          className="relative z-10 mx-auto w-full max-w-[1440px] px-4 py-4 pb-28 sm:px-6 lg:px-8 lg:py-8"
         >
-          <div className="flex flex-col gap-6 lg:gap-8">{children}</div>
+          {/* Cheap opacity fade on mobile only — desktop keeps its exact animation behavior. */}
+          <div key={view} className="animate-fade lg:animate-none">
+            <div className="flex flex-col gap-4 sm:gap-6 lg:gap-8">{children}</div>
+          </div>
         </main>
+
+        {/* ── mobile bottom navigation ── */}
+        <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.08] bg-night-950/90 backdrop-blur-xl lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+          <div className="mx-auto grid w-full max-w-md grid-cols-5 items-center px-2 pb-2 pt-1.5">
+            <CoachBottomItem active={view === "dashboard"} onClick={() => go("dashboard")} icon={<LayoutGrid className="h-5 w-5" />} label="Home" />
+            <CoachBottomItem active={isActive("clients")} onClick={() => go("clients")} icon={<Users className="h-5 w-5" />} label="Clients" />
+            <CoachBottomItem active={view === "plans"} onClick={() => go("plans")} icon={<ClipboardList className="h-5 w-5" />} label="Plans" />
+            <CoachBottomItem active={view === "checkins"} onClick={() => go("checkins")} icon={<Camera className="h-5 w-5" />} label="Check-ins" />
+            <CoachBottomItem active={moreActive} onClick={() => setMoreOpen(true)} icon={<Menu className="h-5 w-5" />} label="More" />
+          </div>
+        </nav>
+
+        {/* ── More sheet (mobile only) ── */}
+        {moreOpen && (
+          <div className="fixed inset-0 z-[90] lg:hidden" role="dialog" aria-modal="true" aria-label="More sections">
+            <div className="animate-fade absolute inset-0 bg-night-950/70 backdrop-blur-sm" onClick={() => setMoreOpen(false)} aria-hidden="true" />
+            <div
+              className="animate-modal absolute inset-x-0 bottom-0 max-h-[84dvh] overflow-y-auto rounded-t-[24px] border-t border-white/10 bg-night-900 px-4 pt-3"
+              style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+            >
+              <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/15" aria-hidden="true" />
+              <div className="mx-auto w-full max-w-md">
+                <div className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3.5">
+                  <Avatar name={me?.name ?? "Coach"} className="h-11 w-11 text-xs" status="online" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[15px] font-bold text-mist-100">{me?.name ?? "Coach"}</p>
+                    <p className="truncate text-xs text-mist-500">{me?.email ?? "Coach workspace"}</p>
+                  </div>
+                  <button
+                    onClick={() => setMoreOpen(false)}
+                    aria-label="Close menu"
+                    className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-xl border border-white/[0.08] text-mist-400 transition active:scale-95"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                {SECTIONS.map((section) => (
+                  <div key={section.label} className="mt-4">
+                    <p className="px-1 pb-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-mist-500">
+                      {section.label}
+                    </p>
+                    <div className="grid gap-1">
+                      {section.items.map((item) => {
+                        const active = isActive(item.id);
+                        const Icon = item.icon;
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={() => go(item.id)}
+                            aria-current={active ? "page" : undefined}
+                            className={`flex min-h-[52px] w-full cursor-pointer items-center gap-3 rounded-xl px-3 text-start transition active:scale-[0.99] ${active ? "bg-white/[0.06] ring-1 ring-white/[0.08]" : "hover:bg-white/[0.03]"}`}
+                          >
+                            <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border ${active ? "border-volt-400/25 bg-volt-400/10 text-volt-300" : "border-white/[0.06] bg-white/[0.03] text-mist-400"}`}>
+                              <Icon className="h-[18px] w-[18px]" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className={`block truncate text-sm font-bold ${active ? "text-mist-100" : "text-mist-200"}`}>{item.label}</span>
+                              <span className="block truncate text-[11px] text-mist-500">{item.hint}</span>
+                            </span>
+                            {item.id === "clients" && (
+                              <span className="rounded-full bg-white/[0.05] px-2 py-0.5 font-display text-[11px] font-bold leading-4 text-mist-400 tnum">
+                                {state.clients.length}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={onLogout}
+                  className="mt-4 flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-danger-500/25 bg-danger-500/[0.07] text-sm font-bold text-danger-300 transition active:scale-[0.99]"
+                >
+                  <LogOut className="h-[18px] w-[18px]" /> Sign out
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function CoachBottomItem({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: ReactNode; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+      className="flex cursor-pointer flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 transition-all duration-200 active:scale-95"
+    >
+      <span className={`grid h-7 w-12 place-items-center rounded-full transition-all duration-200 ${active ? "bg-volt-400/15 text-volt-300" : "text-mist-500"}`}>
+        {icon}
+      </span>
+      <span className={`text-[10px] font-extrabold tracking-wide ${active ? "text-volt-300" : "text-mist-500"}`}>{label}</span>
+      <span className={`h-1 w-1 rounded-full transition-all duration-200 ${active ? "bg-volt-400" : "bg-transparent"}`} />
+    </button>
   );
 }
 

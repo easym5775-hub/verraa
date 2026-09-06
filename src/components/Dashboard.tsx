@@ -508,10 +508,8 @@ export function Dashboard({
       .filter((d) => d.items.length > 0);
   }, [state.sessions, today]);
 
-  const animPending = useCountUp(pendingCheckIns.length);
-  const animSessions = useCountUp(todaySessions.length);
-  const animActive = useCountUp(activeClients.length);
-  const animOutstanding = useCountUp(outstanding.total);
+  // Animated KPI numbers live inside <KpiRow/> so their frames re-render
+  // only that row — never this whole dashboard tree.
 
   const attentionCount = alerts.length;
   const primaryIsReview = pendingCheckIns.length > 0;
@@ -594,49 +592,21 @@ export function Dashboard({
       </div>
 
       {/* 3 — operational KPI row (4) */}
-      <div className="rise grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" style={{ animationDelay: "60ms" }} role="list" aria-label="Today's key numbers">
-        <KpiCard
-          label="Pending Check-ins"
-          value={String(Math.round(animPending))}
-          sub={pendingCheckIns.length ? (overduePendingCount > 0 ? `${overduePendingCount} overdue · Review now` : "Review now") : "Inbox zero — nice"}
-          icon={<Camera className="h-4 w-4" />}
-          tone={pendingCheckIns.length > 0 ? (overduePendingCount > 0 ? "danger" : "warn") : undefined}
-          onClick={pendingCheckIns.length ? () => go("checkins") : undefined}
-          actionLabel="Review"
-        />
-        <KpiCard
-          label="Sessions Today"
-          value={String(Math.round(animSessions))}
-          sub={todaySessions.length ? (nextSession ? `Next at ${fmtTime(nextSession.time)}` : `${todaySessions.length} on the books`) : "Schedule is clear"}
-          icon={<CalendarDays className="h-4 w-4" />}
-          onClick={todaySessions.length ? undefined : () => setSessionModal(true)}
-          actionLabel={todaySessions.length ? undefined : "Add session"}
-        />
-        <KpiCard
-          label="Active Clients"
-          value={String(Math.round(animActive))}
-          sub={
-            attentionCount > 0
-              ? `${Math.min(attentionCount, activeClients.length)} need${Math.min(attentionCount, activeClients.length) === 1 ? "s" : ""} attention`
-              : state.clients.length - activeClients.length > 0
-                ? `${state.clients.length - activeClients.length} inactive`
-                : "Roster healthy"
-          }
-          icon={<Users className="h-4 w-4" />}
-          onClick={() => openClientsWithFilter("Active")}
-          actionLabel="View roster"
-        />
-        <KpiCard
-          label="Outstanding Payments"
-          value={fmtMoney(Math.round(animOutstanding))}
-          unit="EGP"
-          sub={outstanding.count ? `${outstanding.count} overdue payment${outstanding.count === 1 ? "" : "s"}` : "All settled"}
-          icon={<Wallet className="h-4 w-4" />}
-          tone={outstanding.count > 0 ? "danger" : undefined}
-          onClick={outstanding.count ? () => openRecordPayment(null) : undefined}
-          actionLabel={outstanding.count ? "Collect" : undefined}
-        />
-      </div>
+      <KpiRow
+        pendingCount={pendingCheckIns.length}
+        overdueCount={overduePendingCount}
+        sessionsCount={todaySessions.length}
+        nextSessionLabel={nextSession ? fmtTime(nextSession.time) : null}
+        activeCount={activeClients.length}
+        totalCount={state.clients.length}
+        attentionCount={attentionCount}
+        outstandingTotal={outstanding.total}
+        outstandingCount={outstanding.count}
+        onReviewCheckins={() => go("checkins")}
+        onAddSession={() => setSessionModal(true)}
+        onViewRoster={() => openClientsWithFilter("Active")}
+        onCollect={() => openRecordPayment(null)}
+      />
 
       {/* 4 — clients to review */}
       <ClientsToReviewCard rows={reviewRows} totalClients={state.clients.length} onAddClient={() => setClientModal(true)} onOpenCheckins={() => go("checkins")} />
@@ -1001,6 +971,89 @@ function KpiCard({
   return (
     <div role="listitem" aria-label={`${label}: ${value}. ${sub}`} className={cls}>
       {inner}
+    </div>
+  );
+}
+
+/* Isolated KPI row: the four count-up animations re-render only this grid,
+   never the dashboard above it (charts, lists). Visual output identical. */
+function KpiRow({
+  pendingCount,
+  overdueCount,
+  sessionsCount,
+  nextSessionLabel,
+  activeCount,
+  totalCount,
+  attentionCount,
+  outstandingTotal,
+  outstandingCount,
+  onReviewCheckins,
+  onAddSession,
+  onViewRoster,
+  onCollect,
+}: {
+  pendingCount: number;
+  overdueCount: number;
+  sessionsCount: number;
+  nextSessionLabel: string | null;
+  activeCount: number;
+  totalCount: number;
+  attentionCount: number;
+  outstandingTotal: number;
+  outstandingCount: number;
+  onReviewCheckins: () => void;
+  onAddSession: () => void;
+  onViewRoster: () => void;
+  onCollect: () => void;
+}) {
+  const animPending = useCountUp(pendingCount);
+  const animSessions = useCountUp(sessionsCount);
+  const animActive = useCountUp(activeCount);
+  const animOutstanding = useCountUp(outstandingTotal);
+
+  return (
+    <div className="rise grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" style={{ animationDelay: "60ms" }} role="list" aria-label="Today's key numbers">
+      <KpiCard
+        label="Pending Check-ins"
+        value={String(Math.round(animPending))}
+        sub={pendingCount ? (overdueCount > 0 ? `${overdueCount} overdue · Review now` : "Review now") : "Inbox zero — nice"}
+        icon={<Camera className="h-4 w-4" />}
+        tone={pendingCount > 0 ? (overdueCount > 0 ? "danger" : "warn") : undefined}
+        onClick={pendingCount ? onReviewCheckins : undefined}
+        actionLabel="Review"
+      />
+      <KpiCard
+        label="Sessions Today"
+        value={String(Math.round(animSessions))}
+        sub={sessionsCount ? (nextSessionLabel ? `Next at ${nextSessionLabel}` : `${sessionsCount} on the books`) : "Schedule is clear"}
+        icon={<CalendarDays className="h-4 w-4" />}
+        onClick={sessionsCount ? undefined : onAddSession}
+        actionLabel={sessionsCount ? undefined : "Add session"}
+      />
+      <KpiCard
+        label="Active Clients"
+        value={String(Math.round(animActive))}
+        sub={
+          attentionCount > 0
+            ? `${Math.min(attentionCount, activeCount)} need${Math.min(attentionCount, activeCount) === 1 ? "s" : ""} attention`
+            : totalCount - activeCount > 0
+              ? `${totalCount - activeCount} inactive`
+              : "Roster healthy"
+        }
+        icon={<Users className="h-4 w-4" />}
+        onClick={onViewRoster}
+        actionLabel="View roster"
+      />
+      <KpiCard
+        label="Outstanding Payments"
+        value={fmtMoney(Math.round(animOutstanding))}
+        unit="EGP"
+        sub={outstandingCount ? `${outstandingCount} overdue payment${outstandingCount === 1 ? "" : "s"}` : "All settled"}
+        icon={<Wallet className="h-4 w-4" />}
+        tone={outstandingCount > 0 ? "danger" : undefined}
+        onClick={outstandingCount ? onCollect : undefined}
+        actionLabel={outstandingCount ? "Collect" : undefined}
+      />
     </div>
   );
 }

@@ -520,6 +520,24 @@ button {
   }
 }
 
+/* ---------- coach shell: mobile-only treatment (desktop untouched) ---------- */
+
+@media (max-width: 1023.5px) {
+  /* Kill staggered rise animations on touch screens only — the tab fade in
+     CoachShell replaces them. Desktop keeps every delay exactly as-is. */
+  .coach-shell .rise {
+    animation: none;
+  }
+  /* Fixed full-screen texture layers repaint on every scroll frame on
+     mobile GPUs. Keep the cheap static glow. */
+  .coach-shell.noise::after {
+    display: none;
+  }
+  .coach-shell .dot-grid {
+    display: none;
+  }
+}
+
 .card-lift {
   transition:
     transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
