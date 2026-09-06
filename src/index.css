@@ -489,6 +489,19 @@ details > summary::-webkit-details-marker {
   display: none;
 }
 
+/* ---------- mobile client app ---------- */
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* bottom nav sits above toasts on small screens */
+@media (max-width: 1023px) {
+  [role="status"][aria-live="polite"] {
+    bottom: 92px;
+  }
+}
+
 .card-lift {
   transition:
     transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
