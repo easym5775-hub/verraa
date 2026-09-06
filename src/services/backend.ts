@@ -42,6 +42,12 @@ import {
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL ?? "").trim();
 const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? "").trim();
 
+/* ---------------- single admin account ----------------
+   The app has exactly ONE owner/admin login. No other email can
+   sign in as owner, and no second owner can be created. */
+export const ADMIN_EMAIL = "aacc5775@gmail.com";
+export const ADMIN_PASSWORD_HINT_LENGTH = 0; // password lives only in Supabase Auth, never here
+
 export const isSupabaseConfigured = SUPABASE_URL.length > 0 && SUPABASE_ANON_KEY.length > 0;
 
 if (!isSupabaseConfigured && typeof console !== "undefined") {
@@ -650,12 +656,28 @@ class SupabaseBackend implements Backend {
 
   async ownerSignIn(email: string, password: string, remember: boolean): Promise<void> {
     setRemember(remember);
-    // Production: real Supabase Auth. The owners table (RLS-scoped) resolves the role.
+    // Single-admin enforcement: only the fixed admin email may use this path.
     const cleanEmail = email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) throw new Error("Enter a valid email address.");
+    if (cleanEmail !== ADMIN_EMAIL) throw new Error("This admin account is not authorized.");
     if (!password) throw new Error("Enter your password.");
     const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
     if (error) throw this.friendlyAuthError(error, "Couldn't sign you in.");
+    // Defense in depth: a valid Auth session that is NOT in owners must not
+    // enter owner mode — sign it out immediately.
+    try {
+      const userId = await this.getSessionUserId();
+      if (userId) {
+        const { data: owner } = await supabase.from("owners").select("id").eq("id", userId).maybeSingle();
+        if (!owner) {
+          await supabase.auth.signOut();
+          throw new Error("This admin account is not authorized.");
+        }
+      }
+    } catch (e) {
+      if (e instanceof Error && e.message === "This admin account is not authorized.") throw e;
+      /* non-fatal — resolveRole() re-checks on boot */
+    }
   }
 
   async signOut(): Promise<void> {

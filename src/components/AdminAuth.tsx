@@ -5,11 +5,13 @@
 import { useId, useState, type FormEvent } from "react";
 import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, Shield, AlertTriangle, Loader2 } from "lucide-react";
 import { ownerSignIn } from "../services/auth";
+import { ADMIN_EMAIL } from "../services/backend";
 import { errorMessage } from "../lib";
 import { btnPrimary, inputCls, labelCls } from "./ui";
 
 export function AdminAuth({ onBack }: { onBack: () => void }) {
-  const [email, setEmail] = useState("");
+  // Single admin account — the email is fixed, only the password is typed.
+  const [email] = useState(ADMIN_EMAIL);
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [remember, setRemember] = useState(true);
@@ -73,7 +75,7 @@ export function AdminAuth({ onBack }: { onBack: () => void }) {
             <p className="text-[17px] font-extrabold tracking-tight text-mist-100">Owner sign in</p>
           </div>
 
-          <p className="mt-1 text-[13px] leading-5 text-mist-400">Access the SaaS administration dashboard.</p>
+          <p className="mt-1 text-[13px] leading-5 text-mist-400">Single admin account — enter its password to access the SaaS administration dashboard.</p>
 
           <form onSubmit={(e) => void submit(e)} className="animate-pop mt-6 grid gap-4">
             <div>
@@ -82,15 +84,15 @@ export function AdminAuth({ onBack }: { onBack: () => void }) {
               </label>
               <input
                 id={emailId}
-                className={inputCls}
+                className={`${inputCls} opacity-60`}
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="owner@example.com"
+                readOnly
+                disabled
                 autoComplete="email"
-                required
-                aria-invalid={!!error}
+                aria-readonly="true"
               />
+              <p className="mt-1.5 text-[11px] font-semibold text-mist-500">Fixed admin account — cannot be changed.</p>
             </div>
             <div>
               <label htmlFor={passId} className={labelCls}>
