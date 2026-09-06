@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — "Remember me" session persistence.
+   VERRAA — "Remember me" session persistence.
    • remember = true  → the session lives in localStorage and survives
      a browser restart.
    • remember = false → the session lives in sessionStorage and dies
@@ -8,11 +8,14 @@
    sensitive) so the storage adapter knows where to look on reload.
    ================================================================ */
 
-const REMEMBER_KEY = "forge-remember-v1";
+const REMEMBER_KEY = "verraa-remember-v1";
+const LEGACY_REMEMBER_KEY = "forge-remember-v1";
 
 export function setRemember(value: boolean): void {
   try {
     localStorage.setItem(REMEMBER_KEY, value ? "1" : "0");
+    // Drop the legacy FORGE key so the two brands never diverge.
+    localStorage.removeItem(LEGACY_REMEMBER_KEY);
   } catch {
     /* storage unavailable — non-fatal */
   }
@@ -20,7 +23,20 @@ export function setRemember(value: boolean): void {
 
 export function getRemember(): boolean {
   try {
-    return localStorage.getItem(REMEMBER_KEY) !== "0";
+    const current = localStorage.getItem(REMEMBER_KEY);
+    if (current !== null) return current !== "0";
+    // One-time migration from the legacy FORGE key.
+    const legacy = localStorage.getItem(LEGACY_REMEMBER_KEY);
+    if (legacy !== null) {
+      try {
+        localStorage.setItem(REMEMBER_KEY, legacy);
+        localStorage.removeItem(LEGACY_REMEMBER_KEY);
+      } catch {
+        /* ignore migration write failures */
+      }
+      return legacy !== "0";
+    }
+    return true; // default to remembering when storage is blocked
   } catch {
     return true; // default to remembering when storage is blocked
   }

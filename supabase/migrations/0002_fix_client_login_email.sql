@@ -1,7 +1,7 @@
 -- ================================================================
 -- 0002 — Fix client login email + username uniqueness + plan_items FK
 --
--- Bug 1 (critical): the synthetic auth email ({username}@clients.forge.internal)
+-- Bug 1 (critical): the synthetic auth email ({username}@clients.verraa.internal)
 --   was used to create the auth.users row but never stored. clients.email held
 --   the coach-typed *contact* email instead, so client_login_email() returned
 --   the wrong value and no client could ever sign in. We add a dedicated
@@ -24,8 +24,12 @@ create unique index if not exists clients_login_email_key
 -- Backfill rows created before this column existed. The synthetic email is a
 -- pure function of the username, so it can be reconstructed deterministically.
 update public.clients
-   set login_email = lower(username) || '@clients.forge.internal'
+   set login_email = lower(username) || '@clients.verraa.internal'
  where login_email is null;
+-- NOTE: rows created before the VERRAA rebrand keep their
+-- clients.forge.internal login_email on purpose (their auth.users email
+-- matches it). Sign-in reads the stored login_email, so both domains
+-- coexist. See migration 0012.
 
 -- The RPC now resolves a username to the *login* email, never the contact one.
 create or replace function public.client_login_email(p_username text)

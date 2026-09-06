@@ -30,7 +30,7 @@ function Logo() {
         <IconDumbbell className="h-5 w-5" strokeWidth={2.2} />
       </span>
       <div>
-        <p className="font-display text-xl font-bold uppercase leading-none tracking-wide text-mist-100">Forge</p>
+        <p className="font-display text-xl font-bold uppercase leading-none tracking-wide text-mist-100">Verraa</p>
         <p className="mt-0.5 text-[9.5px] font-bold uppercase tracking-[0.28em] text-mist-500">Coaching OS</p>
       </div>
     </div>
@@ -121,7 +121,7 @@ export function CoachShell({
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-volt-400 text-night-950">
               <IconDumbbell className="h-4.5 w-4.5" strokeWidth={2.2} />
             </span>
-            <p className="font-display text-lg font-bold uppercase leading-none text-mist-100">Forge</p>
+            <p className="font-display text-lg font-bold uppercase leading-none text-mist-100">Verraa</p>
             <button onClick={onLogout} className="ms-auto cursor-pointer rounded-lg border border-night-600 p-1.5 text-mist-400 transition hover:text-mist-100" aria-label="Switch role">
               <IconLogOut className="h-4 w-4" />
             </button>

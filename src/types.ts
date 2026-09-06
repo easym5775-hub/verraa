@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — data model + visual metadata.
+   VERRAA — data model + visual metadata.
    ================================================================ */
 
 export type Goal = "Lose weight" | "Build muscle" | "General fitness";

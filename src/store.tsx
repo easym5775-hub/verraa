@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — app store (React Context).
+   VERRAA — app store (React Context).
    Backend is the source of truth; local state updates optimistically
    and re-syncs if a write fails.
    ================================================================ */

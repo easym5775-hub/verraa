@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — Owner Coaches Management View.
+   VERRAA — Owner Coaches Management View.
    Real data only: coach account status + subscription from coach_subscriptions.
    No fake fallbacks. Owner can assign/change plan, activate/suspend.
    ================================================================ */
@@ -7,23 +7,27 @@
 import { useState, useMemo } from "react";
 import { useApp } from "../store";
 import { OwnerPageHeader } from "./OwnerShell";
-import { Search, Filter, MoreVertical, CheckCircle, XCircle, Clock, Shield, Users, UserPlus, UserCheck, UserX, Trash2, Eye, Settings, AlertCircle, PlusCircle } from "lucide-react";
+import { Search, Filter, MoreVertical, CheckCircle, XCircle, Clock, Shield, Users, UserPlus, UserCheck, UserX, Trash2, Eye, EyeOff, Settings, AlertCircle, PlusCircle, Copy, RefreshCw } from "lucide-react";
 import { Avatar, btnPrimary, btnSecondary, Dropdown, DropdownItem, Modal } from "./ui";
 import { backend } from "../services/backend";
-import { DEFAULT_COACH_PLANS, formatEGP, getCoachPlanConfig, normalizeCoachPlanId, validatePlanChange, type CoachPlan } from "../coachPricing";
-import { errorMessage } from "../lib";
+import { DEFAULT_COACH_PLANS, formatEGP, getCoachPlanConfig, normalizeCoachPlanId, type CoachPlan } from "../coachPricing";
+import { copyText, errorMessage, randomPassword } from "../lib";
 
-export function OwnerCoachesView() {
+export function OwnerCoachesView({ onOpenCoach }: { onOpenCoach: (coachId: string) => void }) {
 
-  const { state, me, toast, reload } = useApp();
+  const { state, toast, reload } = useApp();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive" | "suspended" | "pending">("all");
-  const [selectedCoach, setSelectedCoach] = useState<string | null>(null);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteName, setInviteName] = useState("");
-  const [inviting, setInviting] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState<string | null>(null);
+  // Real coach creation (Edge Function) — credentials are shown once.
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteName, setInviteName] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [invitePassword, setInvitePassword] = useState("");
+  const [showInvitePassword, setShowInvitePassword] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const [createdCreds, setCreatedCreds] = useState<{ email: string; password: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Plan assignment modal
@@ -63,8 +67,9 @@ export function OwnerCoachesView() {
     if (!confirmAction) return;
     setBusy(true);
     try {
-      await backend.remove("coaches", confirmAction.coachId);
-      toast(`Coach ${confirmAction.coachName} deleted`, "warn");
+      // Full delete (Edge Function): coach login + all clients and their data.
+      const { deletedClients } = await backend.deleteCoachAccount(confirmAction.coachId);
+      toast(`Coach ${confirmAction.coachName} deleted permanently (${deletedClients} client${deletedClients === 1 ? "" : "s"} removed)`, "warn");
       await reload();
     } catch (e) {
       toast(errorMessage(e), "warn");
@@ -74,23 +79,45 @@ export function OwnerCoachesView() {
     }
   };
 
+  const openInviteModal = () => {
+    setInviteName("");
+    setInviteEmail("");
+    setInvitePassword(randomPassword());
+    setShowInvitePassword(false);
+    setInviteError("");
+    setCreatedCreds(null);
+    setShowInviteModal(true);
+  };
+
+  const closeInviteModal = () => {
+    setShowInviteModal(false);
+    setInviteError("");
+    setCreatedCreds(null);
+  };
+
   const handleInviteCoach = async () => {
-    if (!inviteEmail || !inviteName) {
-      toast("Please fill in all fields", "warn");
-      return;
-    }
+    setInviteError("");
+    const cleanName = inviteName.trim();
+    const cleanEmail = inviteEmail.trim().toLowerCase();
+    if (!cleanName) { setInviteError("Enter the coach's name."); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) { setInviteError("Enter a valid email address."); return; }
+    if (invitePassword.length < 6) { setInviteError("Password must be at least 6 characters."); return; }
     setInviting(true);
     try {
-      await backend.loadAuditLog(1).catch(() => []);
-      toast(`Ask ${inviteName} to sign up with ${inviteEmail} — then activate them here`, "ok");
-      setShowInviteModal(false);
-      setInviteEmail("");
-      setInviteName("");
+      const { email } = await backend.createCoachAccount({ name: cleanName, email: cleanEmail, password: invitePassword });
+      setCreatedCreds({ email, password: invitePassword });
+      toast(`Coach account created for ${cleanName}`, "ok");
+      await reload();
     } catch (e) {
-      toast(errorMessage(e), "warn");
+      setInviteError(errorMessage(e));
     } finally {
       setInviting(false);
     }
+  };
+
+  const handleCopyCreds = async (text: string, label: string) => {
+    const ok = await copyText(text);
+    toast(ok ? `${label} copied` : "Copy failed — select the text manually", ok ? "ok" : "warn");
   };
 
   const openAssignPlan = (coachId: string) => {
@@ -122,8 +149,8 @@ export function OwnerCoachesView() {
   const dropdownItems = (coach: any) => {
     const hasSubscription = coach.subscriptionPlan !== "No Subscription" && coach.subscriptionPlan !== "No Plan";
     const items: DropdownItem[] = [
-      { type: "item", label: "View Details", icon: Eye, onClick: () => { setSelectedCoach(coach.id); setDropdownOpen(null); } },
-      { type: "item", label: "Manage Subscription", icon: Settings, onClick: () => { setSelectedCoach(coach.id); setDropdownOpen(null); } },
+      { type: "item", label: "Open Coach Page", icon: Eye, onClick: () => { onOpenCoach(coach.id); setDropdownOpen(null); } },
+      { type: "item", label: "Manage Subscription", icon: Settings, onClick: () => { onOpenCoach(coach.id); setDropdownOpen(null); } },
       { type: "divider" },
     ];
 
@@ -148,6 +175,34 @@ export function OwnerCoachesView() {
     );
 
     return items;
+  };
+
+  // Real last activity per coach: latest check-in / session / message timestamp.
+  const lastActivityByCoach = useMemo(() => {
+    const map = new Map<string, number>();
+    const touch = (coachId: string, ts: number) => {
+      if (!coachId || !Number.isFinite(ts) || ts <= 0) return;
+      map.set(coachId, Math.max(map.get(coachId) ?? 0, ts));
+    };
+    for (const ci of state.checkIns) touch(ci.coachId, Number(ci.ts) || 0);
+    for (const s of state.sessions) {
+      const t = Date.parse(`${s.date}T${s.time || "00:00"}`);
+      touch(s.coachId, Number.isNaN(t) ? 0 : t);
+    }
+    for (const m of state.messages) touch(m.coachId, Number(m.createdAt) || 0);
+    return map;
+  }, [state.checkIns, state.sessions, state.messages]);
+
+  const formatActivity = (ts: number | undefined): string => {
+    if (!ts) return "—";
+    const d = new Date(ts);
+    const today = new Date();
+    const sameDay = d.toDateString() === today.toDateString();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    if (sameDay) return "Today";
+    if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
   };
 
   // Use state.coaches from backend (populated for owners)
@@ -177,13 +232,13 @@ export function OwnerCoachesView() {
         clientLimit: cfg ? cfg.maxClients : null,
         clientCount: coachClients.length,
         activeClients: coachClients.filter((c) => c.status === "Active").length,
-        createdAt: coach.createdAt || "2024-01-01",
-        lastActivity: new Date().toISOString().split("T")[0],
+        createdAt: coach.createdAt || null,
+        lastActivity: formatActivity(lastActivityByCoach.get(coach.id)),
         hasSubscription,
         primarySub,
       };
     });
-  }, [state.coaches, state.coachSubscriptions, state.clients, plans]);
+  }, [state.coaches, state.coachSubscriptions, state.clients, plans, lastActivityByCoach]);
 
   // Filter coaches
   const filteredCoaches = useMemo(() => {
@@ -258,10 +313,10 @@ export function OwnerCoachesView() {
         onConfirm: () => handleStatusChange(coachId, "ACTIVE"),
       },
       delete: {
-        title: "Delete Coach Account?",
+        title: "Delete Coach Permanently?",
         icon: <AlertCircle className="h-5 w-5 text-warn-400" />,
-        message: `Delete ${coachName}? Their clients and data remain until reassigned — this removes the coach account.`,
-        confirmLabel: "Delete Coach",
+        message: `Permanently delete ${coachName}? This removes their login, ALL of their clients, and every plan, check-in, meal, payment and message — it cannot be undone.`,
+        confirmLabel: "Delete Everything",
         confirmClass: "bg-danger-500/10 text-danger-300 border-danger-500/40 hover:bg-danger-500/20",
         onConfirm: executeDeleteCoach,
       },
@@ -348,11 +403,11 @@ export function OwnerCoachesView() {
         action={
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowInviteModal(true)}
+              onClick={openInviteModal}
               className="cursor-pointer rounded-xl border border-volt-400/40 bg-volt-400/10 px-3 py-1.5 text-xs font-bold text-volt-300 transition-all duration-200 hover:bg-volt-400/20 flex items-center gap-1.5"
             >
               <UserPlus className="h-3.5 w-3.5" />
-              Invite Coach
+              New Coach
             </button>
             <span className="text-xs font-bold text-mist-500">{filteredCoaches.length} coach{filteredCoaches.length !== 1 ? "es" : ""}</span>
           </div>
@@ -402,7 +457,12 @@ export function OwnerCoachesView() {
             </thead>
             <tbody>
               {filteredCoaches.map((coach) => (
-                <tr key={coach.id} className="border-b border-night-800 transition-colors hover:bg-night-800/30">
+                <tr
+                  key={coach.id}
+                  onClick={() => onOpenCoach(coach.id)}
+                  title="Open coach page"
+                  className="cursor-pointer border-b border-night-800 transition-colors hover:bg-night-800/30"
+                >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <Avatar name={coach.name} className="h-9 w-9 text-xs" />
@@ -437,7 +497,7 @@ export function OwnerCoachesView() {
                   <td className="px-4 py-3">
                     <span className="text-xs text-mist-400">{coach.lastActivity}</span>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                     <Dropdown
                       open={dropdownOpen === coach.id}
                       onOpenChange={(open) => setDropdownOpen(open ? coach.id : null)}
@@ -463,115 +523,132 @@ export function OwnerCoachesView() {
         </div>
       </div>
 
-      {/* Coach Details Panel (when selected) — real subscription data */}
-      {selectedCoach && (() => {
-        const coach = coaches.find((c: any) => c.id === selectedCoach);
-        if (!coach) return null;
-        return (
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-night-950/80 p-4 sm:items-center" onClick={() => setSelectedCoach(null)}>
-            <div className="w-full max-w-2xl rounded-2xl border border-night-700 bg-night-900 p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="font-display text-xl font-bold uppercase text-mist-100">Coach Details</h3>
-                <button onClick={() => setSelectedCoach(null)} className="cursor-pointer rounded-lg p-2 text-mist-400 transition hover:bg-night-800 hover:text-mist-100" aria-label="Close">
-                  <XCircle className="h-5 w-5" />
-                </button>
-              </div>
-              <div className="flex items-center gap-3">
-                <Avatar name={coach.name} className="h-12 w-12 text-sm" />
-                <div>
-                  <p className="text-base font-bold text-mist-100">{coach.name}</p>
-                  <p className="text-xs text-mist-500">{coach.email}</p>
-                </div>
-                <span className="ms-auto">{getStatusBadge(coach.status)}</span>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-night-700 bg-night-800 p-3.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">Current Plan</p>
-                  <p className="mt-1 text-lg font-bold text-mist-100">{coach.subscriptionPlan}</p>
-                  {coach.hasSubscription && (
-                    <p className="text-xs font-bold text-mist-400 tnum">{formatEGP(coach.subscriptionPrice)} / month</p>
-                  )}
-                </div>
-                <div className="rounded-xl border border-night-700 bg-night-800 p-3.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">Clients</p>
-                  <p className="mt-1 text-lg font-bold text-mist-100 tnum">
-                    {coach.clientLimit === null ? `${coach.clientCount} · Unlimited` : `${coach.clientCount} / ${coach.clientLimit}`}
-                  </p>
-                  <p className="text-xs text-mist-500">{coach.activeClients} active</p>
-                </div>
-                <div className="rounded-xl border border-night-700 bg-night-800 p-3.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">Subscription Status</p>
-                  <div className="mt-1.5">{getSubStatusBadge(coach.subscriptionStatus)}</div>
-                </div>
-                <div className="rounded-xl border border-night-700 bg-night-800 p-3.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">Period</p>
-                  <p className="mt-1 text-xs font-semibold text-mist-300">{coach.subscriptionStart ?? "—"} → {coach.subscriptionEnd ?? "—"}</p>
-                </div>
-              </div>
-              <div className="mt-4 flex gap-2">
-                {coach.status !== "ACTIVE" ? (
-                  <button disabled={busy} onClick={() => { setSelectedCoach(null); void handleStatusChange(coach.id, "ACTIVE"); }} className="flex-1 cursor-pointer rounded-xl border border-moss-400/40 bg-moss-400/10 px-4 py-2 text-xs font-bold text-moss-300 transition hover:bg-moss-400/20 disabled:opacity-50">
-                    Activate Coach
-                  </button>
-                ) : (
-                  <button disabled={busy} onClick={() => { setSelectedCoach(null); setConfirmAction({ type: "suspend", coachId: coach.id, coachName: coach.name }); }} className="flex-1 cursor-pointer rounded-xl border border-danger-500/40 bg-danger-500/10 px-4 py-2 text-xs font-bold text-danger-300 transition hover:bg-danger-500/20 disabled:opacity-50">
-                    Suspend Coach
-                  </button>
-                )}
-                <button onClick={() => setSelectedCoach(null)} className="flex-1 cursor-pointer rounded-xl border border-night-600 bg-night-800 px-4 py-2 text-xs font-bold text-mist-400 transition hover:border-mist-400/40 hover:text-mist-200">
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Invite Coach Modal */}
+      {/* New Coach Modal — creates a real login (Edge Function) */}
       {showInviteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-night-700 bg-night-900 p-6">
-            <h3 className="font-display text-xl font-bold uppercase text-mist-100">Invite New Coach</h3>
-            <p className="mt-2 text-sm text-mist-400">Enter the coach's details to send an invitation email.</p>
-            
-            <div className="mt-4 space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wide text-mist-500">Full Name</label>
-                <input
-                  type="text"
-                  value={inviteName}
-                  onChange={(e) => setInviteName(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-night-600 bg-night-800 px-3 py-2 text-sm text-mist-200 placeholder:text-mist-500 focus:border-volt-400/40 focus:outline-none"
-                  placeholder="John Smith"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wide text-mist-500">Email Address</label>
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-night-600 bg-night-800 px-3 py-2 text-sm text-mist-200 placeholder:text-mist-500 focus:border-volt-400/40 focus:outline-none"
-                  placeholder="coach@example.com"
-                />
-              </div>
-            </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={closeInviteModal}>
+          <div className="w-full max-w-md rounded-2xl border border-night-700 bg-night-900 p-6" onClick={(e) => e.stopPropagation()}>
+            {createdCreds ? (
+              <>
+                <div className="flex items-center gap-2.5">
+                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-moss-400/10 text-moss-300">
+                    <CheckCircle className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h3 className="font-display text-xl font-bold uppercase text-mist-100">Coach Created</h3>
+                    <p className="text-xs text-mist-500">Share these credentials once — they won't be shown again.</p>
+                  </div>
+                </div>
+                <div className="mt-4 space-y-3">
+                  {[
+                    { k: "Email", v: createdCreds.email },
+                    { k: "Password", v: createdCreds.password },
+                  ].map((row) => (
+                    <div key={row.k} className="flex items-center gap-2 rounded-xl border border-night-600 bg-night-800 px-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">{row.k}</p>
+                        <p className="truncate font-mono text-sm font-bold text-mist-100">{row.v}</p>
+                      </div>
+                      <button
+                        onClick={() => void handleCopyCreds(row.v, row.k)}
+                        className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-night-600 text-mist-400 transition hover:border-volt-400/40 hover:text-volt-300"
+                        aria-label={`Copy ${row.k}`}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={closeInviteModal}
+                  className={`${btnPrimary} mt-5 w-full`}
+                >
+                  Done
+                </button>
+              </>
+            ) : (
+              <>
+                <h3 className="font-display text-xl font-bold uppercase text-mist-100">New Coach</h3>
+                <p className="mt-2 text-sm text-mist-400">Creates a real coach login with a STARTER subscription. The coach signs in with email + password.</p>
 
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={handleInviteCoach}
-                disabled={inviting}
-                className="flex-1 cursor-pointer rounded-xl border border-volt-400/40 bg-volt-400/10 px-4 py-2 text-xs font-bold text-volt-300 transition-all duration-200 hover:bg-volt-400/20 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {inviting ? "Sending..." : "Send Invitation"}
-              </button>
-              <button
-                onClick={() => setShowInviteModal(false)}
-                className="flex-1 cursor-pointer rounded-xl border border-night-600 bg-night-800 px-4 py-2 text-xs font-bold text-mist-400 transition-all duration-200 hover:border-mist-400/40 hover:bg-mist-400/10 hover:text-mist-300"
-              >
-                Cancel
-              </button>
-            </div>
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wide text-mist-500">Full Name</label>
+                    <input
+                      type="text"
+                      value={inviteName}
+                      onChange={(e) => setInviteName(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-night-600 bg-night-800 px-3 py-2 text-sm text-mist-200 placeholder:text-mist-500 focus:border-volt-400/40 focus:outline-none"
+                      placeholder="John Smith"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wide text-mist-500">Email Address</label>
+                    <input
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-night-600 bg-night-800 px-3 py-2 text-sm text-mist-200 placeholder:text-mist-500 focus:border-volt-400/40 focus:outline-none"
+                      placeholder="coach@example.com"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wide text-mist-500">Temporary Password</label>
+                    <div className="relative mt-1">
+                      <input
+                        type={showInvitePassword ? "text" : "password"}
+                        value={invitePassword}
+                        onChange={(e) => setInvitePassword(e.target.value)}
+                        className="w-full rounded-xl border border-night-600 bg-night-800 px-3 py-2 pe-20 font-mono text-sm text-mist-200 focus:border-volt-400/40 focus:outline-none"
+                        autoComplete="new-password"
+                      />
+                      <div className="absolute end-1.5 top-1/2 flex -translate-y-1/2 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setInvitePassword(randomPassword())}
+                          aria-label="Generate a new password"
+                          title="Generate a new password"
+                          className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-mist-500 transition hover:bg-white/[0.06] hover:text-mist-100"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowInvitePassword((v) => !v)}
+                          aria-label={showInvitePassword ? "Hide password" : "Show password"}
+                          className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-mist-500 transition hover:bg-white/[0.06] hover:text-mist-100"
+                        >
+                          {showInvitePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {inviteError && (
+                  <p role="alert" className="mt-4 rounded-xl border border-danger-500/25 bg-danger-500/[0.08] px-3.5 py-2.5 text-[13px] font-semibold text-danger-300">
+                    {inviteError}
+                  </p>
+                )}
+
+                <div className="mt-6 flex gap-3">
+                  <button
+                    onClick={() => void handleInviteCoach()}
+                    disabled={inviting}
+                    className="flex-1 cursor-pointer rounded-xl border border-volt-400/40 bg-volt-400/10 px-4 py-2 text-xs font-bold text-volt-300 transition-all duration-200 hover:bg-volt-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {inviting ? "Creating…" : "Create Coach Login"}
+                  </button>
+                  <button
+                    onClick={closeInviteModal}
+                    className="flex-1 cursor-pointer rounded-xl border border-night-600 bg-night-800 px-4 py-2 text-xs font-bold text-mist-400 transition-all duration-200 hover:border-mist-400/40 hover:bg-mist-400/10 hover:text-mist-300"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

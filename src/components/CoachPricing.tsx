@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — Coach Pricing: Current Plan card + Plans & Pricing page.
+   VERRAA — Coach Pricing: Current Plan card + Plans & Pricing page.
    All values come from the real backend (coachPlans + subscription);
    never hardcoded, never demo data.
    ================================================================ */

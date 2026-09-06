@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — auth API (thin wrapper over the active Backend).
+   VERRAA — auth API (thin wrapper over the active Backend).
    ================================================================ */
 
 import { backend, type RoleInfo } from "./backend";

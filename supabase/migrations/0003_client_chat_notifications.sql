@@ -1,5 +1,5 @@
 -- ================================================================
--- FORGE — messages and notifications tables with RLS.
+-- VERRAA — messages and notifications tables with RLS.
 -- Follows the same conventions as check_ins and sessions:
 --   - RLS enabled
 --   - Rows scoped by coach_id and client_id via auth.uid()

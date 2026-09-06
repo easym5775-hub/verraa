@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — shared UI primitives (premium-minimal system).
+   VERRAA — shared UI primitives (premium-minimal system).
    Backward-compatible recipes + polished, accessible components.
    ================================================================ */
 

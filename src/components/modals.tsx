@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — all form modals (client, exercise, plan, meal, nutrition,
+   VERRAA — all form modals (client, exercise, plan, meal, nutrition,
    subscription, payment, session, password reset, photo viewer).
    ================================================================ */
 

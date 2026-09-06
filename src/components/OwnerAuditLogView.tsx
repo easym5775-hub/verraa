@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — Owner Audit Log View: Admin action history.
+   VERRAA — Owner Audit Log View: Admin action history.
    ================================================================ */
 
 import { useState, useMemo, useEffect } from "react";
@@ -26,7 +26,7 @@ type LogEntry = {
 };
 
 export function OwnerAuditLogView() {
-  const { state, toast } = useApp();
+  const { state, me, toast } = useApp();
   const [logType, setLogType] = useState<LogType>("admin");
   const [searchQuery, setSearchQuery] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
@@ -85,19 +85,49 @@ export function OwnerAuditLogView() {
     fetchLogs().then(setLogs);
   }, [logType]);
 
+  // Resolve raw UUIDs to human names (coaches from state, self = admin).
+  const coachNameById = useMemo(
+    () => new Map((state.coaches ?? []).map((c) => [c.id, c.name])),
+    [state.coaches],
+  );
+  const subCoachIdById = useMemo(
+    () => new Map((state.coachSubscriptions ?? []).map((s) => [s.id, s.coachId])),
+    [state.coachSubscriptions],
+  );
+
+  const displayName = (id: string | null): string => {
+    if (!id) return "system";
+    if (me && id === me.userId) return me.name || "Admin";
+    return coachNameById.get(id) ?? `${id.slice(0, 12)}…`;
+  };
+
+  const targetName = (log: LogEntry): string => {
+    if (log.targetType === "coach") {
+      return coachNameById.get(log.targetId) ?? `${log.targetId.slice(0, 12)}…`;
+    }
+    const coachId = subCoachIdById.get(log.targetId) ?? subCoachIdById.get(log.subscriptionId ?? "");
+    if (coachId) return `${coachNameById.get(coachId) ?? "Coach"} · subscription`;
+    if (log.targetType === "subscription") return "subscription";
+    return `${log.targetId.slice(0, 12)}…`;
+  };
+
   // Filter logs
   const filteredLogs = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     return logs.filter((log) => {
-      const matchesSearch = searchQuery === "" ||
-        log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        log.targetId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (log.performedBy?.toLowerCase().includes(searchQuery.toLowerCase()));
-      
+      const matchesSearch = q === "" ||
+        log.action.toLowerCase().includes(q) ||
+        log.targetId.toLowerCase().includes(q) ||
+        (log.performedBy?.toLowerCase().includes(q) ?? false) ||
+        displayName(log.performedBy).toLowerCase().includes(q) ||
+        targetName(log).toLowerCase().includes(q);
+
       const matchesAction = actionFilter === "all" || log.action === actionFilter;
-      
+
       return matchesSearch && matchesAction;
     });
-  }, [logs, searchQuery, actionFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logs, searchQuery, actionFilter, state.coaches, state.coachSubscriptions, me]);
 
   // Unique actions for filter dropdown
   const uniqueActions = useMemo(() => {
@@ -125,6 +155,9 @@ export function OwnerAuditLogView() {
       activated: "bg-moss-400/10 text-moss-300 border-moss-400/20",
       cancelled: "bg-warn-400/10 text-warn-300 border-warn-400/20",
       expired: "bg-danger-500/10 text-danger-300 border-danger-500/20",
+      coach_deleted: "bg-danger-500/10 text-danger-300 border-danger-500/20",
+      subscription_updated: "bg-volt-400/10 text-volt-300 border-volt-400/20",
+      coach_status_changed: "bg-sky-400/10 text-sky-300 border-sky-400/20",
     };
     return (
       <span className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${styles[action] || "bg-night-600/30 text-mist-400 border-night-500/40"}`}>
@@ -260,11 +293,11 @@ export function OwnerAuditLogView() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         {log.targetType === "coach" ? <FileText className="h-3 w-3 text-mist-500" /> : <Database className="h-3 w-3 text-mist-500" />}
-                        <span className="text-sm text-mist-300 font-mono text-xs">{log.targetId.slice(0, 12)}...</span>
+                        <span className="text-sm font-semibold text-mist-200">{targetName(log)}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-xs text-mist-400 font-mono">{log.performedBy?.slice(0, 12) || "—"}</span>
+                      <span className="text-xs font-semibold text-mist-300">{displayName(log.performedBy)}</span>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button
@@ -320,8 +353,8 @@ export function OwnerAuditLogView() {
         {selectedLog && (
           <dl className="grid gap-2.5 text-sm">
             {[
-              ["Target", `${selectedLog.targetType} (${selectedLog.targetId.slice(0, 12)}…)`],
-              ["Performed By", selectedLog.performedBy ? `${selectedLog.performedBy.slice(0, 12)}…` : "system"],
+              ["Target", `${targetName(selectedLog)} (${selectedLog.targetType})`],
+              ["Performed By", displayName(selectedLog.performedBy)],
               ["Time", formatDate(selectedLog.performedAt)],
             ].map(([k, v]) => (
               <div key={k} className="flex items-baseline justify-between gap-3 border-b border-night-700/60 pb-2 last:border-0 last:pb-0">

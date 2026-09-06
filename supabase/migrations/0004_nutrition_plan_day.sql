@@ -1,5 +1,5 @@
 -- ================================================================
--- FORGE — Add day, time, notes columns to meals table
+-- VERRAA — Add day, time, notes columns to meals table
 -- for 7-day nutrition plan support
 -- ================================================================
 

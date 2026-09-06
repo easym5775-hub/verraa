@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — coach settings: account, data & connection status.
+   VERRAA — coach settings: account, data & connection status.
    ================================================================ */
 
 import { useState } from "react";

@@ -1,5 +1,5 @@
 -- ================================================================
--- FORGE — Owner Mode Security Fix: proper owners table and RLS
+-- VERRAA — Owner Mode Security Fix: proper owners table and RLS
 -- ================================================================
 
 -- ----------------------------------------------------------------

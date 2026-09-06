@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — coach command center. Everything is computed from real
+   VERRAA — coach command center. Everything is computed from real
    store data; nothing is invented.
    ================================================================ */
 

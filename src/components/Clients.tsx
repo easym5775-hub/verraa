@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — clients roster + full client profile (coach mode).
+   VERRAA — clients roster + full client profile (coach mode).
    ================================================================ */
 
 import { useEffect, useMemo, useRef, useState } from "react";

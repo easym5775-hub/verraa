@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — app root: auth phases + coach/client/owner routing.
+   VERRAA — app root: auth phases + coach/client/owner routing.
    ================================================================ */
 
 import { useState } from "react";
@@ -20,6 +20,7 @@ import { NutritionPlanView } from "./components/NutritionPlan";
 import { CoachPricingView } from "./components/CoachPricing";
 import { OwnerDashboard } from "./components/OwnerDashboard";
 import { OwnerCoachesView } from "./components/OwnerCoachesView";
+import { OwnerCoachDetail } from "./components/OwnerCoachDetail";
 import { OwnerSubscriptionsView } from "./components/OwnerSubscriptionsView";
 import { OwnerAnalyticsView } from "./components/OwnerAnalyticsView";
 import { OwnerSettingsView } from "./components/OwnerSettingsView";
@@ -38,7 +39,7 @@ function Splash({ label }: { label: string }) {
           <Dumbbell className="h-7 w-7" strokeWidth={2.4} />
         </span>
         <div className="text-center">
-          <p className="font-display text-2xl font-bold uppercase tracking-wide text-mist-100">Forge</p>
+          <p className="font-display text-2xl font-bold uppercase tracking-wide text-mist-100">Verraa</p>
           <p className="mt-1 text-[13px] font-medium text-mist-400">{label}</p>
         </div>
         <span className="h-1 w-full overflow-hidden rounded-full bg-white/[0.07]" aria-hidden="true">
@@ -53,6 +54,7 @@ function Root() {
   const { phase, me } = useApp();
   const [coachView, setCoachView] = useState<CoachView>("dashboard");
   const [ownerView, setOwnerView] = useState<OwnerView>("dashboard");
+  const [ownerCoachId, setOwnerCoachId] = useState<string | null>(null);
   const [showAdminAuth, setShowAdminAuth] = useState(false);
   const [clientPreset, setClientPreset] = useState<string | null>(null);
   const [planPreset, setPlanPreset] = useState<string | null>(null);
@@ -82,10 +84,20 @@ function Root() {
 
   // If authenticated as owner, show Owner Mode directly (no AdminAuth screen)
   if (phase === "ready" && me?.role === "owner") {
+    const setView: typeof setOwnerView = (v) => {
+      // Leaving the coaches section always closes an open coach page.
+      setOwnerCoachId(null);
+      setOwnerView(v);
+    };
     return (
-      <OwnerShell view={ownerView} setView={setOwnerView} onLogout={() => void signOut()}>
-        {ownerView === "dashboard" && <OwnerDashboard setView={setOwnerView} />}
-        {ownerView === "coaches" && <OwnerCoachesView />}
+      <OwnerShell view={ownerView} setView={setView} onLogout={() => void signOut()}>
+        {ownerView === "dashboard" && <OwnerDashboard setView={setView} />}
+        {ownerView === "coaches" &&
+          (ownerCoachId ? (
+            <OwnerCoachDetail coachId={ownerCoachId} onBack={() => setOwnerCoachId(null)} />
+          ) : (
+            <OwnerCoachesView onOpenCoach={(id) => setOwnerCoachId(id)} />
+          ))}
         {ownerView === "subscriptions" && <OwnerSubscriptionsView />}
         {ownerView === "analytics" && <OwnerAnalyticsView />}
         {ownerView === "audit" && <OwnerAuditLogView />}

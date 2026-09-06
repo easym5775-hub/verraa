@@ -8,3 +8,7 @@
 [functions.create-client-account]
 enabled = true
 verify_jwt = true
+
+[functions.admin-coaches]
+enabled = true
+verify_jwt = true

@@ -1,5 +1,5 @@
 // ================================================================
-// FORGE — Edge Function: client account lifecycle.
+// VERRAA — Edge Function: client account lifecycle.
 //
 // Runs server-side with the service role key (set via `supabase secrets
 // set SUPABASE_SERVICE_ROLE_KEY=...` — NEVER in frontend code). Creating an
@@ -17,7 +17,10 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
-const EMAIL_DOMAIN = "clients.forge.internal";
+// New accounts use the VERRAA domain. Existing accounts keep working on the
+// legacy clients.forge.internal domain because sign-in resolves the stored
+// login_email (client_login_email RPC) instead of reconstructing it.
+const EMAIL_DOMAIN = "clients.verraa.internal";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -77,7 +80,7 @@ serve(async (req) => {
     if (!name) return json({ error: "Client name is required." }, 400);
 
     // Friendly uniqueness check before hitting auth.admin. Usernames must be
-    // GLOBALLY unique — the synthetic email ({username}@clients.forge.internal)
+    // GLOBALLY unique — the synthetic email ({username}@clients.verraa.internal)
     // has to be unique across all of Supabase Auth, not just within one coach.
     const { data: taken } = await admin
       .from("clients")

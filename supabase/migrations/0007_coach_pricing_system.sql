@@ -1,5 +1,5 @@
 -- ================================================================
--- 0007 — FORGE Coach Pricing & Client Limits System
+-- 0007 — VERRAA Coach Pricing & Client Limits System
 --
 -- Adds the centralized `coach_plans` source of truth, seeds the three
 -- canonical plans (STARTER 20 / PROFESSIONAL 100 / ENTERPRISE unlimited),

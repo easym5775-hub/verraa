@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — backend abstraction (production).
+   VERRAA — backend abstraction (production).
 
    The UI and the store never talk to Supabase directly; they talk to
    a `Backend`. SupabaseBackend is the only production implementation:
@@ -52,7 +52,7 @@ export const isSupabaseConfigured = SUPABASE_URL.length > 0 && SUPABASE_ANON_KEY
 
 if (!isSupabaseConfigured && typeof console !== "undefined") {
   console.error(
-    "FORGE production build: VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are not set. " +
+      "VERRAA production build: VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are not set. " +
       "Configure them in .env — the app has no demo fallback and will show an error state until they are provided.",
   );
 }
@@ -481,6 +481,21 @@ export interface Backend {
   updateCoachSubscription(subscriptionId: string, patch: Row): Promise<void>;
   /** Owner coach account controls. */
   setCoachAccountStatus(coachId: string, status: string): Promise<void>;
+  /** Owner-only: permanently delete a coach (login + all their data) via Edge Function. */
+  deleteCoachAccount(coachId: string): Promise<{ deletedClients: number }>;
+  /** Owner-only: create a coach login directly (Edge Function). */
+  createCoachAccount(input: { name: string; email: string; password: string }): Promise<{ coachId: string; email: string }>;
+  /** Owner-only: reset a coach's password (Edge Function). */
+  resetCoachPassword(coachId: string, newPassword: string): Promise<void>;
+  /** Owner-only: delete one coach subscription row (its history goes with it). */
+  deleteCoachSubscription(subscriptionId: string): Promise<void>;
+  /** Owner-only: create a coach subscription row (history is auto-logged server-side). */
+  createCoachSubscription(
+    coachId: string,
+    input: { planId: string; startDate: string; days: number; price: number; autoRenew?: boolean },
+  ): Promise<Row>;
+  /** Change the signed-in user's own password. */
+  updateOwnPassword(newPassword: string): Promise<void>;
   /** Subscription history for a coach subscription (or all when omitted). */
   loadSubscriptionHistory(subscriptionId?: string): Promise<Row[]>;
   /** Admin audit log (owner). */
@@ -521,6 +536,24 @@ class SupabaseBackend implements Backend {
     return () => data.subscription.unsubscribe();
   }
 
+  /** A suspended coach must never enter the app — sign the session out and explain why. */
+  private suspendedError(): Error {
+    const err = new Error("This coach account has been suspended. Contact the administrator to restore access.");
+    (err as { code?: string }).code = "ACCOUNT_SUSPENDED";
+    return err;
+  }
+
+  private async assertCoachNotSuspended(userId: string): Promise<void> {
+    const { data } = await supabase.from("coaches").select("account_status").eq("id", userId).maybeSingle();
+    if (data && String((data as Row).account_status ?? "").toUpperCase() === "SUSPENDED") {
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        /* non-fatal */
+      }
+      throw this.suspendedError();
+    }
+  }
   /**
    * Translate raw Supabase Auth errors into short, user-facing messages.
    * Supabase messages are technical ("Invalid login credentials") and vary
@@ -634,6 +667,14 @@ class SupabaseBackend implements Backend {
     } catch {
       /* non-fatal — resolveRole retries on boot */
     }
+    // Suspension enforcement: a suspended coach is signed straight back out.
+    try {
+      const userId = await this.getSessionUserId();
+      if (userId) await this.assertCoachNotSuspended(userId);
+    } catch (e) {
+      if ((e as { code?: string })?.code === "ACCOUNT_SUSPENDED") throw e;
+      /* non-fatal — resolveRole re-checks on boot */
+    }
   }
 
   async clientSignIn(username: string, password: string, remember: boolean): Promise<void> {
@@ -728,8 +769,18 @@ class SupabaseBackend implements Backend {
     if (owner) {
       return { role: "owner", userId, coachId: "", name: String(owner.name ?? "Owner"), email: String(owner.email ?? "") };
     }
-    const { data: coach } = await supabase.from("coaches").select("id, name, email").eq("id", userId).maybeSingle();
+    const { data: coach } = await supabase.from("coaches").select("id, name, email, account_status").eq("id", userId).maybeSingle();
     if (coach) {
+      // Suspended coaches lose access immediately — even with a live session
+      // (e.g. suspended while signed in). The store boots to signed-out.
+      if (String((coach as Row).account_status ?? "").toUpperCase() === "SUSPENDED") {
+        try {
+          await supabase.auth.signOut();
+        } catch {
+          /* non-fatal */
+        }
+        throw this.suspendedError();
+      }
       return { role: "coach", userId, coachId: userId, name: String(coach.name ?? "Coach"), email: String(coach.email ?? "") };
     }
     const { data: clientRow } = await supabase.from("clients").select("*").eq("id", userId).maybeSingle();
@@ -828,13 +879,184 @@ class SupabaseBackend implements Backend {
 
   async updateCoachSubscription(subscriptionId: string, patch: Row): Promise<void> {
     // Owner path: direct update (RLS owner policy) — downgrade guard trigger validates plan changes.
+    let oldRow: Row | null = null;
+    try {
+      const { data } = await supabase.from("coach_subscriptions").select("*").eq("id", subscriptionId).maybeSingle();
+      oldRow = (data as Row) ?? null;
+    } catch {
+      /* best-effort — the audit entry just carries less context */
+    }
     const { error } = await supabase.from("coach_subscriptions").update(patch).eq("id", subscriptionId);
     if (error) throw new Error(error.message);
+    await this.logAdminAction("subscription_updated", "subscription", subscriptionId, oldRow, { ...(oldRow ?? {}), ...patch });
   }
 
   async setCoachAccountStatus(coachId: string, status: string): Promise<void> {
+    let oldStatus: string | null = null;
+    try {
+      const { data } = await supabase.from("coaches").select("account_status").eq("id", coachId).maybeSingle();
+      oldStatus = data ? String((data as Row).account_status ?? "") : null;
+    } catch {
+      /* best-effort */
+    }
     const { error } = await supabase.from("coaches").update({ account_status: status }).eq("id", coachId);
     if (error) throw new Error(error.message);
+    const s = status.toUpperCase();
+    await this.logAdminAction(
+      s === "SUSPENDED" ? "coach_suspended" : s === "ACTIVE" ? "coach_activated" : "coach_status_changed",
+      "coach",
+      coachId,
+      oldStatus ? { account_status: oldStatus } : null,
+      { account_status: status },
+    );
+  }
+
+  /**
+   * Best-effort admin audit entry. Never throws: a logging failure must not
+   * block (or roll back) the admin action itself.
+   */
+  private async logAdminAction(action: string, targetType: string, targetId: string, oldValue: unknown, newValue: unknown): Promise<void> {
+    try {
+      const userId = await this.getSessionUserId();
+      if (!userId) return;
+      await supabase.from("admin_audit_log").insert({
+        action,
+        target_type: targetType,
+        target_id: targetId,
+        old_value: (oldValue as Record<string, unknown> | null) ?? null,
+        new_value: (newValue as Record<string, unknown> | null) ?? null,
+        performed_by: userId,
+      });
+    } catch {
+      /* audit is observability, not control flow */
+    }
+  }
+
+  async deleteCoachAccount(coachId: string): Promise<{ deletedClients: number }> {
+    let data: unknown;
+    let error: { name?: string; message?: string } | null;
+    try {
+      const res = await supabase.functions.invoke("admin-coaches", {
+        body: { action: "delete-coach", coachId },
+      });
+      data = res.data;
+      error = res.error as { name?: string; message?: string } | null;
+    } catch (e) {
+      throw this.friendlyAdminCoachesError(e);
+    }
+    if (error) throw this.friendlyAdminCoachesError(error);
+    const body = data as { ok?: boolean; deletedClients?: number; error?: string };
+    if (!body?.ok) throw new Error(body?.error ?? "Couldn't delete the coach.");
+    return { deletedClients: Number(body.deletedClients ?? 0) };
+  }
+
+  private friendlyAdminCoachesError(e: unknown): Error {
+    if (isFunctionUnreachable(e)) {
+      return new Error(
+        "Coach admin service isn't deployed yet. Deploy it with: supabase functions deploy admin-coaches (it uses the same SUPABASE_SERVICE_ROLE_KEY secret).",
+      );
+    }
+    const msg = e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? "");
+    if (/user already registered|already been registered|already exists|already taken|duplicate/i.test(msg)) {
+      return new Error("This email is already registered. Ask the coach to sign in instead.");
+    }
+    if (/reserved for the admin|cannot target the admin/i.test(msg)) {
+      return new Error("The admin account is protected and cannot be targeted.");
+    }
+    if (/only.*admin/i.test(msg)) return new Error("Only the admin can manage coaches.");
+    if (/coach not found/i.test(msg)) return new Error("Coach not found — it may have been deleted already.");
+    if (/invalid or expired session|missing authorization/i.test(msg)) {
+      return new Error("Your session expired — sign out and sign back in, then try again.");
+    }
+    return e instanceof Error ? e : new Error(msg || "Couldn't complete the coach action.");
+  }
+
+  async updateOwnPassword(newPassword: string): Promise<void> {
+    if (newPassword.length < 6) throw new Error("Password must be at least 6 characters.");
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw this.friendlyAuthError(error, "Couldn't update your password.");
+  }
+
+  async createCoachAccount(input: { name: string; email: string; password: string }): Promise<{ coachId: string; email: string }> {
+    let data: unknown;
+    let error: { name?: string; message?: string } | null;
+    try {
+      const res = await supabase.functions.invoke("admin-coaches", {
+        body: { action: "create-coach", ...input },
+      });
+      data = res.data;
+      error = res.error as { name?: string; message?: string } | null;
+    } catch (e) {
+      throw this.friendlyAdminCoachesError(e);
+    }
+    if (error) throw this.friendlyAdminCoachesError(error);
+    const body = data as { ok?: boolean; coachId?: string; email?: string; error?: string };
+    if (!body?.ok || !body.coachId) throw new Error(body?.error ?? "Couldn't create the coach account.");
+    return { coachId: body.coachId, email: body.email ?? input.email };
+  }
+
+  async resetCoachPassword(coachId: string, newPassword: string): Promise<void> {
+    if (newPassword.length < 6) throw new Error("Password must be at least 6 characters.");
+    let data: unknown;
+    let error: { name?: string; message?: string } | null;
+    try {
+      const res = await supabase.functions.invoke("admin-coaches", {
+        body: { action: "reset-password", coachId, newPassword },
+      });
+      data = res.data;
+      error = res.error as { name?: string; message?: string } | null;
+    } catch (e) {
+      throw this.friendlyAdminCoachesError(e);
+    }
+    if (error) throw this.friendlyAdminCoachesError(error);
+    const body = data as { ok?: boolean; error?: string };
+    if (!body?.ok) throw new Error(body?.error ?? "Couldn't reset the password.");
+  }
+
+  async deleteCoachSubscription(subscriptionId: string): Promise<void> {
+    // Snapshot first: deleting the row cascades its history rows too.
+    let oldRow: Row | null = null;
+    try {
+      const { data } = await supabase.from("coach_subscriptions").select("*").eq("id", subscriptionId).maybeSingle();
+      oldRow = (data as Row) ?? null;
+    } catch {
+      /* best-effort */
+    }
+    const { error } = await supabase.from("coach_subscriptions").delete().eq("id", subscriptionId);
+    if (error) throw new Error(error.message);
+    await this.logAdminAction("subscription_deleted", "subscription", subscriptionId, oldRow, null);
+  }
+
+  async createCoachSubscription(
+    coachId: string,
+    input: { planId: string; startDate: string; days: number; price: number; autoRenew?: boolean },
+  ): Promise<Row> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.startDate)) throw new Error("Enter a valid start date.");
+    if (!Number.isFinite(input.days) || input.days < 1 || input.days > 3650) {
+      throw new Error("Duration must be between 1 and 3650 days.");
+    }
+    if (!Number.isFinite(input.price) || input.price < 0) throw new Error("Enter a valid price (0 or more).");
+    const start = new Date(input.startDate + "T12:00:00");
+    const end = new Date(start);
+    end.setDate(end.getDate() + Math.floor(input.days));
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const endIso = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`;
+    const row: Row = {
+      coach_id: coachId,
+      plan_name: input.planId,
+      status: "ACTIVE",
+      start_date: input.startDate,
+      end_date: endIso,
+      price: input.price,
+      auto_renew: Boolean(input.autoRenew),
+    };
+    const { data, error } = await supabase.from("coach_subscriptions").insert(row).select("*").single();
+    if (error) throw new Error(error.message);
+    const created = (data as Row) ?? row;
+    // Server trigger already wrote 'created' to subscription history;
+    // the admin audit entry keeps actor attribution.
+    await this.logAdminAction("subscription_created", "subscription", String(created.id ?? ""), null, created);
+    return created;
   }
 
   async loadSubscriptionHistory(subscriptionId?: string): Promise<Row[]> {

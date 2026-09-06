@@ -1,5 +1,5 @@
 -- ================================================================
--- 0008 — FORGE Coach signup hardening: auto-create coach profile.
+-- 0008 — VERRAA Coach signup hardening: auto-create coach profile.
 --
 -- Problem: when "Confirm email" is ON in Supabase Auth, signUp() returns
 -- no session, so the frontend cannot insert into public.coaches (RLS

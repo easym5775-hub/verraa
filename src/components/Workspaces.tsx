@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — Plans, Meals, Exercise Library and Check-ins views.
+   VERRAA — Plans, Meals, Exercise Library and Check-ins views.
    ================================================================ */
 
 import { useEffect, useMemo, useState } from "react";

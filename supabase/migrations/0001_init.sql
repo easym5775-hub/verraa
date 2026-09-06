@@ -1,5 +1,5 @@
 -- ================================================================
--- FORGE — initial schema: tables, RLS and the username-login bridge.
+-- VERRAA — initial schema: tables, RLS and the username-login bridge.
 -- Apply on a fresh Supabase project (SQL editor or `supabase db push`).
 --
 -- Roles: both coaches and clients are Supabase Auth users sharing the
@@ -219,7 +219,9 @@ create policy check_ins_client_insert on public.check_ins
 -- ----------------------------------------------------------------
 -- Username -> email bridge.
 -- Clients log in with a username; Supabase Auth needs an email. The
--- edge function stores a synthetic email ({username}@clients.forge.internal).
+-- edge function stores a synthetic email ({username}@clients.verraa.internal).
+-- Legacy rows may still use clients.forge.internal — sign-in resolves the
+-- stored login_email, so both domains keep working.
 -- This definer function returns ONLY the email string for a username.
 -- ----------------------------------------------------------------
 create or replace function public.client_login_email(p_username text)

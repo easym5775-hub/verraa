@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — date/format helpers.
+   VERRAA — date/format helpers.
    ================================================================ */
 
 import { v4 as uuidv4 } from "uuid";
@@ -126,6 +126,28 @@ export function randomPassword(): string {
   let out = "";
   for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)];
   return out;
+}
+
+/** Copy text to clipboard with a legacy fallback. Returns success. */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 }
 
 export const isValidUsername = (u: string): boolean => /^[a-z0-9_.-]{3,24}$/.test(u.toLowerCase());

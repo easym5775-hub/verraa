@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — Owner/Admin shell: sidebar, mobile nav and page frame.
+   VERRAA — Owner/Admin shell: sidebar, mobile nav and page frame.
    Premium-minimal match for the coach shell.
    ================================================================ */
 
@@ -15,6 +15,7 @@ import {
   Users,
 } from "lucide-react";
 import { Avatar } from "./ui";
+import { useApp } from "../store";
 
 export type OwnerView = "dashboard" | "coaches" | "subscriptions" | "analytics" | "audit" | "settings";
 
@@ -63,6 +64,7 @@ export function OwnerShell({
 }) {
   const isActive = (id: OwnerView) => view === id;
   const meta = VIEW_META[view];
+  const { me } = useApp();
 
   return (
     <div className="noise relative flex min-h-screen">
@@ -80,7 +82,7 @@ export function OwnerShell({
           </span>
           <div className="min-w-0">
             <p className="font-display text-[22px] font-bold uppercase leading-none tracking-wide text-mist-100">
-              Forge
+              Verraa
             </p>
             <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.24em] text-volt-300">
               Owner console
@@ -129,14 +131,14 @@ export function OwnerShell({
         </nav>
 
         <div className="p-3">
-          <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3.5">
-            <div className="flex items-center gap-3">
-              <Avatar name="Owner" className="h-10 w-10 text-xs" status="online" />
-              <div className="min-w-0">
-                <p className="truncate text-[13.5px] font-bold text-mist-100">Owner Admin</p>
-                <p className="truncate text-xs text-mist-500">SaaS control center</p>
+            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3.5">
+              <div className="flex items-center gap-3">
+                <Avatar name={me?.name ?? "Owner"} className="h-10 w-10 text-xs" status="online" />
+                <div className="min-w-0">
+                  <p className="truncate text-[13.5px] font-bold text-mist-100">{me?.name ?? "Owner Admin"}</p>
+                  <p className="truncate text-xs text-mist-500">{me?.email ?? "SaaS control center"}</p>
+                </div>
               </div>
-            </div>
             <button
               onClick={onLogout}
               className="mt-3 flex min-h-[36px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-white/[0.07] py-1.5 text-xs font-bold text-mist-400 transition hover:border-danger-500/30 hover:bg-danger-500/[0.08] hover:text-danger-300"
@@ -176,7 +178,7 @@ export function OwnerShell({
               <Shield className="h-[18px] w-[18px]" strokeWidth={2.4} />
             </span>
             <div>
-              <p className="font-display text-lg font-bold uppercase leading-none text-mist-100">Forge</p>
+              <p className="font-display text-lg font-bold uppercase leading-none text-mist-100">Verraa</p>
               <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.2em] text-volt-300">Owner</p>
             </div>
             <button

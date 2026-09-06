@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — client mode: Today, Daily check-in, My progress, Chat,
+   VERRAA — client mode: Today, Daily check-in, My progress, Chat,
    Subscription + the notification bell.
    ================================================================ */
 

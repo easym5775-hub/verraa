@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — Admin/Owner sign-in screen (premium-minimal match).
+   VERRAA — Admin/Owner sign-in screen (premium-minimal match).
    ================================================================ */
 
 import { useId, useState, type FormEvent } from "react";
@@ -57,7 +57,7 @@ export function AdminAuth({ onBack }: { onBack: () => void }) {
             <Shield className="h-6 w-6" strokeWidth={2.4} />
           </span>
           <div>
-            <p className="font-display text-[26px] font-bold uppercase leading-none text-mist-100">Forge Owner</p>
+            <p className="font-display text-[26px] font-bold uppercase leading-none text-mist-100">Verraa Owner</p>
             <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.28em] text-mist-500">Admin access</p>
           </div>
         </div>

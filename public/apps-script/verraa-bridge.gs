@@ -1,20 +1,20 @@
 /**
- * FORGE — Google Sheets Bridge (Google Apps Script)
+ * VERRAA — Google Sheets Bridge (Google Apps Script)
  * =================================================
- * This script is the secure layer between the FORGE app and Google Sheets.
+ * This script is the secure layer between the VERRAA app and Google Sheets.
  * It needs NO OAuth client, NO API keys and NO service accounts: when a coach
  * opens the link flow, Google's built-in Apps Script consent screen asks for
  * permission, and from then on the script runs *as that coach* — so it can
  * only ever touch sheets that coach can access.
  *
- * ONE-TIME SETUP (done by whoever installs FORGE, not by each coach):
+ * ONE-TIME SETUP (done by whoever installs VERRAA, not by each coach):
  *  1. Open https://script.google.com → New project → paste this file.
  *  2. Deploy → New deployment → type "Web app":
  *       - Execute as:     Me
  *       - Who has access: Anyone
  *     (Google will ask YOU to authorise the script once — that is normal.)
  *  3. Copy the Web App URL (ends in /exec) and paste it once into
- *     FORGE → Settings → Google Sheets Database → "One-time app setup".
+ *     VERRAA → Settings → Google Sheets Database → "One-time app setup".
  *
  * After that, every coach links their own Google account with a single click.
  */
@@ -88,7 +88,7 @@ function linkPage(p) {
       initTabs(ss);
       payload = { ok: true, spreadsheetId: ss.getId(), sheetUrl: ss.getUrl(), title: ss.getName() };
     } else {
-      ss = SpreadsheetApp.create('FORGE — Gym Database');
+      ss = SpreadsheetApp.create('VERRAA — Gym Database');
       initTabs(ss);
       payload = { ok: true, spreadsheetId: ss.getId(), sheetUrl: ss.getUrl(), title: ss.getName() };
     }
@@ -100,11 +100,11 @@ function linkPage(p) {
   if (!returnTo) return json(payload); // direct visit — show raw result
 
   var encoded = encodeURIComponent(JSON.stringify(payload));
-  var target = returnTo + '#forge-link=' + encoded;
+  var target = returnTo + '#verraa-link=' + encoded;
   var ok = !!payload.ok;
   var html =
     '<!doctype html><html><head><meta charset="utf-8">' +
-    '<title>FORGE — Google Sheets</title>' +
+    '<title>VERRAA — Google Sheets</title>' +
     '<style>' +
     'body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;' +
     'background:#0b100d;color:#e4ede6;font-family:Arial,Helvetica,sans-serif;text-align:center}' +
@@ -120,12 +120,12 @@ function linkPage(p) {
     '<p class="' + (ok ? '' : 'err') + '">' +
     (ok
       ? 'Your database <strong style="color:#dcf770">' + escapeHtml(payload.title) + '</strong> is ready. ' +
-        'This window will close and FORGE will continue automatically.'
+        'This window will close and VERRAA will continue automatically.'
       : escapeHtml(payload.error)) +
     '</p></div>' +
     '<script>setTimeout(function(){ location.replace(' + JSON.stringify(target) + '); }, ' + (ok ? 600 : 2500) + ');<\/script>' +
     '</body></html>';
-  return HtmlService.createHtmlOutput(html).setTitle('FORGE — Google Sheets');
+  return HtmlService.createHtmlOutput(html).setTitle('VERRAA — Google Sheets');
 }
 
 /* ------------------------------ spreadsheet ------------------------------ */

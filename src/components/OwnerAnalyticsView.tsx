@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — Owner Analytics View: SaaS-level analytics.
+   VERRAA — Owner Analytics View: SaaS-level analytics.
    Real data from database with correct status values (ACTIVE, SUSPENDED, etc.)
    ================================================================ */
 
@@ -7,7 +7,15 @@ import { useMemo, useState } from "react";
 import { useApp } from "../store";
 import { OwnerPageHeader } from "./OwnerShell";
 import { Users, TrendingUp, Shield, DollarSign, Activity, BarChart3, ArrowUpRight, ArrowDownRight, Minus, Target, Zap, CheckCircle, AlertTriangle } from "lucide-react";
-import { normalizeCoachPlanId } from "../coachPricing";
+import { normalizeCoachPlanId, resolveCoachSubscription, effectiveCoachStatus } from "../coachPricing";
+
+const RANGE_DAYS: Record<"7d" | "30d" | "90d" | "1y", number> = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 };
+const RANGE_LABEL: Record<"7d" | "30d" | "90d" | "1y", string> = {
+  "7d": "Last 7 days",
+  "30d": "Last 30 days",
+  "90d": "Last 90 days",
+  "1y": "Last 12 months",
+};
 
 export function OwnerAnalyticsView() {
   const { state } = useApp();
@@ -18,6 +26,14 @@ export function OwnerAnalyticsView() {
 
   // Calculate real metrics from actual data
   const metrics = useMemo(() => {
+    const windowDays = RANGE_DAYS[timeRange];
+    const windowStart = new Date();
+    windowStart.setDate(windowStart.getDate() - windowDays);
+    const inWindow = (iso?: string | null): boolean => {
+      if (!iso) return false; // missing date = unknown, never counted as new
+      const d = new Date(iso);
+      return !Number.isNaN(d.getTime()) && d >= windowStart;
+    };
     // Coach metrics from actual coaches data (database uses uppercase status)
     const totalCoaches = coaches.length;
     const activeCoaches = coaches.filter((c) => (c.accountStatus ?? "").toUpperCase() === "ACTIVE").length;
@@ -60,15 +76,19 @@ export function OwnerAnalyticsView() {
       return acc;
     }, {} as Record<string, number>);
 
-    // Revenue calculations (Coach SaaS subscription revenue, not client payments)
+    // Revenue calculations (Coach SaaS subscription revenue, not client payments).
+    // MRR counts each coach ONCE (their primary subscription) so duplicate
+    // history rows never inflate the number.
     const totalRevenue = coachSubscriptions.reduce((sum, s) => sum + (s.price || 0), 0);
     const activeRevenue = activeSubs.reduce((sum, s) => sum + (s.price || 0), 0);
-    
-    // MRR (Monthly Recurring Revenue) - sum of active subscription monthly prices
-    const mrr = activeSubs.reduce((sum, s) => {
-      const price = s.price || 0;
-      return sum + price;
-    }, 0);
+
+    const primarySubs = coaches
+      .map((c) => resolveCoachSubscription(coachSubscriptions, c.id))
+      .filter((s): s is NonNullable<typeof s> => s !== null);
+    const todayKey = now.toISOString().slice(0, 10);
+    const mrr = primarySubs
+      .filter((s) => effectiveCoachStatus(s, todayKey) === "ACTIVE")
+      .reduce((sum, s) => sum + (s.price || 0), 0);
     
     // ARR (Annual Recurring Revenue)
     const arr = mrr * 12;
@@ -80,22 +100,15 @@ export function OwnerAnalyticsView() {
     const totalSubsAtStart = coachSubscriptions.length;
     const churnRate = totalSubsAtStart > 0 ? ((expiredSubs.length / totalSubsAtStart) * 100).toFixed(1) : "0";
     
-    // Growth metrics (month-over-month new coaches / revenue)
-    const newCoachesThisMonth = coaches.filter((c) => {
-      const created = new Date(c.createdAt || "2024-01-01");
-      const monthAgo = new Date();
-      monthAgo.setMonth(monthAgo.getMonth() - 1);
-      return created >= monthAgo;
-    }).length;
-    
-    const newRevenueThisMonth = coachSubscriptions
-      .filter((s) => {
-        const created = new Date(s.createdAt || "2024-01-01");
-        const monthAgo = new Date();
-        monthAgo.setMonth(monthAgo.getMonth() - 1);
-        return created >= monthAgo;
-      })
+    // Growth metrics for the selected time window (new coaches / revenue).
+    const newCoaches = coaches.filter((c) => inWindow(c.createdAt)).length;
+
+    const newRevenue = coachSubscriptions
+      .filter((s) => inWindow(s.createdAt))
       .reduce((sum, s) => sum + (s.price || 0), 0);
+
+    // Client retention = share of clients currently Active.
+    const retentionRate = totalClients > 0 ? Math.round((activeClients / totalClients) * 100) : null;
 
     // Coach status distribution for chart
     const coachStatusDistribution = {
@@ -106,15 +119,16 @@ export function OwnerAnalyticsView() {
     };
 
     return {
-      coaches: { total: totalCoaches, active: activeCoaches, pending: pendingCoaches, suspended: suspendedCoaches, inactive: inactiveCoaches, newThisMonth: newCoachesThisMonth },
-      clients: { total: totalClients, active: activeClients, inactive: inactiveClients, avgPerCoach: avgClientsPerCoach },
+      coaches: { total: totalCoaches, active: activeCoaches, pending: pendingCoaches, suspended: suspendedCoaches, inactive: inactiveCoaches, newInWindow: newCoaches },
+      clients: { total: totalClients, active: activeClients, inactive: inactiveClients, avgPerCoach: avgClientsPerCoach, retention: retentionRate },
       subscriptions: { total: coachSubscriptions.length, active: activeSubs.length, expired: expiredSubs.length, pending: pendingSubs.length, expiringSoon: expiringSoon.length },
-      revenue: { total: totalRevenue, active: activeRevenue, mrr, arr, arpu, newThisMonth: newRevenueThisMonth },
+      revenue: { total: totalRevenue, active: activeRevenue, mrr, arr, arpu, newInWindow: newRevenue },
       planDistribution,
       coachStatusDistribution,
       churnRate,
+      windowLabel: RANGE_LABEL[timeRange],
     };
-  }, [state]);
+  }, [state, timeRange]);
 
   const statCard = (icon: React.ReactNode, label: string, value: string | number, sub?: string, trend?: { value: string; positive: boolean; icon: React.ReactNode }) => (
     <div className="rounded-2xl border border-night-700 bg-night-850/50 p-5 backdrop-blur-md">
@@ -197,7 +211,12 @@ export function OwnerAnalyticsView() {
           {statCard(<Users className="h-5 w-5" />, "Total Clients", metrics.clients.total)}
           {statCard(<Users className="h-5 w-5" />, "Active Clients", metrics.clients.active, `${metrics.clients.inactive} inactive`)}
           {statCard(<Activity className="h-5 w-5" />, "Avg Clients/Coach", metrics.clients.avgPerCoach, "per coach")}
-          {statCard(<Users className="h-5 w-5" />, "Client Retention", "N/A", "coming soon")}
+          {statCard(
+            <Users className="h-5 w-5" />,
+            "Client Retention",
+            metrics.clients.retention === null ? "—" : `${metrics.clients.retention}%`,
+            "share of clients active"
+          )}
         </div>
       </div>
 
@@ -256,7 +275,7 @@ export function OwnerAnalyticsView() {
             <option value="7d">Last 7 days</option>
             <option value="30d">Last 30 days</option>
             <option value="90d">Last 90 days</option>
-            <option value="1y">Last year</option>
+            <option value="1y">Last 12 months</option>
           </select>
         </div>
         
@@ -267,21 +286,21 @@ export function OwnerAnalyticsView() {
             "MRR",
             `${metrics.revenue.mrr.toLocaleString()} EGP`,
             "Monthly Recurring Revenue",
-            { value: `+${metrics.revenue.newThisMonth.toLocaleString()}`, positive: true, icon: <ArrowUpRight className="h-3 w-3" /> }
+            { value: `+${metrics.revenue.newInWindow.toLocaleString()}`, positive: true, icon: <ArrowUpRight className="h-3 w-3" /> }
           )}
           {statCard(
             <Target className="h-5 w-5" />,
             "ARR",
             `${metrics.revenue.arr.toLocaleString()} EGP`,
             "Annual Recurring Revenue",
-            { value: `+${(metrics.revenue.newThisMonth * 12).toLocaleString()}`, positive: true, icon: <ArrowUpRight className="h-3 w-3" /> }
+            { value: `+${(metrics.revenue.newInWindow * 12).toLocaleString()}`, positive: true, icon: <ArrowUpRight className="h-3 w-3" /> }
           )}
           {statCard(
             <Users className="h-5 w-5" />,
             "ARPU",
             `${metrics.revenue.arpu.toFixed(0)} EGP`,
             "Avg Revenue Per User",
-            metrics.coaches.newThisMonth > 0 ? { value: `+${metrics.coaches.newThisMonth} new`, positive: true, icon: <ArrowUpRight className="h-3 w-3" /> } : undefined
+            metrics.coaches.newInWindow > 0 ? { value: `+${metrics.coaches.newInWindow} new`, positive: true, icon: <ArrowUpRight className="h-3 w-3" /> } : undefined
           )}
           {statCard(
             <Activity className="h-5 w-5" />,
@@ -293,16 +312,16 @@ export function OwnerAnalyticsView() {
           {statCard(
             <Zap className="h-5 w-5" />,
             "New Coaches",
-            metrics.coaches.newThisMonth,
-            "This month",
-            metrics.coaches.newThisMonth > 0 ? { value: "Growing", positive: true, icon: <ArrowUpRight className="h-3 w-3" /> } : { value: "Flat", positive: false, icon: <Minus className="h-3 w-3" /> }
+            metrics.coaches.newInWindow,
+            metrics.windowLabel,
+            metrics.coaches.newInWindow > 0 ? { value: "Growing", positive: true, icon: <ArrowUpRight className="h-3 w-3" /> } : { value: "Flat", positive: false, icon: <Minus className="h-3 w-3" /> }
           )}
           {statCard(
             <TrendingUp className="h-5 w-5" />,
             "New Revenue",
-            `${metrics.revenue.newThisMonth.toLocaleString()} EGP`,
-            "This month",
-            metrics.revenue.newThisMonth > 0 ? { value: "Growing", positive: true, icon: <ArrowUpRight className="h-3 w-3" /> } : { value: "Flat", positive: false, icon: <Minus className="h-3 w-3" /> }
+            `${metrics.revenue.newInWindow.toLocaleString()} EGP`,
+            metrics.windowLabel,
+            metrics.revenue.newInWindow > 0 ? { value: "Growing", positive: true, icon: <ArrowUpRight className="h-3 w-3" /> } : { value: "Flat", positive: false, icon: <Minus className="h-3 w-3" /> }
           )}
         </div>
 
@@ -325,8 +344,8 @@ export function OwnerAnalyticsView() {
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="rounded-xl bg-night-800/50 p-4">
               <p className="text-xs font-bold uppercase tracking-wide text-mist-500">Coach Growth</p>
-              <p className="mt-2 font-display text-3xl font-bold text-mist-100">{metrics.coaches.total}</p>
-              <p className="mt-1 text-sm text-mist-400">Total coaches on platform</p>
+              <p className="mt-2 font-display text-3xl font-bold text-mist-100">+{metrics.coaches.newInWindow}</p>
+              <p className="mt-1 text-sm text-mist-400">{metrics.windowLabel} · {metrics.coaches.total} total</p>
             </div>
             <div className="rounded-xl bg-night-800/50 p-4">
               <p className="text-xs font-bold uppercase tracking-wide text-mist-500">Client Growth</p>
@@ -334,9 +353,9 @@ export function OwnerAnalyticsView() {
               <p className="mt-1 text-sm text-mist-400">Total clients across all coaches</p>
             </div>
             <div className="rounded-xl bg-night-800/50 p-4">
-              <p className="text-xs font-bold uppercase tracking-wide text-mist-500">Subscription Growth</p>
-              <p className="mt-2 font-display text-3xl font-bold text-mist-100">{metrics.subscriptions.total}</p>
-              <p className="mt-1 text-sm text-mist-400">Total active subscriptions</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-mist-500">Active Subscriptions</p>
+              <p className="mt-2 font-display text-3xl font-bold text-mist-100">{metrics.subscriptions.active}</p>
+              <p className="mt-1 text-sm text-mist-400">{metrics.subscriptions.total} subscriptions total</p>
             </div>
           </div>
         </div>

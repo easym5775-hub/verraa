@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — Owner Subscriptions Management View.
+   VERRAA — Owner Subscriptions Management View.
    Real database data only: plan, price (EGP), client count/limit,
    status, start/end dates. All controls persist + record history.
    ================================================================ */
@@ -30,8 +30,9 @@ export function OwnerSubscriptionsView() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [loading, setLoading] = useState(false);
   const [planModalOpen, setPlanModalOpen] = useState(false);
-  const [selectedSubscription, setSelectedSubscription] = useState<string | null>(null);
+  const [selectedSubscription, setSelectedSubscription] = useState<{ subId: string | null; coachId: string } | null>(null);
   const [planError, setPlanError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyRows, setHistoryRows] = useState<HistoryRow[]>([]);
@@ -152,7 +153,10 @@ export function OwnerSubscriptionsView() {
     const base = sub?.endDate && sub.endDate >= today ? new Date(sub.endDate + "T12:00:00") : new Date();
     base.setDate(base.getDate() + days);
     const iso = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(base.getDate()).padStart(2, "0")}`;
-    void mutate(`Subscription extended by ${days} days`, () => backend.updateCoachSubscription(subscriptionId, { end_date: iso }));
+    // Extending an EXPIRED subscription reactivates it; SUSPENDED/CANCELLED stay as-is.
+    const patch: Record<string, string> =
+      sub && (sub.status ?? "").toUpperCase() === "EXPIRED" ? { end_date: iso, status: "ACTIVE" } : { end_date: iso };
+    void mutate(`Subscription extended by ${days} days`, () => backend.updateCoachSubscription(subscriptionId, patch));
   };
 
   const handleSetStatus = (subscriptionId: string | null, status: string, label: string) => {
@@ -163,19 +167,20 @@ export function OwnerSubscriptionsView() {
     void mutate(label, () => backend.updateCoachSubscription(subscriptionId, { status }));
   };
 
-  const handleChangePlan = (subscriptionId: string | null) => {
-    setSelectedSubscription(subscriptionId);
+  const handleChangePlan = (subscriptionId: string | null, coachId: string) => {
+    setSelectedSubscription({ subId: subscriptionId, coachId });
     setPlanError("");
     setPlanModalOpen(true);
     setOpenMenu(null);
   };
 
   const handlePlanChange = async (planId: CoachPlan) => {
-    const target = subscriptions.find((s) => s.id === selectedSubscription);
+    const target = selectedSubscription;
     if (!target) return;
     setLoading(true);
     setPlanError("");
     try {
+      // Works for coaches with no subscription yet: the server creates one.
       await backend.changeCoachPlan(target.coachId, planId);
       toast(`Plan changed to ${planId.charAt(0) + planId.slice(1).toLowerCase()}`, "ok");
       setPlanModalOpen(false);
@@ -188,6 +193,29 @@ export function OwnerSubscriptionsView() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDeleteSubscription = async () => {
+    if (!deleteTarget) return;
+    setLoading(true);
+    try {
+      await backend.deleteCoachSubscription(deleteTarget.id);
+      toast("Subscription deleted", "ok");
+      setDeleteTarget(null);
+      await reload();
+    } catch (e) {
+      toast(errorMessage(e), "warn");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const historyPerformerName = (performedBy: unknown): string => {
+    const by = performedBy ? String(performedBy) : "";
+    if (!by) return "system";
+    // Only coaches and the (single) admin can produce these rows.
+    const coach = (state.coaches ?? []).find((c) => c.id === by);
+    return coach ? coach.name : "Admin";
   };
 
   const handleViewHistory = async (sub: { subId: string | null; coachName: string }) => {
@@ -323,13 +351,16 @@ export function OwnerSubscriptionsView() {
                   { type: "item" as const, label: "Extend +30 Days", icon: RotateCcw, onClick: () => handleExtendSubscription(sub.subId, 30) },
                   { type: "item" as const, label: "Extend +90 Days", icon: RotateCcw, onClick: () => handleExtendSubscription(sub.subId, 90) },
                   { type: "divider" as const },
-                  { type: "item" as const, label: "Change Plan", icon: CreditCard, onClick: () => handleChangePlan(sub.subId) },
+                  { type: "item" as const, label: "Change Plan", icon: CreditCard, onClick: () => handleChangePlan(sub.subId, sub.coachId) },
                   { type: "divider" as const },
                   ...(sub.status === "SUSPENDED"
                     ? [{ type: "item" as const, label: "Activate", icon: PlayCircle, onClick: () => handleSetStatus(sub.subId, "ACTIVE", "Subscription activated") }]
                     : [{ type: "item" as const, label: "Suspend", icon: PauseCircle, onClick: () => handleSetStatus(sub.subId, "SUSPENDED", "Subscription suspended"), danger: true }]),
                   ...(sub.status === "ACTIVE"
                     ? [{ type: "item" as const, label: "Cancel Subscription", icon: Trash2, onClick: () => handleSetStatus(sub.subId, "CANCELLED", "Subscription cancelled"), danger: true }]
+                    : []),
+                  ...(sub.subId
+                    ? [{ type: "item" as const, label: "Delete Row", icon: Trash2, onClick: () => { setDeleteTarget({ id: sub.subId as string, label: `${sub.coachName} · ${sub.planName}` }); setOpenMenu(null); }, danger: true }]
                     : []),
                   { type: "item" as const, label: "View History", icon: History, onClick: () => void handleViewHistory(sub) },
                 ]}
@@ -401,6 +432,31 @@ export function OwnerSubscriptionsView() {
         </button>
       </Modal>
 
+      {/* Delete Row Confirm — the row's history goes with it */}
+      <Modal open={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="Delete Subscription Row?">
+        {deleteTarget && (
+          <div className="grid gap-4">
+            <p className="text-sm leading-6 text-mist-300">
+              Delete the subscription row for <span className="font-bold text-mist-100">{deleteTarget.label}</span>?
+              Its history entries are deleted with it. Use this to clean up duplicate or mistaken rows — to stop
+              service, prefer Suspend or Cancel instead.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setDeleteTarget(null)} className="flex-1 cursor-pointer rounded-xl border border-night-600 bg-night-800 px-4 py-2 text-xs font-bold text-mist-400 transition hover:border-mist-400/40 hover:text-mist-200">
+                Keep it
+              </button>
+              <button
+                onClick={() => void handleDeleteSubscription()}
+                disabled={loading}
+                className="flex-1 cursor-pointer rounded-xl border border-danger-500/40 bg-danger-500/10 px-4 py-2 text-xs font-bold text-danger-300 transition hover:bg-danger-500/20 disabled:opacity-50"
+              >
+                Delete row
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       {/* Subscription History Modal — real rows, no placeholders */}
       <Modal open={historyOpen} onClose={() => setHistoryOpen(false)} title="Subscription History" description={historyTitle} wide>
         {historyLoading ? (
@@ -419,7 +475,7 @@ export function OwnerSubscriptionsView() {
                     {h.performed_at ? new Date(h.performed_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
                   </span>
                 </div>
-                <p className="mt-1.5 truncate font-mono text-[11px] text-mist-500">by {h.performed_by ? String(h.performed_by).slice(0, 12) + "…" : "system"}</p>
+                <p className="mt-1.5 truncate text-[11px] font-semibold text-mist-500">by {historyPerformerName(h.performed_by)}</p>
               </li>
             ))}
           </ul>

@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — sign-in screen (coach: email+password, client: username).
+   VERRAA — sign-in screen (coach: email+password, client: username).
    Premium-minimal: calmer type scale, glass card, a11y-first forms.
    ================================================================ */
 
@@ -106,7 +106,7 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
             </span>
             <div>
               <p className="font-display text-[28px] font-bold uppercase leading-none tracking-wide text-mist-100">
-                Forge
+                Verraa
               </p>
               <p className="mt-1 text-[10.5px] font-bold uppercase tracking-[0.28em] text-mist-500">
                 Coaching OS
@@ -163,7 +163,7 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
                 <Dumbbell className="h-5 w-5" strokeWidth={2.4} />
               </span>
               <div>
-                <p className="font-display text-2xl font-bold uppercase leading-none text-mist-100">Forge</p>
+                <p className="font-display text-2xl font-bold uppercase leading-none text-mist-100">Verraa</p>
                 <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.28em] text-mist-500">
                   Coaching OS
                 </p>

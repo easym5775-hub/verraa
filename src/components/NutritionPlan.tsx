@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — 7-Day Nutrition Plan Builder (Coach Mode)
+   VERRAA — 7-Day Nutrition Plan Builder (Coach Mode)
    ================================================================ */
 
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -430,7 +430,7 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
       <h1 style="margin:0;">Nutrition Plan — ${client.name}</h1>
       <p style="color:#555;margin:6px 0 0;">${targets ? `Targets: ${targets.calories} kcal | P${targets.protein}g C${targets.carbs}g F${targets.fats}g${targets.water ? ` | Water ${targets.water}L` : ""}` : "No targets set"} • Printed ${new Date().toLocaleDateString()}</p>
       ${rows}
-      <p style="margin-top:24px;color:#888;font-size:12px;">Made with FORGE • Ask your coach before swapping meals</p>
+      <p style="margin-top:24px;color:#888;font-size:12px;">Made with VERRAA • Ask your coach before swapping meals</p>
       <script>window.onload=()=>{window.print();}</script>
     </body></html>`);
     w.document.close();

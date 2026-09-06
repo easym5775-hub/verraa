@@ -1,5 +1,5 @@
 -- ================================================================
--- FORGE — Single admin account enforcement.
+-- VERRAA — Single admin account enforcement.
 --
 -- The app has exactly ONE owner/admin login:
 --   email: aacc5775@gmail.com

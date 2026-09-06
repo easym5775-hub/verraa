@@ -1,10 +1,10 @@
 import { uid } from "../lib";
 
 /**
- * FORGE Sheets Bridge client.
+ * VERRAA Sheets Bridge client.
  *
- * The bridge is a tiny Google Apps Script Web App (public/apps-script/forge-bridge.gs)
- * deployed once by whoever installs FORGE. It needs NO OAuth client and NO API
+ * The bridge is a tiny Google Apps Script Web App (public/apps-script/verraa-bridge.gs)
+ * deployed once by whoever installs VERRAA. It needs NO OAuth client and NO API
  * keys: Google's built-in Apps Script consent screen handles authorisation, and
  * the script then runs as the signed-in coach — so it can only touch sheets
  * that coach can already access.
@@ -15,11 +15,29 @@ import { uid } from "../lib";
  *   nonce-signed result → app stores the connection and starts syncing.
  */
 
-const BRIDGE_KEY = "forge-bridge-url-v1";
+const BRIDGE_KEY = "verraa-bridge-url-v1";
+const LEGACY_BRIDGE_KEY = "forge-bridge-url-v1";
+
+/** One-time migration from the legacy FORGE bridge key. */
+function migrateLegacyBridgeKey(): string | null {
+  try {
+    const current = localStorage.getItem(BRIDGE_KEY);
+    if (current !== null) return current;
+    const legacy = localStorage.getItem(LEGACY_BRIDGE_KEY);
+    if (legacy !== null) {
+      localStorage.setItem(BRIDGE_KEY, legacy);
+      localStorage.removeItem(LEGACY_BRIDGE_KEY);
+      return legacy;
+    }
+  } catch {
+    /* non-fatal */
+  }
+  return null;
+}
 
 export function getBridgeUrl(): string {
   try {
-    return localStorage.getItem(BRIDGE_KEY) ?? "";
+    return localStorage.getItem(BRIDGE_KEY) ?? migrateLegacyBridgeKey() ?? "";
   } catch {
     return "";
   }
@@ -28,6 +46,7 @@ export function getBridgeUrl(): string {
 export function saveBridgeUrl(url: string): void {
   try {
     localStorage.setItem(BRIDGE_KEY, url.trim().replace(/\/$/, ""));
+    localStorage.removeItem(LEGACY_BRIDGE_KEY);
   } catch {
     /* non-fatal */
   }
@@ -64,7 +83,7 @@ export function linkViaPopup(opts: {
     });
     const url = `${opts.bridgeUrl.replace(/\/$/, "")}?${params.toString()}`;
 
-    const popup = window.open(url, "forge-link", "width=520,height=680,menubar=no,toolbar=no");
+    const popup = window.open(url, "verraa-link", "width=520,height=680,menubar=no,toolbar=no");
     if (!popup) {
       reject(new Error("Pop-up blocked — allow pop-ups for this site, then press the button again."));
       return;
@@ -78,8 +97,11 @@ export function linkViaPopup(opts: {
     };
     const onMessage = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return;
-      const d = e.data as { forge?: string; nonce?: string; payload?: LinkResult } | null;
-      if (!d || d.forge !== "forge-link" || d.nonce !== nonce || !d.payload) return;
+      const d = e.data as { verraa?: string; forge?: string; nonce?: string; payload?: LinkResult } | null;
+      if (!d || !d.payload || d.nonce !== nonce) return;
+      // Accept the new VERRAA channel plus the legacy FORGE channel (old bridge deployments).
+      const channel = d.verraa ?? d.forge;
+      if (channel !== "verraa-link" && channel !== "forge-link") return;
       settled = true;
       cleanup();
       resolve(d.payload);
@@ -115,22 +137,27 @@ export function linkViaPopup(opts: {
 
 /**
  * Runs once when the app starts: if this window was opened as the linking
- * popup (bridge redirected back with #forge-link=…), hand the result to the
- * opener window and close.
+ * popup (bridge redirected back with #verraa-link=…), hand the result to the
+ * opener window and close. The legacy #forge-link= hash is still accepted
+ * so popups opened by an older bridge deployment keep working.
  */
 export function respondToLinkRedirect(): boolean {
   const h = window.location.hash;
-  const prefix = "#forge-link=";
-  if (!h.startsWith(prefix)) return false;
+  const prefix = "#verraa-link=";
+  const legacyPrefix = "#forge-link=";
+  let rest: string | null = null;
+  if (h.startsWith(prefix)) rest = h.slice(prefix.length);
+  else if (h.startsWith(legacyPrefix)) rest = h.slice(legacyPrefix.length);
+  if (rest === null) return false;
   let payload: LinkResult | null = null;
   try {
-    payload = JSON.parse(decodeURIComponent(h.slice(prefix.length))) as LinkResult;
+    payload = JSON.parse(decodeURIComponent(rest)) as LinkResult;
   } catch {
     payload = null;
   }
   if (payload && window.opener) {
     window.opener.postMessage(
-      { forge: "forge-link", nonce: payload.nonce, payload },
+      { verraa: "verraa-link", nonce: payload.nonce, payload },
       window.location.origin,
     );
   }

@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — inline SVG charts (no chart library needed).
+   VERRAA — inline SVG charts (no chart library needed).
    ================================================================ */
 
 import { useState } from "react";

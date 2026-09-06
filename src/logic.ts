@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — pure derived business logic. Everything here is computed
+   VERRAA — pure derived business logic. Everything here is computed
    from stored records — never persisted as editable values.
    ================================================================ */
 

@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — Owner Dashboard: SaaS-level overview.
+   VERRAA — Owner Dashboard: SaaS-level overview.
    ================================================================ */
 
 import { useApp } from "../store";
@@ -8,8 +8,7 @@ import { Users, Shield, TrendingUp, AlertCircle, CheckCircle2, Clock, XCircle } 
 import type { OwnerView } from "./OwnerShell";
 
 export function OwnerDashboard({ setView }: { setView: (v: OwnerView) => void }) {
-  const { me, state } = useApp();
-  void me;
+  const { state } = useApp();
 
   // Real SaaS metrics from the database (no hardcoded demo values).
   const allCoaches = state.coaches ?? [];

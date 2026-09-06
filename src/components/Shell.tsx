@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — coach shell: sidebar, mobile nav and page frame.
+   VERRAA — coach shell: sidebar, mobile nav and page frame.
    Premium-minimal: grouped nav, glass topbar, generous whitespace.
    ================================================================ */
 
@@ -90,7 +90,7 @@ export function CoachShell({
           </span>
           <div className="min-w-0">
             <p className="font-display text-[22px] font-bold uppercase leading-none tracking-wide text-mist-100">
-              Forge
+              Verraa
             </p>
             <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.24em] text-mist-500">
               Coaching OS
@@ -171,7 +171,7 @@ export function CoachShell({
             </button>
           </div>
           <p className="mt-2.5 px-1 text-center text-[10.5px] font-medium text-mist-500/70">
-            Forge v1 · crafted for coaches
+            Verraa v1 · crafted for coaches
           </p>
         </div>
       </aside>
@@ -215,7 +215,7 @@ export function CoachShell({
               <Dumbbell className="h-[18px] w-[18px]" strokeWidth={2.4} />
             </span>
             <div className="min-w-0">
-              <p className="font-display text-lg font-bold uppercase leading-none text-mist-100">Forge</p>
+              <p className="font-display text-lg font-bold uppercase leading-none text-mist-100">Verraa</p>
               <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.2em] text-mist-500">
                 {meta.section} · {meta.label}
               </p>

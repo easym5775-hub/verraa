@@ -1,5 +1,5 @@
 -- ================================================================
--- FORGE — Owner/Admin Mode: coach account status and subscription management
+-- VERRAA — Owner/Admin Mode: coach account status and subscription management
 -- ================================================================
 
 -- ----------------------------------------------------------------

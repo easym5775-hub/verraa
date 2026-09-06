@@ -1,4 +1,4 @@
-# FORGE — Coaching OS
+# VERRAA — Coaching OS
 
 A fitness-coaching platform with two roles (**Coach** and **Client**), backed by
 **Supabase** (Auth + Postgres + Edge Functions) with a clean, swappable data layer.
@@ -20,12 +20,14 @@ fallback: if Supabase is unreachable the app shows an error state.
 
 1. **Create a Supabase project**, then apply the schema **in order**:
    - Via CLI (recommended): `supabase link --project-ref <ref>` then `supabase db push`
-     (applies `supabase/migrations/0001` → `0008`).
+     (applies `supabase/migrations/0001` → `0013`).
    - Or via Dashboard → SQL editor: run each file in `supabase/migrations/` in
-     numeric order (`0001_init.sql` … `0008_coach_signup_trigger.sql`).
+     numeric order (`0001_init.sql` … `0013_owner_policies_with_check.sql`).
    - `0008` installs the `handle_new_coach` trigger so a coach row + STARTER
      subscription are created automatically on signup — even when
      **Confirm email** is ON.
+   - `0009` enforces the single admin account, `0010`–`0012` wire owner
+     audit writes and owner read/write access to all app data.
 
 2. **Auth settings** (Dashboard → Authentication → Settings):
    - For instant coach signup, turn **Confirm email OFF** — coaches land in
@@ -34,9 +36,10 @@ fallback: if Supabase is unreachable the app shows an error state.
      sign-in (trigger + frontend self-heal).
    - No extra providers or SMTP config required for the core flow.
 
-3. **Deploy the Edge Function** (creates client logins server-side):
+3. **Deploy the Edge Functions** (client + coach account lifecycle, server-side):
    ```bash
    supabase functions deploy create-client-account
+   supabase functions deploy admin-coaches
    # The service-role key lives ONLY here, never in the frontend:
    supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
    ```
@@ -77,7 +80,7 @@ UI (React)
   no `coach_id` is ever passed manually from the UI.
 - **Client login uses a username.** The coach picks a username + password when
   creating a client; an Edge Function stores a synthetic email
-  (`username@clients.forge.internal`) and the `client_login_email` RPC resolves it
+   (`username@clients.verraa.internal`) and the `client_login_email` RPC resolves it
   at sign-in, so clients never see or type an email.
 - **Clients can only read their own data** and may insert their own check-ins —
   exactly mirroring the app's behaviour.

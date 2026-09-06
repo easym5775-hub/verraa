@@ -1,5 +1,5 @@
 /* ================================================================
-   FORGE — centralized Coach Pricing & Subscription source of truth.
+   VERRAA — centralized Coach Pricing & Subscription source of truth.
 
    All pricing values live here (as DB-backed defaults). UI components
    must NEVER hardcode 1999 / 5000 / 10000 / 20 / 100 — import from here

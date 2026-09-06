@@ -6,7 +6,22 @@ import type { ConnectionConfig } from "./dataProvider";
  * coach id — never a secret and never the (short-lived, in-memory) access token.
  */
 
-const CONN_KEY = "forge-conn-v1";
+const CONN_KEY = "verraa-conn-v1";
+const LEGACY_CONN_KEY = "forge-conn-v1";
+
+/** One-time migration from the legacy FORGE connection key. */
+function migrateLegacyConnection(): void {
+  try {
+    if (localStorage.getItem(CONN_KEY) !== null) return;
+    const legacy = localStorage.getItem(LEGACY_CONN_KEY);
+    if (legacy !== null) {
+      localStorage.setItem(CONN_KEY, legacy);
+      localStorage.removeItem(LEGACY_CONN_KEY);
+    }
+  } catch {
+    /* non-fatal */
+  }
+}
 
 export interface StoredConnection {
   config: ConnectionConfig | null;
@@ -14,6 +29,7 @@ export interface StoredConnection {
 }
 
 export function loadStoredConnection(): StoredConnection {
+  migrateLegacyConnection();
   try {
     const raw = localStorage.getItem(CONN_KEY);
     if (raw) {
@@ -31,6 +47,7 @@ export function loadStoredConnection(): StoredConnection {
 export function saveStoredConnection(stored: StoredConnection): void {
   try {
     localStorage.setItem(CONN_KEY, JSON.stringify(stored));
+    localStorage.removeItem(LEGACY_CONN_KEY);
   } catch {
     /* non-fatal */
   }
@@ -39,6 +56,7 @@ export function saveStoredConnection(stored: StoredConnection): void {
 export function clearStoredConnection(): void {
   try {
     localStorage.removeItem(CONN_KEY);
+    localStorage.removeItem(LEGACY_CONN_KEY);
   } catch {
     /* non-fatal */
   }
