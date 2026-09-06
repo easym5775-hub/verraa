@@ -173,6 +173,48 @@ export async function copyText(text: string): Promise<boolean> {
 
 export const isValidUsername = (u: string): boolean => /^[a-z0-9_.-]{3,24}$/.test(u.toLowerCase());
 
+/* ---------------- coach-suffixed client usernames ----------------
+   Convention: client login is `<client>.<coach>` — e.g. coach "Ahmed"
+   + client "ali" => "ali.ahmed". The suffix is derived from the coach's
+   name (first latin token) with the email prefix as fallback, so Arabic
+   names still get a usable handle. Must stay in sync with the
+   create-client-account Edge Function (same slug rules). */
+
+export function coachUsernameSuffix(name?: string | null, email?: string | null): string {
+  const slugToken = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12);
+  // Prefer the first latin token of the coach name ("Ahmed Samy" -> "ahmed").
+  const tokens = String(name ?? "").trim().split(/\s+/).filter(Boolean);
+  for (const t of tokens) {
+    const s = slugToken(t);
+    if (s) return s;
+  }
+  // Fallback: email prefix ("ahmed@gmail.com" -> "ahmed").
+  const prefix = String(email ?? "").trim().split("@")[0] ?? "";
+  // Email prefixes may contain dots/dashes — keep only alphanumerics for a clean suffix.
+  const emailSlug = prefix.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12);
+  if (emailSlug) return emailSlug;
+  return "coach";
+}
+
+/** Strip a trailing `.{suffix}` so pasting a full login still works. */
+export function stripCoachSuffix(input: string, suffix: string): string {
+  const clean = input.trim().toLowerCase();
+  const tail = `.${suffix.toLowerCase()}`;
+  if (tail.length > 1 && clean.endsWith(tail)) return clean.slice(0, -tail.length);
+  return clean;
+}
+
+/** Build the final login `client.coach` from the typed part + coach suffix. */
+export function buildClientUsername(clientPart: string, suffix: string): string {
+  const part = stripCoachSuffix(clientPart, suffix).replace(/^\.+|\.+$/g, "");
+  return `${part}.${suffix.toLowerCase()}`.toLowerCase();
+}
+
+/** Max chars the client part may use given the suffix (total limit is 24). */
+export function maxClientPartLength(suffix: string): number {
+  return Math.max(1, 24 - (suffix.length + 1));
+}
+
 export const relTime = (ts: number): string => {
   const diff = Date.now() - ts;
   const m = Math.floor(diff / 60_000);

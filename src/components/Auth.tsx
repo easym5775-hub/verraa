@@ -339,7 +339,7 @@ export function Auth({
                         className={`${inputCls} ps-10`}
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        placeholder="your username"
+                        placeholder="ali.ahmed"
                         autoComplete="username"
                         required
                         aria-invalid={!!error}

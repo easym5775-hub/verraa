@@ -3,7 +3,7 @@
    subscription, payment, session, password reset, photo viewer).
    ================================================================ */
 
-import { useEffect, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { createPortal } from "react-dom";
 import { Dumbbell, Image as ImageIcon, RefreshCw, X } from "lucide-react";
 import type {
@@ -36,7 +36,7 @@ import {
   WEEK_ORDER_SAT_FIRST,
   formatDayName,
 } from "../types";
-import { fileToDataUrl, isValidUsername, randomPassword, todayISO } from "../lib";
+import { buildClientUsername, coachUsernameSuffix, fileToDataUrl, isValidUsername, maxClientPartLength, randomPassword, stripCoachSuffix, todayISO } from "../lib";
 import { useApp } from "../store";
 import { isPlanLimitError, type PlanLimitError } from "../coachPricing";
 import { Modal, btnPrimary, btnSecondary, inputCls, labelCls, textareaCls } from "./ui";
@@ -107,7 +107,7 @@ export function ClientFormModal({
   onSaved?: (c: Client) => void;
   onUpgrade?: () => void;
 }) {
-  const { createClient, updateClient } = useApp();
+  const { createClient, updateClient, me } = useApp();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -124,9 +124,17 @@ export function ClientFormModal({
   const [limitInfo, setLimitInfo] = useState<PlanLimitError | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Client logins are `<client>.<coach>` — e.g. coach "Ahmed" + "ali" => "ali.ahmed".
+  const coachSuffix = useMemo(
+    () => coachUsernameSuffix(me?.role === "coach" ? me.name : "", me?.role === "coach" ? me.email : ""),
+    [me],
+  );
+  const fullUsernamePreview = username.trim() ? buildClientUsername(username, coachSuffix) : `—.${coachSuffix}`;
+  const maxPart = maxClientPartLength(coachSuffix);
+
   useEffect(() => {
     if (!open) return;
-    setUsername(initial?.username ?? "");
+    setUsername("");
     setPassword("");
     setName(initial?.name ?? "");
     setEmail(initial?.email ?? "");
@@ -145,8 +153,17 @@ export function ClientFormModal({
 
   const save = async () => {
     if (!name.trim()) return setError("Client name is required.");
+    let fullUsername = "";
     if (!initial) {
-      if (!isValidUsername(username.trim())) return setError("Username must be 3–24 chars: letters, numbers, dots, dashes.");
+      const part = stripCoachSuffix(username, coachSuffix).replace(/^\.+|\.+$/g, "");
+      if (!/^[a-z0-9_.-]+$/.test(part))
+        return setError("Username must use letters, numbers, dots, dashes only.");
+      if (part.length < 2) return setError("Username must be at least 2 characters (before the coach suffix).");
+      if (part.length > maxPart)
+        return setError(`That name is too long — keep it under ${maxPart} characters (login becomes ${part.slice(0, maxPart)}.${coachSuffix}).`);
+      fullUsername = buildClientUsername(part, coachSuffix);
+      if (!isValidUsername(fullUsername))
+        return setError("That username doesn't fit the 3–24 character login format.");
       if (password.length < 6) return setError("Password must be at least 6 characters.");
     }
     setBusy(true);
@@ -170,7 +187,7 @@ export function ClientFormModal({
         onClose();
       } else {
         const c = await createClient({
-          username: username.trim().toLowerCase(),
+          username: fullUsername,
           password,
           name: name.trim(),
           email: email.trim() || undefined,
@@ -203,7 +220,11 @@ export function ClientFormModal({
       open={open}
       onClose={onClose}
       title={initial ? "Edit client" : "New client"}
-      description={initial ? undefined : "Pick the username & password they'll sign in with."}
+      description={
+        initial
+          ? undefined
+          : `Pick the username & password they'll sign in with — login ends with .${coachSuffix} (your name).`
+      }
       wide
     >
       <div className="grid gap-4 sm:grid-cols-2">
@@ -216,7 +237,22 @@ export function ClientFormModal({
           <>
             <div>
               <label className={labelCls}>Login username *</label>
-              <input className={inputCls} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="alex.m" autoComplete="off" />
+              <div className="flex items-center overflow-hidden rounded-xl border border-night-600 bg-night-800 transition focus-within:border-volt-400">
+                <input
+                  className="min-w-0 flex-1 bg-transparent px-3.5 py-2.5 text-sm font-semibold text-mist-100 outline-none placeholder:font-medium placeholder:text-mist-500"
+                  value={username}
+                  onChange={(e) => setUsername(stripCoachSuffix(e.target.value, coachSuffix))}
+                  placeholder="ali"
+                  autoComplete="off"
+                  maxLength={maxPart}
+                />
+                <span className="shrink-0 select-none border-s border-night-600 bg-night-900/60 px-2.5 py-2.5 text-sm font-bold text-volt-300">
+                  .{coachSuffix}
+                </span>
+              </div>
+              <p className="mt-1.5 text-[11px] font-semibold leading-4 text-mist-500">
+                Client signs in with <span className="font-bold text-volt-300">{fullUsernamePreview}</span>
+              </p>
             </div>
             <div>
               <label className={labelCls}>Login password *</label>

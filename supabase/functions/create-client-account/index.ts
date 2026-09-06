@@ -35,6 +35,21 @@ function syntheticEmail(username: string): string {
   return `${username.toLowerCase()}@${EMAIL_DOMAIN}`;
 }
 
+// Client logins are `<client>.<coach>` — e.g. coach "Ahmed" + "ali" => "ali.ahmed".
+// Keep in sync with `coachUsernameSuffix` in src/lib.ts.
+function coachSuffixFor(name: unknown, email: unknown): string {
+  const slugToken = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12);
+  const tokens = String(name ?? "").trim().split(/\s+/).filter(Boolean);
+  for (const t of tokens) {
+    const s = slugToken(t);
+    if (s) return s;
+  }
+  const prefix = String(email ?? "").trim().split("@")[0] ?? "";
+  const emailSlug = prefix.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12);
+  if (emailSlug) return emailSlug;
+  return "coach";
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -53,9 +68,13 @@ serve(async (req) => {
   const { data: userData, error: userError } = await admin.auth.getUser(token);
   if (userError || !userData.user) return json({ error: "Invalid or expired session." }, 401);
 
-  const { data: coachRow } = await admin.from("coaches").select("id").eq("id", userData.user.id).maybeSingle();
+  const { data: coachRow } = await admin.from("coaches").select("id, name, email").eq("id", userData.user.id).maybeSingle();
   if (!coachRow) return json({ error: "Only coaches can manage client accounts." }, 403);
-  const coachId: string = coachRow.id;
+  const coachId: string = (coachRow as { id: string }).id;
+  const coachSuffix = coachSuffixFor(
+    (coachRow as { name?: unknown }).name,
+    (coachRow as { email?: unknown }).email ?? userData.user.email,
+  );
 
   let body: Record<string, unknown>;
   try {
@@ -69,12 +88,20 @@ serve(async (req) => {
   // CREATE
   // =======================================================================
   if (action === "create") {
-    const username = String(body.username ?? "").trim().toLowerCase();
+    let username = String(body.username ?? "").trim().toLowerCase();
     const password = String(body.password ?? "");
     const name = String(body.name ?? "").trim();
 
+    // Enforce the `<client>.<coach>` convention server-side: if the coach
+    // typed only "ali", store "ali.ahmed". A full "ali.ahmed" passes through
+    // untouched so retries / pasted logins never double-append.
+    if (username && !username.endsWith(`.${coachSuffix}`)) {
+      const part = username.replace(/^\.+|\.+$/g, "");
+      username = `${part}.${coachSuffix}`.toLowerCase();
+    }
+
     if (!/^[a-z0-9_.-]{3,24}$/.test(username)) {
-      return json({ error: "Username must be 3-24 characters (letters, numbers, dots, dashes)." }, 400);
+      return json({ error: `Username must be 3-24 characters (letters, numbers, dots, dashes) and ends with .${coachSuffix} — e.g. ali.${coachSuffix}.` }, 400);
     }
     if (password.length < 6) return json({ error: "Password must be at least 6 characters." }, 400);
     if (!name) return json({ error: "Client name is required." }, 400);
