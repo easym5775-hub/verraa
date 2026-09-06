@@ -18,7 +18,7 @@ export type CoachView = "dashboard" | "clients" | "client" | "plans" | "meals" |
 
 /* ---------------- coach pricing & subscriptions (centralized source of truth) ---------------- */
 
-export type CoachPlan = "STARTER" | "PROFESSIONAL" | "ENTERPRISE";
+export type CoachPlan = "FREE" | "STARTER" | "PROFESSIONAL" | "ENTERPRISE";
 
 export type CoachSubscriptionStatus = "ACTIVE" | "EXPIRED" | "SUSPENDED" | "PENDING" | "CANCELLED";
 
@@ -39,6 +39,9 @@ export interface CoachNote {
   id: string;
   text: string;
   createdAt: number;
+  pinned?: boolean;
+  /** Creator display name — reserved for future multi-coach teams. */
+  by?: string;
 }
 
 export interface NutritionTargets {
@@ -196,6 +199,21 @@ export interface Coach {
   createdAt: string;
 }
 
+export type PlanRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+/** A coach's request for a paid plan — approved/rejected by the owner. */
+export interface CoachPlanRequest {
+  id: string;
+  coachId: string;
+  requestedPlan: string;
+  status: PlanRequestStatus;
+  note: string;
+  reviewNote?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  createdAt: string;
+}
+
 export interface AppState {
   clients: Client[];
   exercises: Exercise[];
@@ -210,6 +228,7 @@ export interface AppState {
   coaches?: Coach[];
   coachSubscriptions?: CoachSubscription[];
   coachPlans?: CoachPlanConfig[];
+  planRequests?: CoachPlanRequest[];
 }
 
 /* ---------------- input types ---------------- */

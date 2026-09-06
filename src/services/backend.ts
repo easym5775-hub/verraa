@@ -18,6 +18,7 @@ import type {
   Client,
   CoachPlan,
   CoachPlanConfig,
+  CoachPlanRequest,
   Exercise,
   Meal,
   Message,
@@ -378,6 +379,20 @@ export const rowToCoachSubscription = (r: Row): CoachSubscription => ({
   updatedAt: String(r.updated_at ?? ""),
 });
 
+/* ---------------- plan-request row mapper ---------------- */
+
+export const rowToPlanRequest = (r: Row): CoachPlanRequest => ({
+  id: String(r.id),
+  coachId: String(r.coach_id ?? ""),
+  requestedPlan: String(r.requested_plan ?? ""),
+  status: (String(r.status ?? "PENDING").toUpperCase() as CoachPlanRequest["status"]) ?? "PENDING",
+  note: String(r.note ?? ""),
+  reviewNote: r.review_note ? String(r.review_note) : undefined,
+  reviewedBy: r.reviewed_by ? String(r.reviewed_by) : undefined,
+  reviewedAt: r.reviewed_at ? String(r.reviewed_at) : undefined,
+  createdAt: String(r.created_at ?? ""),
+});
+
 /* ---------------- coach_plans row mapper (centralized pricing source) ---------------- */
 
 export const rowToCoachPlan = (r: Row): CoachPlanConfig => ({
@@ -500,6 +515,13 @@ export interface Backend {
   loadSubscriptionHistory(subscriptionId?: string): Promise<Row[]>;
   /** Admin audit log (owner). */
   loadAuditLog(limit?: number): Promise<Row[]>;
+  /* ---- Plan requests (coach asks, owner approves/rejects) ---- */
+  /** RLS-scoped: own requests for coaches, all for owners. */
+  loadPlanRequests(): Promise<CoachPlanRequest[]>;
+  /** File a request for a paid plan (one pending per coach, enforced server-side). */
+  requestPlan(planId: CoachPlan, note?: string): Promise<CoachPlanRequest>;
+  /** Owner-only atomic review: approve activates the plan, reject records a note. */
+  reviewPlanRequest(requestId: string, approve: boolean, note?: string): Promise<CoachPlanRequest>;
 }
 
 const TABLES = [
@@ -587,7 +609,7 @@ class SupabaseBackend implements Backend {
     return new Error(raw);
   }
 
-  /** Best-effort STARTER subscription for a brand-new coach (never blocks signup). */
+  /** Best-effort FREE trial subscription for a brand-new coach (never blocks signup). */
   private async ensureCoachSubscription(userId: string): Promise<void> {
     try {
       const { data: existing } = await supabase
@@ -598,9 +620,9 @@ class SupabaseBackend implements Backend {
         .maybeSingle();
       if (existing) return;
       // Price comes from coach_plans when readable; falls back to the canonical default.
-      let price = 1999;
+      let price = 0;
       try {
-        const { data: plan } = await supabase.from("coach_plans").select("price").eq("id", "STARTER").maybeSingle();
+        const { data: plan } = await supabase.from("coach_plans").select("price").eq("id", "FREE").maybeSingle();
         if (plan && typeof (plan as Row).price === "number") price = Number((plan as Row).price);
       } catch {
         /* keep default */
@@ -611,7 +633,7 @@ class SupabaseBackend implements Backend {
       const endIso = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
       await supabase.from("coach_subscriptions").insert({
         coach_id: userId,
-        plan_name: "STARTER",
+        plan_name: "FREE",
         status: "ACTIVE",
         start_date: start,
         end_date: endIso,
@@ -619,7 +641,7 @@ class SupabaseBackend implements Backend {
         auto_renew: false,
       });
     } catch {
-      /* best-effort only — limits fall back to STARTER defaults server-side */
+      /* best-effort only — limits fall back to defaults server-side */
     }
   }
 
@@ -875,6 +897,65 @@ class SupabaseBackend implements Backend {
     const { data, error } = await supabase.rpc("change_coach_plan", { p_coach_id: coachId, p_new_plan_id: newPlanId });
     if (error) throw new Error(error.message);
     return data as Row;
+  }
+
+  /* ---------------- Plan requests ---------------- */
+
+  async loadPlanRequests(): Promise<CoachPlanRequest[]> {
+    const { data, error } = await supabase
+      .from("coach_plan_requests")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error) {
+      // Older projects without migration 0009 yet: no requests, not fatal.
+      if (/does not exist|relation .* does not exist|schema cache/i.test(error.message)) return [];
+      throw new Error(error.message);
+    }
+    return ((data ?? []) as Row[]).map(rowToPlanRequest);
+  }
+
+  async requestPlan(planId: CoachPlan, note?: string): Promise<CoachPlanRequest> {
+    const coachId = await this.currentCoachId();
+    if (planId === "FREE") throw new Error("You're already on the Free trial — request a paid plan to grow.");
+    const { data, error } = await supabase
+      .from("coach_plan_requests")
+      .insert({ coach_id: coachId, requested_plan: planId, note: (note ?? "").trim().slice(0, 500) })
+      .select("*")
+      .single();
+    if (error) {
+      if (/does not exist|schema cache/i.test(error.message)) {
+        throw new Error("Plan requests aren't set up on this project yet — the admin needs to apply migration 0014.");
+      }
+      if (/duplicate key|already exists|one_pending/i.test(error.message)) {
+        throw new Error("You already have a pending request — wait for the admin's review first.");
+      }
+      throw new Error(error.message);
+    }
+    return rowToPlanRequest(data as Row);
+  }
+
+  async reviewPlanRequest(requestId: string, approve: boolean, note?: string): Promise<CoachPlanRequest> {
+    const { data, error } = await supabase.rpc("review_coach_plan_request", {
+      p_request_id: requestId,
+      p_approve: approve,
+      p_note: (note ?? "").trim().slice(0, 500) || null,
+    });
+    if (error) {
+      const msg = error.message ?? "";
+      if (/already reviewed/i.test(msg)) throw new Error("This request was already reviewed.");
+      if (/only owners/i.test(msg)) throw new Error("Only owners can review plan requests.");
+      if (/PLAN_DOWNGRADE_BLOCKED/i.test(msg)) {
+        const m = msg.match(/has (\d+) clients? but the (\w+) plan allows up to (\d+)/i);
+        throw new Error(
+          m
+            ? `Can't approve: this coach has ${m[1]} clients but the ${m[2]} plan allows up to ${m[3]}.`
+            : "Can't approve: the coach's roster exceeds the requested plan limit.",
+        );
+      }
+      throw new Error(msg || "Couldn't review the request.");
+    }
+    return rowToPlanRequest(data as Row);
   }
 
   async updateCoachSubscription(subscriptionId: string, patch: Row): Promise<void> {

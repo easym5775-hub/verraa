@@ -1,14 +1,26 @@
 /* ================================================================
    VERRAA — Coach Pricing: Current Plan card + Plans & Pricing page.
-   All values come from the real backend (coachPlans + subscription);
-   never hardcoded, never demo data.
+   New coaches start on the Free trial (1 client). Paid plans are
+   REQUESTED here and activated by the admin after review — coaches
+   never switch plans themselves.
+   All values come from the real backend; never hardcoded.
    ================================================================ */
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, ArrowRight, BadgeCheck, Check, Crown, PauseCircle, XCircle } from "lucide-react";
-import type { CoachPlan, CoachView } from "../types";
+import {
+  AlertTriangle,
+  ArrowRight,
+  BadgeCheck,
+  Check,
+  Crown,
+  Hourglass,
+  PauseCircle,
+  Send,
+  Sparkles,
+} from "lucide-react";
+import type { CoachPlan, CoachPlanConfig, CoachView } from "../types";
 import { useApp } from "../store";
-import { todayISO } from "../lib";
+import { errorMessage, todayISO } from "../lib";
 import {
   COACH_PLAN_ORDER,
   DEFAULT_COACH_PLANS,
@@ -17,14 +29,25 @@ import {
   getPlanById,
   normalizeCoachPlanId,
   planRenewalLabel,
-  validatePlanChange,
 } from "../coachPricing";
-import { Badge, Modal, SectionCard, btnPrimary, btnSecondary, btnSm } from "./ui";
+import { Badge, Modal, SectionCard, btnPrimary, btnSecondary, btnSm, labelCls, textareaCls } from "./ui";
+
+/** Merge live DB row with the canonical feature list (DB rows carry no features). */
+function withFeatures(plan: CoachPlanConfig): CoachPlanConfig {
+  if (plan.features && plan.features.length > 0) return plan;
+  const fallback = DEFAULT_COACH_PLANS.find((d) => d.id === plan.id);
+  return fallback?.features ? { ...plan, features: fallback.features } : plan;
+}
+
+function planPriceLabel(plan: CoachPlanConfig): { big: string; suffix: string } {
+  if (plan.price <= 0) return { big: "Free", suffix: "forever trial" };
+  return { big: plan.price.toLocaleString("en-US"), suffix: "EGP / month" };
+}
 
 /* ---------------- Current Plan card (Coach Dashboard) ---------------- */
 
 export function CurrentPlanCard({ onViewPlans }: { onViewPlans?: () => void }) {
-  const { coachPlans, myCoachSubscription, myCoachPlan, myClientCount, myClientLimit } = useApp();
+  const { coachPlans, myCoachSubscription, myCoachPlan, myClientCount, myClientLimit, myPendingRequest } = useApp();
 
   const plans = coachPlans.length > 0 ? coachPlans : DEFAULT_COACH_PLANS;
   void plans;
@@ -36,6 +59,7 @@ export function CurrentPlanCard({ onViewPlans }: { onViewPlans?: () => void }) {
   const pct = limit === null ? 0 : Math.min(100, Math.round((count / Math.max(1, limit)) * 100));
   const nearLimit = limit !== null && count >= limit;
   const almostFull = limit !== null && !nearLimit && count / limit >= 0.8;
+  const isTrial = plan.id === "FREE";
 
   const statusBadge = () => {
     if (status === "ACTIVE")
@@ -99,12 +123,30 @@ export function CurrentPlanCard({ onViewPlans }: { onViewPlans?: () => void }) {
           <span>No active plan found. Please contact the administrator to activate your subscription.</span>
         </div>
       )}
+      {isTrial && status === "ACTIVE" && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-sky-400/25 bg-sky-400/[0.07] px-3.5 py-2.5 text-[13px] font-semibold leading-5 text-sky-300">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>You&apos;re on the Free trial — add your first client, then request a paid plan when you&apos;re ready to grow.</span>
+        </div>
+      )}
+      {myPendingRequest && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-warn-400/25 bg-warn-400/[0.07] px-3.5 py-2.5 text-[13px] font-semibold leading-5 text-warn-200">
+          <Hourglass className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>Plan request pending admin review — we&apos;ll activate it as soon as it&apos;s approved.</span>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="font-display text-3xl font-bold uppercase leading-none tracking-tight text-mist-100">{plan.name}</p>
           <p className="mt-1.5 text-sm font-bold text-mist-300 tnum">
-            {formatEGP(plan.price)} <span className="text-xs font-semibold text-mist-500">/ month</span>
+            {plan.price <= 0 ? (
+              "Free trial"
+            ) : (
+              <>
+                {formatEGP(plan.price)} <span className="text-xs font-semibold text-mist-500">/ month</span>
+              </>
+            )}
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
@@ -132,7 +174,7 @@ export function CurrentPlanCard({ onViewPlans }: { onViewPlans?: () => void }) {
         <div className="mt-4">
           <div className="flex items-center justify-between text-[11px] font-bold">
             <span className={nearLimit ? "text-danger-300" : almostFull ? "text-warn-300" : "text-mist-400"}>
-              {nearLimit ? "Limit reached — upgrade to add more clients" : almostFull ? "Almost full" : "Client usage"}
+              {nearLimit ? "Limit reached — request a bigger plan" : almostFull ? "Almost full" : "Client usage"}
             </span>
             <span className="text-mist-500 tnum">{pct}%</span>
           </div>
@@ -144,7 +186,7 @@ export function CurrentPlanCard({ onViewPlans }: { onViewPlans?: () => void }) {
           </div>
           {nearLimit && onViewPlans && (
             <button className={`${btnPrimary} ${btnSm} mt-3 w-full`} onClick={onViewPlans}>
-              Upgrade Plan <ArrowRight className="h-3.5 w-3.5 rtl:rotate-180" />
+              Request a bigger plan <ArrowRight className="h-3.5 w-3.5 rtl:rotate-180" />
             </button>
           )}
         </div>
@@ -160,9 +202,10 @@ export function CurrentPlanCard({ onViewPlans }: { onViewPlans?: () => void }) {
 /* ---------------- Plans & Pricing page (Coach Mode only) ---------------- */
 
 export function CoachPricingView({ go }: { go: (v: CoachView) => void }) {
-  const { coachPlans, myCoachSubscription, myClientCount, changeMyPlan, toast } = useApp();
-  const [pending, setPending] = useState<CoachPlan | null>(null);
-  const [confirm, setConfirm] = useState<CoachPlan | null>(null);
+  const { coachPlans, myCoachSubscription, myClientCount, myPendingRequest, requestPlan, toast } = useApp();
+  const [target, setTarget] = useState<CoachPlan | null>(null);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const plans = useMemo(
@@ -171,41 +214,35 @@ export function CoachPricingView({ go }: { go: (v: CoachView) => void }) {
   );
   const currentId = normalizeCoachPlanId(myCoachSubscription?.planName);
   const status = effectiveCoachStatus(myCoachSubscription, todayISO());
+  const pendingPlanId = normalizeCoachPlanId(myPendingRequest?.requestedPlan);
 
-  const startChange = (id: CoachPlan) => {
+  const openRequest = (id: CoachPlan) => {
+    if (id === currentId || id === pendingPlanId) return;
+    setTarget(id);
+    setNote("");
     setError("");
-    if (id === currentId) return;
-    const target = getPlanById(plans, id);
-    const check = validatePlanChange(myCoachSubscription?.planName ?? null, id, myClientCount, plans);
-    if (!check.ok) {
-      setError(check.message ?? "You cannot switch to this plan yet.");
-      setConfirm(id);
-      return;
-    }
-    // Downgrade to a tighter plan within limits still deserves an explicit confirm.
-    const order = (p: CoachPlan | null) => COACH_PLAN_ORDER.indexOf(p as CoachPlan);
-    if (currentId && order(id) < order(currentId)) {
-      setConfirm(id);
-      return;
-    }
-    void doChange(id);
-    void target;
   };
 
-  const doChange = async (id: CoachPlan) => {
-    setPending(id);
+  const submitRequest = async () => {
+    if (!target) return;
+    setBusy(true);
     setError("");
     try {
-      await changeMyPlan(id);
-      setConfirm(null);
+      await requestPlan(target, note);
+      setTarget(null);
+      setNote("");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Couldn't change the plan.";
+      const msg = errorMessage(e);
       setError(msg);
       toast(msg, "warn");
     } finally {
-      setPending(null);
+      setBusy(false);
     }
   };
+
+  const targetPlan = target ? withFeatures(getPlanById(plans, target)) : null;
+  const targetTooSmall =
+    targetPlan && targetPlan.maxClients !== null && myClientCount > targetPlan.maxClients;
 
   return (
     <div>
@@ -222,7 +259,7 @@ export function CoachPricingView({ go }: { go: (v: CoachView) => void }) {
                 {" "}· currently on <span className="font-bold text-mist-200">{getPlanById(plans, currentId).name}</span>
               </>
             ) : null}
-            . Prices in EGP, billed monthly.
+            . Paid plans activate after admin approval — prices in EGP, billed monthly.
           </p>
         </div>
         <button className={`${btnSecondary} ${btnSm} !min-h-[38px]`} onClick={() => go("dashboard")}>
@@ -241,53 +278,100 @@ export function CoachPricingView({ go }: { go: (v: CoachView) => void }) {
         </div>
       )}
 
-      {error && confirm && (
-        <div role="alert" className="rise mt-4 flex items-start gap-2.5 rounded-2xl border border-danger-500/25 bg-danger-500/[0.07] px-4 py-3 text-[13px] font-semibold leading-6 text-danger-300">
-          <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span className="whitespace-pre-line">{error}</span>
+      {myPendingRequest && pendingPlanId && (
+        <div role="status" className="rise mt-4 flex items-start gap-3 rounded-2xl border border-warn-400/30 bg-warn-400/[0.07] px-4 py-3.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-warn-400/15 text-warn-300 ring-1 ring-warn-400/25">
+            <Hourglass className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-extrabold text-warn-200">
+              Requested {getPlanById(plans, pendingPlanId).name} — pending review
+            </p>
+            <p className="mt-0.5 text-[13px] font-medium leading-5 text-mist-400">
+              The admin has your request and will activate the plan once approved. You can keep working meanwhile.
+            </p>
+          </div>
         </div>
       )}
 
-      <div className="mt-6 grid items-stretch gap-4 lg:grid-cols-3">
+      {currentId === "FREE" && !myPendingRequest && (
+        <div role="status" className="rise mt-4 flex items-start gap-3 rounded-2xl border border-sky-400/25 bg-sky-400/[0.06] px-4 py-3.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-sky-400/15 text-sky-300 ring-1 ring-sky-400/25">
+            <Sparkles className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-extrabold text-sky-200">You&apos;re on the Free trial — 1 client included</p>
+            <p className="mt-0.5 text-[13px] font-medium leading-5 text-mist-400">
+              Add your first client to try everything out. When you&apos;re ready to grow, request a paid plan below.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-6 grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {COACH_PLAN_ORDER.map((id, i) => {
-          const plan = getPlanById(plans, id);
+          const plan = withFeatures(getPlanById(plans, id));
           const isCurrent = currentId === id;
+          const isPending = pendingPlanId === id;
+          const isFree = id === "FREE";
           const isPopular = id === "PROFESSIONAL";
-          const busy = pending === id;
+          const price = planPriceLabel(plan);
           return (
             <article
               key={id}
               aria-label={`${plan.name} plan`}
-              className={`rise relative flex flex-col overflow-hidden rounded-[20px] border bg-night-900/60 p-6 shadow-sm backdrop-blur-xl ${
-                isCurrent ? "border-volt-400/50 ring-1 ring-volt-400/30" : "border-white/[0.07]"
+              className={`rise relative flex flex-col overflow-hidden rounded-[20px] border bg-night-900/60 p-6 shadow-sm backdrop-blur-xl transition-colors ${
+                isCurrent ? "border-volt-400/50 ring-1 ring-volt-400/30" : "border-white/[0.07] hover:border-white/[0.14]"
               }`}
               style={{ animationDelay: `${i * 70}ms` }}
             >
-              {isPopular && !isCurrent && (
-                <span className="absolute end-4 top-4 rounded-full bg-volt-400 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-night-950">
-                  Most Popular
-                </span>
-              )}
-              {isCurrent && (
-                <span className="absolute end-4 top-4 inline-flex items-center gap-1 rounded-full border border-volt-400/40 bg-volt-400/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-volt-300">
-                  <BadgeCheck className="h-3 w-3" /> Current Plan
-                </span>
-              )}
-              <p className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-mist-500">{plan.name}</p>
-              <p className="mt-2 font-display text-4xl font-extrabold tracking-tight text-mist-100 tnum">
-                {plan.price.toLocaleString("en-US")}
-                <span className="ms-1.5 align-middle text-sm font-bold text-mist-500">EGP / month</span>
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent"
+              />
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-mist-500">{plan.name}</p>
+                {isCurrent ? (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-volt-400/40 bg-volt-400/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-volt-300">
+                    <BadgeCheck className="h-3 w-3" /> Current
+                  </span>
+                ) : isFree ? (
+                  <span className="shrink-0 rounded-full border border-sky-400/30 bg-sky-400/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-sky-300">
+                    Trial
+                  </span>
+                ) : isPopular ? (
+                  <span className="shrink-0 rounded-full bg-volt-400 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-night-950">
+                    Most Popular
+                  </span>
+                ) : null}
+              </div>
+
+              <p className="mt-3 font-display text-4xl font-extrabold tracking-tight text-mist-100 tnum">
+                {price.big}
+                <span className="ms-1.5 align-middle font-sans text-sm font-bold text-mist-500">{price.suffix}</span>
               </p>
-              <p className="mt-1 text-[13px] font-semibold text-mist-400">
-                {plan.maxClients === null ? "100+ Clients · Unlimited capacity" : `Up to ${plan.maxClients} Clients`}
+              <p className="mt-1.5 text-[13px] font-semibold text-mist-400">
+                {plan.maxClients === null ? "100+ Clients · Unlimited capacity" : plan.maxClients === 1 ? "1 Client · try everything" : `Up to ${plan.maxClients} Clients`}
               </p>
               {isCurrent && (
-                <p className="mt-1 text-xs font-bold text-volt-300 tnum">
-                  {plan.maxClients === null ? `${myClientCount} clients` : `${myClientCount} / ${plan.maxClients} Clients`}
-                </p>
+                <div className="mt-3">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-mist-400">
+                    <span>Your usage</span>
+                    <span className="tnum">{plan.maxClients === null ? `${myClientCount}` : `${myClientCount} / ${plan.maxClients}`}</span>
+                  </div>
+                  {plan.maxClients !== null && (
+                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/[0.07]" role="progressbar" aria-valuenow={Math.min(100, Math.round((myClientCount / Math.max(1, plan.maxClients)) * 100))} aria-valuemin={0} aria-valuemax={100} aria-label="Current plan usage">
+                      <div
+                        className="h-full rounded-full bg-volt-400"
+                        style={{ width: `${Math.min(100, Math.round((myClientCount / Math.max(1, plan.maxClients)) * 100))}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
               )}
+
               <ul className="mt-5 grid flex-1 content-start gap-2.5">
-                {(plan.features ?? []).map((f) => (
+                {plan.features?.map((f) => (
                   <li key={f} className="flex items-start gap-2 text-[13px] font-semibold text-mist-300">
                     <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-volt-400/10 text-volt-300 ring-1 ring-volt-400/25">
                       <Check className="h-3 w-3" strokeWidth={3} />
@@ -296,19 +380,27 @@ export function CoachPricingView({ go }: { go: (v: CoachView) => void }) {
                   </li>
                 ))}
               </ul>
+
               <div className="mt-6">
                 {isCurrent ? (
                   <span className="flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border border-volt-400/40 bg-volt-400/10 px-4 py-2.5 text-sm font-bold text-volt-300" aria-current="true">
                     <BadgeCheck className="h-4 w-4" /> Current Plan
                   </span>
+                ) : isPending ? (
+                  <span className="flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border border-warn-400/30 bg-warn-400/[0.08] px-4 py-2.5 text-sm font-bold text-warn-200" role="status">
+                    <Hourglass className="h-4 w-4" /> Requested — pending review
+                  </span>
+                ) : isFree ? (
+                  <span className="flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-sm font-bold text-mist-500">
+                    Trial plan
+                  </span>
                 ) : (
                   <button
                     className={`${isPopular ? btnPrimary : btnSecondary} w-full`}
-                    disabled={busy}
-                    onClick={() => startChange(id)}
-                    aria-label={`Choose ${plan.name}`}
+                    onClick={() => openRequest(id)}
+                    aria-label={`Request ${plan.name}`}
                   >
-                    {busy ? "Switching…" : `Choose ${plan.name}`}
+                    <Send className="h-4 w-4" /> Request {plan.name}
                   </button>
                 )}
               </div>
@@ -317,36 +409,55 @@ export function CoachPricingView({ go }: { go: (v: CoachView) => void }) {
         })}
       </div>
 
-      <p className="mt-4 text-center text-xs text-mist-500">
-        Plan changes validate your current client count. Downgrades below your roster size are blocked — no clients are ever deleted automatically.
-      </p>
+      <div className="mt-4 rounded-2xl border border-white/[0.06] bg-night-900/50 px-4 py-3 text-center text-xs leading-5 text-mist-500">
+        Requests go to the admin for review — approved plans activate immediately. Downgrades below your roster size can&apos;t be approved, and no clients are ever deleted automatically.
+      </div>
 
-      <Modal open={confirm !== null} onClose={() => { setConfirm(null); setError(""); }} title={error ? "Cannot switch plan" : "Switch plan?"}>
-        {error ? (
+      <Modal open={target !== null} onClose={() => { if (!busy) { setTarget(null); setError(""); } }} title={targetPlan ? `Request ${targetPlan.name}?` : "Request plan"}>
+        {targetPlan && (
           <div className="grid gap-4">
-            <p className="whitespace-pre-line text-sm font-semibold leading-6 text-mist-200">{error}</p>
-            <p className="text-xs text-mist-500">Remove or reassign clients first, then try again — or contact the administrator.</p>
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-night-800 px-4 py-3">
+              <div>
+                <p className="text-sm font-extrabold text-mist-100">{targetPlan.name}</p>
+                <p className="mt-0.5 text-xs font-semibold text-mist-500">
+                  {targetPlan.maxClients === null ? "Unlimited clients" : targetPlan.maxClients === 1 ? "1 client" : `Up to ${targetPlan.maxClients} clients`}
+                </p>
+              </div>
+              <p className="font-display text-2xl font-extrabold text-mist-100 tnum">
+                {targetPlan.price <= 0 ? "Free" : <>{targetPlan.price.toLocaleString("en-US")} <span className="text-xs font-bold text-mist-500">EGP/mo</span></>}
+              </p>
+            </div>
+            {targetTooSmall && (
+              <p role="alert" className="rounded-xl border border-warn-400/25 bg-warn-400/[0.07] px-3.5 py-2.5 text-[13px] font-semibold leading-5 text-warn-200">
+                Heads up: you have {myClientCount} clients but {targetPlan.name} allows {targetPlan.maxClients} — the admin can&apos;t approve until your roster fits.
+              </p>
+            )}
+            <div>
+              <label className={labelCls} htmlFor="plan-request-note">Note for the admin (optional)</label>
+              <textarea
+                id="plan-request-note"
+                className={textareaCls}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Anything they should know…"
+                rows={3}
+                maxLength={500}
+              />
+            </div>
+            {error && (
+              <p role="alert" className="rounded-xl border border-danger-500/25 bg-danger-500/[0.08] px-3.5 py-2.5 text-[13px] font-semibold leading-5 text-danger-300">
+                {error}
+              </p>
+            )}
             <div className="flex gap-2">
-              <button className={`${btnSecondary} flex-1`} onClick={() => { setConfirm(null); setError(""); }}>Close</button>
-              <button className={`${btnPrimary} flex-1`} onClick={() => go("clients")}>Open clients</button>
+              <button className={`${btnSecondary} flex-1`} disabled={busy} onClick={() => { setTarget(null); setError(""); }}>
+                Cancel
+              </button>
+              <button className={`${btnPrimary} flex-1`} disabled={busy} onClick={() => void submitRequest()}>
+                {busy ? "Sending…" : "Send request"}
+              </button>
             </div>
           </div>
-        ) : (
-          confirm && (
-            <div className="grid gap-4">
-              <p className="text-sm leading-6 text-mist-300">
-                Switch from <span className="font-bold text-mist-100">{currentId ? getPlanById(plans, currentId).name : "—"}</span> to{" "}
-                <span className="font-bold text-volt-300">{getPlanById(plans, confirm).name}</span> ({formatEGP(getPlanById(plans, confirm).price)} / month)?
-              </p>
-              <p className="text-xs text-mist-500">Your client roster ({myClientCount}) fits within the new limit{getPlanById(plans, confirm).maxClients === null ? " (unlimited)" : ` (${getPlanById(plans, confirm).maxClients})`}.</p>
-              <div className="flex gap-2">
-                <button className={`${btnSecondary} flex-1`} onClick={() => setConfirm(null)}>Keep my plan</button>
-                <button className={`${btnPrimary} flex-1`} disabled={pending !== null} onClick={() => void doChange(confirm)}>
-                  {pending ? "Switching…" : "Confirm switch"}
-                </button>
-              </div>
-            </div>
-          )
         )}
       </Modal>
     </div>

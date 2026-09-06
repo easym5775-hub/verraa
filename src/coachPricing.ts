@@ -18,6 +18,22 @@ export type { CoachPlan, CoachPlanConfig };
 
 export const DEFAULT_COACH_PLANS: CoachPlanConfig[] = [
   {
+    id: "FREE",
+    name: "Free",
+    price: 0,
+    maxClients: 1,
+    billingInterval: "monthly",
+    isActive: true,
+    description: "Try it out — 1 client free",
+    features: [
+      "1 Client",
+      "Client Management",
+      "Progress Tracking",
+      "Nutrition Management",
+      "Coach Dashboard",
+    ],
+  },
+  {
     id: "STARTER",
     name: "Starter",
     price: 1999,
@@ -68,7 +84,7 @@ export const DEFAULT_COACH_PLANS: CoachPlanConfig[] = [
   },
 ];
 
-export const COACH_PLAN_ORDER: CoachPlan[] = ["STARTER", "PROFESSIONAL", "ENTERPRISE"];
+export const COACH_PLAN_ORDER: CoachPlan[] = ["FREE", "STARTER", "PROFESSIONAL", "ENTERPRISE"];
 
 /* ---------------- normalization ---------------- */
 
@@ -76,7 +92,8 @@ export const COACH_PLAN_ORDER: CoachPlan[] = ["STARTER", "PROFESSIONAL", "ENTERP
 export function normalizeCoachPlanId(raw?: string | null): CoachPlan | null {
   if (!raw) return null;
   const v = raw.trim().toUpperCase().replace(/[\s_-]+/g, "");
-  if (v === "STARTER" || v === "START" || v === "BASIC" || v === "FREE") return "STARTER";
+  if (v === "FREE" || v === "TRIAL" || v === "TEST") return "FREE";
+  if (v === "STARTER" || v === "START" || v === "BASIC") return "STARTER";
   if (v === "PROFESSIONAL" || v === "PROFESIONAL" || v === "PRO") return "PROFESSIONAL";
   if (v === "ENTERPRISE" || v === "ENTERPRIZE" || v === "UNLIMITED" || v === "SCALE" || v === "BUSINESS") return "ENTERPRISE";
   // Legacy client-plan names ("Monthly"/"Quarterly"/"Annual") are NOT coach plans.

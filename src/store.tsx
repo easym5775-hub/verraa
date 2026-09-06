@@ -21,6 +21,7 @@ import type {
   CoachNote,
   CoachPlan,
   CoachPlanConfig,
+  CoachPlanRequest,
   CoachSubscription,
   Exercise,
   Meal,
@@ -114,6 +115,7 @@ interface Store {
   addCoachNote: (clientId: string, text: string) => void;
   updateCoachNote: (clientId: string, noteId: string, text: string) => void;
   deleteCoachNote: (clientId: string, noteId: string) => void;
+  toggleCoachNotePin: (clientId: string, noteId: string) => void;
   setFollowUpDays: (clientId: string, days: number) => void;
   markFollowUpDone: (clientId: string) => void;
   setNutritionTargets: (clientId: string, targets: NutritionTargets) => void;
@@ -132,7 +134,11 @@ interface Store {
   myClientCount: number;
   myClientLimit: number | null;
   myCanAddClient: boolean;
-  changeMyPlan: (planId: CoachPlan) => Promise<void>;
+  myPendingRequest: CoachPlanRequest | null;
+  /** File a plan request for the admin to review (replaces self-serve switching). */
+  requestPlan: (planId: CoachPlan, note?: string) => Promise<void>;
+  /** Owner-only: approve (activates plan) or reject a plan request. */
+  reviewPlanRequest: (requestId: string, approve: boolean, note?: string) => Promise<void>;
 }
 
 const Ctx = createContext<Store>(null!);
@@ -150,6 +156,7 @@ const EMPTY: AppState = {
   notifications: [],
   coaches: [],
   coachSubscriptions: [],
+  planRequests: [],
 };
 
 export function StoreProvider({ children }: { children: ReactNode }) {
@@ -193,6 +200,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   /* ---------------- session bootstrap ---------------- */
 
+  const withRequests = useCallback(async (s: AppState): Promise<AppState> => {
+    try {
+      const planRequests = await backend.loadPlanRequests();
+      return { ...s, planRequests };
+    } catch {
+      return { ...s, planRequests: [] };
+    }
+  }, []);
+
   const reload = useCallback(async () => {
     try {
       const me = meRef.current;
@@ -208,11 +224,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           coachPlans: baseState.coachPlans,
         };
       }
-      setState(fullState);
+      setState(await withRequests(fullState));
     } catch (e) {
       toast(`Couldn't load data — ${errorMessage(e)}`, "warn");
     }
-  }, [toast]);
+  }, [toast, withRequests]);
 
   const bootSession = useCallback(
     async (userId: string) => {
@@ -245,7 +261,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             coachSubscriptions: subscriptions as any[],
           };
         }
-        setState(fullState);
+        setState(await withRequests(fullState));
         setMe(role);
         setPhase("ready");
       } catch (e) {
@@ -256,7 +272,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         toast(`Couldn't load your data. ${errorMessage(e)}`, "warn");
       }
     },
-    [toast],
+    [toast, withRequests],
   );
 
   useEffect(() => {
@@ -739,7 +755,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const addCoachNote = useCallback(
     (clientId: string, text: string) => {
-      const note: CoachNote = { id: uid(), text, createdAt: Date.now() };
+      const note: CoachNote = { id: uid(), text, createdAt: Date.now(), by: meRef.current?.name };
       const cur = stateRef.current.clients.find((c) => c.id === clientId);
       patchClient(clientId, { coachNotes: [...(cur?.coachNotes ?? []), note] }, "Note added");
     },
@@ -762,6 +778,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     (clientId: string, noteId: string) => {
       const cur = stateRef.current.clients.find((c) => c.id === clientId);
       patchClient(clientId, { coachNotes: (cur?.coachNotes ?? []).filter((n) => n.id !== noteId) }, "Note deleted");
+    },
+    [patchClient],
+  );
+
+  const toggleCoachNotePin = useCallback(
+    (clientId: string, noteId: string) => {
+      const cur = stateRef.current.clients.find((c) => c.id === clientId);
+      const target = (cur?.coachNotes ?? []).find((n) => n.id === noteId);
+      patchClient(
+        clientId,
+        { coachNotes: (cur?.coachNotes ?? []).map((n) => (n.id === noteId ? { ...n, pinned: !n.pinned } : n)) },
+        target?.pinned ? "Note unpinned" : "Note pinned",
+      );
     },
     [patchClient],
   );
@@ -890,13 +919,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const myCanAddClient: boolean =
     myClientLimit === null ? true : myClientCount < myClientLimit;
 
-  const changeMyPlan = useCallback(
-    async (planId: CoachPlan) => {
+  /** Coach's own pending plan request, if any. */
+  const myPendingRequest: CoachPlanRequest | null = coachIdForPricing
+    ? (state.planRequests ?? []).find((r) => r.coachId === coachIdForPricing && r.status === "PENDING") ?? null
+    : null;
+
+  const requestPlan = useCallback(
+    async (planId: CoachPlan, note?: string) => {
       const cid = meRef.current?.role === "coach" ? meRef.current.coachId : "";
       if (!cid) throw new Error("Not signed in as a coach.");
-      await backend.changeCoachPlan(cid, planId);
+      const created = await backend.requestPlan(planId, note);
+      setState((s) => ({ ...s, planRequests: [created, ...(s.planRequests ?? [])] }));
+      toast("Request sent — pending admin review", "ok");
+    },
+    [toast],
+  );
+
+  const reviewPlanRequest = useCallback(
+    async (requestId: string, approve: boolean, note?: string) => {
+      await backend.reviewPlanRequest(requestId, approve, note);
       await reload();
-      toast(`Plan changed to ${planId.charAt(0) + planId.slice(1).toLowerCase()}`, "ok");
+      toast(approve ? "Plan approved and activated" : "Request rejected", approve ? "ok" : "warn");
     },
     [reload, toast],
   );
@@ -943,6 +986,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         addCoachNote,
         updateCoachNote,
         deleteCoachNote,
+        toggleCoachNotePin,
         setFollowUpDays,
         markFollowUpDone,
         setNutritionTargets,
@@ -957,7 +1001,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         myClientCount,
         myClientLimit,
         myCanAddClient,
-        changeMyPlan,
+        myPendingRequest,
+        requestPlan,
+        reviewPlanRequest,
       }}
     >
       {children}

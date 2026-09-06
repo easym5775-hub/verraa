@@ -8,6 +8,7 @@ import {
   BarChart3,
   Dumbbell,
   FileText,
+  Inbox,
   LayoutGrid,
   LogOut,
   Settings as SettingsIcon,
@@ -17,7 +18,7 @@ import {
 import { Avatar } from "./ui";
 import { useApp } from "../store";
 
-export type OwnerView = "dashboard" | "coaches" | "subscriptions" | "analytics" | "audit" | "settings";
+export type OwnerView = "dashboard" | "coaches" | "subscriptions" | "requests" | "analytics" | "audit" | "settings";
 
 type NavItem = { id: OwnerView; label: string; hint: string; icon: (p: { className?: string }) => ReactNode };
 
@@ -28,6 +29,7 @@ const SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { id: "coaches", label: "Coaches", hint: "Team management", icon: Users },
       { id: "subscriptions", label: "Subscriptions", hint: "Plans & billing", icon: Shield },
+      { id: "requests", label: "Plan Requests", hint: "Approve or reject", icon: Inbox },
       { id: "analytics", label: "Analytics", hint: "Growth insights", icon: BarChart3 },
     ],
   },
@@ -44,6 +46,7 @@ const VIEW_META: Record<OwnerView, { section: string; label: string }> = {
   dashboard: { section: "Overview", label: "Dashboard" },
   coaches: { section: "Business", label: "Coaches" },
   subscriptions: { section: "Business", label: "Subscriptions" },
+  requests: { section: "Business", label: "Plan Requests" },
   analytics: { section: "Business", label: "Analytics" },
   audit: { section: "System", label: "Audit Log" },
   settings: { section: "System", label: "Settings" },
@@ -64,7 +67,8 @@ export function OwnerShell({
 }) {
   const isActive = (id: OwnerView) => view === id;
   const meta = VIEW_META[view];
-  const { me } = useApp();
+  const { me, state } = useApp();
+  const pendingRequests = (state.planRequests ?? []).filter((r) => r.status === "PENDING").length;
 
   return (
     <div className="noise relative flex min-h-screen">
@@ -122,6 +126,11 @@ export function OwnerShell({
                         <Icon className="h-4 w-4" />
                       </span>
                       <span className="truncate">{item.label}</span>
+                      {item.id === "requests" && pendingRequests > 0 && (
+                        <span className="ms-auto grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-warn-400 px-1.5 text-[10px] font-extrabold text-night-950 tnum">
+                          {pendingRequests}
+                        </span>
+                      )}
                     </button>
                   );
                 })}

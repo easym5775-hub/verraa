@@ -104,7 +104,8 @@ serve(async (req) => {
     if (latestSub?.plan_name) {
       const norm = String(latestSub.plan_name).trim().toUpperCase().replace(/[\s_-]+/g, "");
       const map: Record<string, string> = {
-        STARTER: "STARTER", START: "STARTER", BASIC: "STARTER", FREE: "STARTER",
+        FREE: "FREE", TRIAL: "FREE", TEST: "FREE",
+        STARTER: "STARTER", START: "STARTER", BASIC: "STARTER",
         PROFESSIONAL: "PROFESSIONAL", PROFESIONAL: "PROFESSIONAL", PRO: "PROFESSIONAL",
         ENTERPRISE: "ENTERPRISE", ENTERPRIZE: "ENTERPRISE", UNLIMITED: "ENTERPRISE", SCALE: "ENTERPRISE", BUSINESS: "ENTERPRISE",
       };
@@ -112,7 +113,7 @@ serve(async (req) => {
       // Legacy unknown plan names -> preserve existing behaviour (allow).
       if (latestSub?.plan_name && !planId) planId = "__LEGACY__";
     } else {
-      planId = "STARTER"; // no subscription -> STARTER default for new coaches
+      planId = "FREE"; // no subscription -> FREE trial default for new coaches
     }
     if (planId && planId !== "__LEGACY__") {
       const { data: planRow } = await admin

@@ -6,7 +6,7 @@
 //
 // Actions:
 //   { action: "create-coach", name, email, password }
-//     -> create the auth user (pre-confirmed) + coaches row + STARTER sub
+//     -> create the auth user (pre-confirmed) + coaches row + FREE trial sub
 //   { action: "delete-coach", coachId }
 //     -> remove the coach login + every client, data row and client login
 //   { action: "reset-password", coachId, newPassword }
@@ -119,14 +119,14 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
     if (!existingSub) {
-      const { data: plan } = await admin.from("coach_plans").select("price").eq("id", "STARTER").maybeSingle();
-      const price = typeof plan?.price === "number" ? plan.price : 1999;
+      const { data: plan } = await admin.from("coach_plans").select("price").eq("id", "FREE").maybeSingle();
+      const price = typeof plan?.price === "number" ? plan.price : 0;
       const start = new Date();
       const end = new Date();
       end.setDate(end.getDate() + 30);
       const { error: subError } = await admin.from("coach_subscriptions").insert({
         coach_id: coachId,
-        plan_name: "STARTER",
+        plan_name: "FREE",
         status: "ACTIVE",
         start_date: isoDay(start),
         end_date: isoDay(end),
@@ -145,7 +145,7 @@ serve(async (req) => {
       target_type: "coach",
       target_id: coachId,
       old_value: null,
-      new_value: { name, email, plan_name: "STARTER" },
+      new_value: { name, email, plan_name: "FREE" },
       performed_by: ownerId,
     });
 

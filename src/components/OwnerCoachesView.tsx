@@ -568,7 +568,7 @@ export function OwnerCoachesView({ onOpenCoach }: { onOpenCoach: (coachId: strin
             ) : (
               <>
                 <h3 className="font-display text-xl font-bold uppercase text-mist-100">New Coach</h3>
-                <p className="mt-2 text-sm text-mist-400">Creates a real coach login with a STARTER subscription. The coach signs in with email + password.</p>
+                <p className="mt-2 text-sm text-mist-400">Creates a real coach login with a Free trial subscription (1 client). The coach signs in with email + password.</p>
 
                 <div className="mt-4 space-y-4">
                   <div>

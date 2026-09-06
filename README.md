@@ -20,14 +20,16 @@ fallback: if Supabase is unreachable the app shows an error state.
 
 1. **Create a Supabase project**, then apply the schema **in order**:
    - Via CLI (recommended): `supabase link --project-ref <ref>` then `supabase db push`
-     (applies `supabase/migrations/0001` → `0013`).
+     (applies `supabase/migrations/0001` → `0014`).
    - Or via Dashboard → SQL editor: run each file in `supabase/migrations/` in
-     numeric order (`0001_init.sql` … `0013_owner_policies_with_check.sql`).
-   - `0008` installs the `handle_new_coach` trigger so a coach row + STARTER
-     subscription are created automatically on signup — even when
+     numeric order (`0001_init.sql` … `0014_free_trial_and_plan_requests.sql`).
+   - `0008` installs the `handle_new_coach` trigger so a coach row + **FREE
+     trial** subscription are created automatically on signup — even when
      **Confirm email** is ON.
-   - `0009` enforces the single admin account, `0010`–`0012` wire owner
+   - `0009` enforces the single admin account, `0010`–`0013` wire owner
      audit writes and owner read/write access to all app data.
+   - `0014` adds the FREE plan (1 client) plus the `coach_plan_requests`
+     approval flow (coach requests → owner approves/rejects).
 
 2. **Auth settings** (Dashboard → Authentication → Settings):
    - For instant coach signup, turn **Confirm email OFF** — coaches land in
@@ -43,6 +45,17 @@ fallback: if Supabase is unreachable the app shows an error state.
    # The service-role key lives ONLY here, never in the frontend:
    supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
    ```
+   (Newer Supabase projects auto-inject `SUPABASE_SERVICE_ROLE_KEY` into
+   functions — if `secrets set` rejects the `SUPABASE_` prefix, skip it.)
+
+## Plans & approvals
+
+- Every new coach starts on the **Free** trial (1 client).
+- Paid plans are **requested** from Plans & Pricing — the request lands in the
+  owner console under **Plan Requests**, where it is approved (plan activates
+  immediately) or rejected (coach keeps their current plan). One pending
+  request per coach; downgrades below the roster size can't be approved and
+  no clients are ever deleted automatically.
 
 4. **Configure the frontend** — copy `.env.example` to `.env` and fill in:
    ```

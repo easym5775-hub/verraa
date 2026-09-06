@@ -9,6 +9,7 @@ import {
   CalendarDays,
   Camera,
   Check,
+  ChevronDown,
   ClipboardList,
   CreditCard,
   KeyRound,
@@ -16,6 +17,7 @@ import {
   MessageCircle,
   Pencil,
   Phone,
+  Pin,
   Plus,
   RotateCw,
   Scale,
@@ -30,7 +32,7 @@ import {
 } from "lucide-react";
 import type { CheckIn, Client, CoachView, Payment, Session, SubState, Subscription } from "../types";
 import { FOLLOW_UP_PRESETS, GOAL_META, PAYMENT_STATUS_META, SESSION_STATUS_META, STATUS_META, SUB_PAYMENT_META, SUB_STATE_META } from "../types";
-import { fmtDate, fmtMoney, fmtTime, relDay, relTime, signed, waHref } from "../lib";
+import { addDays, fmtDate, fmtMoney, fmtTime, relDay, relTime, signed, toISO, todayISO, waHref } from "../lib";
 import {
   attendance,
   currentSubscription,
@@ -50,6 +52,7 @@ import {
   Avatar,
   Badge,
   ConfirmModal,
+  Dropdown,
   EmptyState,
   Modal,
   MoodDots,
@@ -394,6 +397,8 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
   const checkIns = useMemo(() => app.state.checkIns.filter((c) => c.clientId === clientId), [app.state.checkIns, clientId]);
   const plans = useMemo(() => app.state.plans.filter((p) => p.clientId === clientId), [app.state.plans, clientId]);
   const meals = useMemo(() => app.state.meals.filter((m) => m.clientId === clientId), [app.state.meals, clientId]);
+  const [checkInOpen, setCheckInOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   if (!client) {
     return (
@@ -407,80 +412,126 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
 
   const subInfo = subscriptionState(currentSubscription(subs));
   const wa = waHref(client.phone);
+  const fu = followUpInfo(client, checkIns);
+  const latest = latestCheckIn(checkIns);
+  const outstanding = outstandingAmount(subInfo.sub, payments);
+
+  const attention: { tone: string; dot: string; text: string }[] = [];
+  if (fu.overdue) attention.push({ tone: "text-danger-300", dot: "bg-danger-400", text: `Follow-up ${fu.label.toLowerCase()}` });
+  if (subInfo.state === "Expired") attention.push({ tone: "text-danger-300", dot: "bg-danger-400", text: "Subscription expired" });
+  else if (subInfo.state === "Expiring Soon") attention.push({ tone: "text-warn-300", dot: "bg-warn-400", text: "Subscription expiring soon" });
+  if (outstanding > 0) attention.push({ tone: "text-warn-300", dot: "bg-warn-400", text: `${fmtMoney(outstanding)} EGP outstanding` });
+  if (latest && !latest.workoutDone && latest.date >= addDays(todayISO(), -2)) attention.push({ tone: "text-warn-300", dot: "bg-warn-400", text: "Skipped last workout" });
+  if (checkIns.length === 0) attention.push({ tone: "text-mist-400", dot: "bg-mist-500", text: "No check-ins yet" });
+  if (!subInfo.sub) attention.push({ tone: "text-mist-400", dot: "bg-mist-500", text: "No subscription yet" });
+
+  const focusChat = () => {
+    document.getElementById("coach-chat")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => document.getElementById("coach-chat-input")?.focus({ preventScroll: true }), 400);
+  };
+
+  const statusTone = client.status === "Active" ? "text-moss-300" : client.status === "Paused" ? "text-warn-300" : "text-mist-400";
 
   return (
     <div>
-      {/* header */}
+      {/* compact header */}
       <div className="rise">
-        <button className="mb-4 inline-flex cursor-pointer items-center gap-1.5 text-xs font-bold text-mist-400 transition hover:text-volt-300" onClick={() => go("clients")}>
+        <button className="mb-3 inline-flex cursor-pointer items-center gap-1.5 text-xs font-bold text-mist-400 transition hover:text-volt-300" onClick={() => go("clients")}>
           <ArrowLeft className="h-3.5 w-3.5 rtl:rotate-180" /> Back to clients
         </button>
-        <div className="relative overflow-hidden rounded-2xl border border-night-700 bg-night-850 p-5 sm:p-6">
-          <div className="pointer-events-none absolute inset-0 opacity-[0.35]" style={{ backgroundImage: "repeating-linear-gradient(-45deg, transparent 0 14px, rgba(205,241,75,0.04) 14px 15px)" }} />
-          <div className="relative flex flex-wrap items-center gap-4">
-            <span className="relative">
-              <Avatar name={client.name} photo={client.photo} className="h-16 w-16 rounded-xl text-xl" />
-              <span className={`absolute -bottom-1 -end-1 h-3.5 w-3.5 rounded-full ring-2 ring-night-850 ${STATUS_META[client.status].dot} ${client.status === "Active" ? "tick-pulse" : ""}`} />
+        <div className="rounded-2xl border border-night-700 bg-night-850 p-4 sm:p-5">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+            <span className="relative shrink-0">
+              <Avatar name={client.name} photo={client.photo} className="h-12 w-12 rounded-xl text-lg" />
+              <span className={`absolute -bottom-0.5 -end-0.5 h-3 w-3 rounded-full ring-2 ring-night-850 ${STATUS_META[client.status].dot} ${client.status === "Active" ? "tick-pulse" : ""}`} />
             </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-display text-4xl font-bold uppercase leading-none tracking-tight text-mist-100">{client.name}</h1>
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <Badge className={GOAL_META[client.goal].chip}>{client.goal}</Badge>
-                <Badge className={STATUS_META[client.status].chip}>{client.status}</Badge>
-                <Badge className={SUB_STATE_META[subInfo.state].chip}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${SUB_STATE_META[subInfo.state].dot}`} />
-                  {subInfo.state}
-                </Badge>
-                <span className="text-[11px] font-semibold text-mist-500">@{client.username}</span>
-              </div>
+            <div className="min-w-0 flex-1 basis-48">
+              <h1 className="font-display text-3xl font-bold uppercase leading-none tracking-tight text-mist-100">{client.name}</h1>
+              <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                <span className="font-bold text-mist-400">@{client.username}</span>
+                <span aria-hidden="true" className="text-mist-600">•</span>
+                <span className={`inline-flex items-center gap-1.5 font-bold ${statusTone}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${STATUS_META[client.status].dot}`} />
+                  {client.status}{client.status === "Active" ? " client" : ""}
+                </span>
+              </p>
+              <p className="mt-1 text-xs font-semibold text-mist-500">{client.goal}</p>
+              <p className="mt-1.5 text-[11px] font-semibold text-mist-500">
+                Last check-in: <span className="font-bold text-mist-300">{latest ? relDay(latest.date) : "—"}</span>
+                <span aria-hidden="true" className="mx-1.5 text-mist-600">•</span>
+                Next follow-up:{" "}
+                <span className={`font-bold ${fu.overdue ? "text-danger-300" : fu.daysToNext !== null && fu.daysToNext <= 1 ? "text-warn-300" : "text-mist-300"}`}>
+                  {fu.label}
+                </span>
+              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {wa ? (
-                <a href={wa} target="_blank" rel="noreferrer" className={`${btnSecondary} ${btnSm} !border-moss-600/50 !text-moss-300 hover:!bg-moss-900`}>
-                  <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
-                </a>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-xl border border-night-600 bg-night-800 px-3 py-1.5 text-xs font-semibold text-mist-500" title="No phone number available">
-                  <Phone className="h-3.5 w-3.5" /> No phone number
-                </span>
-              )}
-              <button className={`${btnSecondary} ${btnSm}`} onClick={() => setPwOpen(true)}>
-                <KeyRound className="h-3.5 w-3.5" /> Reset password
+              <button className={`${btnSecondary} ${btnSm}`} onClick={focusChat}>
+                <MessageCircle className="h-3.5 w-3.5" /> Message
               </button>
-              <button className={`${btnSecondary} ${btnSm}`} onClick={() => setEditOpen(true)}>
-                <Pencil className="h-3.5 w-3.5" /> Edit
+              <button className={`${btnPrimary} ${btnSm}`} onClick={() => setCheckInOpen(true)}>
+                <Plus className="h-3.5 w-3.5" strokeWidth={2.6} /> Add check-in
               </button>
-              <button className={`${btnDanger} ${btnSm}`} onClick={() => setDelOpen(true)}>
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              <Dropdown
+                open={moreOpen}
+                onOpenChange={setMoreOpen}
+                align="end"
+                label="More client actions"
+                trigger={
+                  <button className={`${btnSecondary} ${btnSm}`} onClick={() => setMoreOpen((v) => !v)} aria-haspopup="menu" aria-expanded={moreOpen}>
+                    More <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+                }
+                items={[
+                  ...(wa ? [{ type: "item" as const, label: "WhatsApp", icon: MessageCircle, onClick: () => window.open(wa, "_blank", "noopener") }] : []),
+                  { type: "item" as const, label: "Edit client", icon: Pencil, onClick: () => setEditOpen(true) },
+                  { type: "item" as const, label: "Reset password", icon: KeyRound, onClick: () => setPwOpen(true) },
+                  { type: "divider" as const },
+                  { type: "item" as const, label: "Delete client", icon: Trash2, danger: true, onClick: () => setDelOpen(true) },
+                ]}
+              />
             </div>
           </div>
         </div>
+        {/* needs-attention strip */}
+        {attention.length === 0 ? (
+          <p className="mt-3 flex items-center gap-2 rounded-xl border border-moss-400/20 bg-moss-400/[0.06] px-3.5 py-2 text-xs font-bold text-moss-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-moss-400" /> All clear — nothing needs attention.
+          </p>
+        ) : (
+          <div role="status" className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl border border-white/[0.06] bg-night-900/60 px-3.5 py-2.5">
+            {attention.map((a) => (
+              <span key={a.text} className={`inline-flex items-center gap-1.5 text-xs font-bold ${a.tone}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${a.dot}`} />
+                {a.text}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* body */}
-      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+      {/* body — daily workflow first, billing last */}
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <div className="grid content-start gap-4 lg:col-span-2">
-          <SubscriptionCard subs={subs} payments={payments} clientId={client.id} />
           <CheckInsCard checkIns={checkIns} clientId={client.id} />
-          <SessionsCard sessions={sessions} clientId={client.id} />
-          <PaymentsCard payments={payments} subs={subs} clientId={client.id} sub={subInfo.sub} />
           <div className="grid gap-4 sm:grid-cols-2">
             <PlanCard plans={plans} go={go} clientId={client.id} />
             <MealsCard mealsCount={meals.length} go={go} clientId={client.id} targets={client.nutritionTargets} />
           </div>
+          <SessionsCard sessions={sessions} clientId={client.id} />
+          <PaymentsCard payments={payments} subs={subs} clientId={client.id} sub={subInfo.sub} />
+          <SubscriptionCard subs={subs} payments={payments} clientId={client.id} />
         </div>
         <div className="grid content-start gap-4">
-          <ProgressCard checkIns={checkIns} sessionsCount={attendance(sessions)} />
           <FollowUpCard client={client} checkIns={checkIns} />
+          <ProgressCard checkIns={checkIns} sessionsCount={attendance(sessions)} />
           <ChatThreadCard clientId={client.id} clientName={client.name} />
           <CoachNotesCard client={client} />
           <BasicInfoCard client={client} />
         </div>
       </div>
 
+      <AddCheckInModal open={checkInOpen} clientId={client.id} clientName={client.name} onClose={() => setCheckInOpen(false)} />
       <ClientFormModal open={editOpen} initial={client} onClose={() => setEditOpen(false)} />
       <ResetPasswordModal open={pwOpen} clientId={client.id} onClose={() => setPwOpen(false)} />
       <ConfirmModal
@@ -503,12 +554,13 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
   );
 }
 
-/* ---------------- subscription ---------------- */
+/* ---------------- subscription (compact — billing comes last) ---------------- */
 
 function SubscriptionCard({ subs, payments, clientId }: { subs: Subscription[]; payments: Payment[]; clientId: string }) {
   const { renewSubscription } = useApp();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Subscription | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const info = subscriptionState(currentSubscription(subs));
   const sub = info.sub;
   const meta = SUB_STATE_META[info.state];
@@ -519,16 +571,16 @@ function SubscriptionCard({ subs, payments, clientId }: { subs: Subscription[]; 
     <SectionCard
       title="Subscription"
       icon={<CreditCard className="h-4.5 w-4.5" />}
-      bodyCls="p-5"
+      bodyCls="p-4"
       action={
         <div className="flex gap-1.5">
           {sub && (
             <>
-              <button className={`${btnSecondary} ${btnSm}`} onClick={() => renewSubscription(sub)}>
-                <RotateCw className="h-3.5 w-3.5" /> Renew
+              <button className={`${btnSecondary} ${btnSm}`} title="Renew" onClick={() => renewSubscription(sub)}>
+                <RotateCw className="h-3.5 w-3.5" />
               </button>
-              <button className={`${btnSecondary} ${btnSm}`} onClick={() => { setEditing(sub); setFormOpen(true); }}>
-                <Pencil className="h-3.5 w-3.5" /> Edit
+              <button className={`${btnSecondary} ${btnSm}`} title="Edit" onClick={() => { setEditing(sub); setFormOpen(true); }}>
+                <Pencil className="h-3.5 w-3.5" />
               </button>
             </>
           )}
@@ -539,43 +591,46 @@ function SubscriptionCard({ subs, payments, clientId }: { subs: Subscription[]; 
       }
     >
       {!sub ? (
-        <EmptyState icon={<CreditCard className="h-6 w-6" />} title="No subscription" sub="Add a plan to start tracking renewals and payments." />
+        <p className="text-xs font-semibold text-mist-500">No subscription yet — add a plan to track renewals and payments.</p>
       ) : (
         <div>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="font-display text-3xl font-bold uppercase leading-none text-mist-100">{sub.planName}</p>
-              <p className="mt-1.5 text-xs font-semibold text-mist-500">
-                {fmtDate(sub.startDate)} → {fmtDate(sub.endDate)}
-              </p>
-            </div>
-            <div className="text-end">
-              <Badge className={meta.chip}>
-                <span className={`h-1.5 w-1.5 rounded-full ${meta.dot} ${info.state === "Expiring Soon" ? "tick-pulse" : ""}`} />
-                {info.state}
-              </Badge>
-              <p className={`mt-1.5 font-display text-xl font-bold tnum ${info.state === "Expired" ? "text-danger-300" : info.state === "Expiring Soon" ? "text-warn-300" : "text-moss-300"}`}>
-                {remainingLabel(info.daysLeft)}
-              </p>
-            </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <Badge className={meta.chip}>
+              <span className={`h-1.5 w-1.5 rounded-full ${meta.dot} ${info.state === "Expiring Soon" ? "tick-pulse" : ""}`} />
+              {info.state}
+            </Badge>
+            <p className="min-w-0 flex-1 text-sm">
+              <span className="font-extrabold text-mist-100">{sub.planName}</span>
+              <span className="ms-2 text-xs font-semibold text-mist-500">
+                {fmtDate(sub.startDate)} → {fmtDate(sub.endDate)} · {remainingLabel(info.daysLeft)}
+              </span>
+            </p>
+            <p className="text-end text-sm font-extrabold text-mist-100 tnum">
+              {fmtMoney(sub.price)} <span className="text-[11px] font-bold text-mist-500">EGP</span>
+              <span className={`ms-2 rounded-md px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ${sub.paymentStatus === "Paid" ? "bg-moss-400/10 text-moss-300" : sub.paymentStatus === "Partial" ? "bg-sky-400/10 text-sky-300" : "bg-warn-400/10 text-warn-300"}`}>
+                {sub.paymentStatus}
+              </span>
+            </p>
           </div>
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            <KV k="Price" v={`${fmtMoney(sub.price)} EGP`} />
-            <KV k="Payment" v={sub.paymentStatus} />
-            <KV k="Outstanding" v={outstanding > 0 ? `${fmtMoney(outstanding)} EGP` : "—"} tone={outstanding > 0 ? "text-warn-300" : undefined} />
-          </div>
+          {outstanding > 0 && (
+            <p className="mt-2 text-xs font-bold text-warn-300">{fmtMoney(outstanding)} EGP outstanding</p>
+          )}
           {history.length > 0 && (
-            <div className="mt-4 border-t border-night-700 pt-3">
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">History ({history.length})</p>
-              <ul className="mt-2 grid gap-1.5">
-                {history.slice(0, 3).map((h) => (
-                  <li key={h.id} className="flex items-center gap-2 text-xs text-mist-400">
-                    <span className="font-bold text-mist-200">{h.planName}</span>
-                    <span>{fmtDate(h.startDate)} → {fmtDate(h.endDate)}</span>
-                    <span className="ms-auto font-bold text-mist-300 tnum">{fmtMoney(h.price)} EGP</span>
-                  </li>
-                ))}
-              </ul>
+            <div className="mt-2 border-t border-night-700/70 pt-2">
+              <button className="cursor-pointer text-[11px] font-bold text-mist-500 transition hover:text-volt-300" onClick={() => setShowHistory((v) => !v)} aria-expanded={showHistory}>
+                {showHistory ? "Hide history" : `History (${history.length})`}
+              </button>
+              {showHistory && (
+                <ul className="mt-1.5 grid gap-1">
+                  {history.slice(0, 5).map((h) => (
+                    <li key={h.id} className="flex items-center gap-2 text-xs text-mist-400">
+                      <span className="font-bold text-mist-200">{h.planName}</span>
+                      <span>{fmtDate(h.startDate)} → {fmtDate(h.endDate)}</span>
+                      <span className="ms-auto font-bold text-mist-300 tnum">{fmtMoney(h.price)} EGP</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
         </div>
@@ -690,6 +745,117 @@ function CheckInsCard({ checkIns, clientId }: { checkIns: CheckIn[]; clientId: s
       />
       <span className="hidden">{clientId}</span>
     </SectionCard>
+  );
+}
+
+/* ---------------- log check-in (coach side) ---------------- */
+
+function AddCheckInModal({ open, clientId, clientName, onClose }: { open: boolean; clientId: string; clientName: string; onClose: () => void }) {
+  const { addCheckIn } = useApp();
+  const [date, setDate] = useState(todayISO());
+  const [weight, setWeight] = useState("");
+  const [waist, setWaist] = useState("");
+  const [water, setWater] = useState("");
+  const [mood, setMood] = useState(3);
+  const [workoutDone, setWorkoutDone] = useState(true);
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setDate(todayISO());
+      setWeight("");
+      setWaist("");
+      setWater("");
+      setMood(3);
+      setWorkoutDone(true);
+      setNotes("");
+      setError("");
+    }
+  }, [open ]);
+
+  const save = () => {
+    const w = Number(weight);
+    if (!Number.isFinite(w) || w <= 0) return setError("Enter the client's weight.");
+    if (!date) return setError("Pick a date.");
+    addCheckIn({
+      clientId,
+      date,
+      weight: Math.round(w * 10) / 10,
+      waist: waist.trim() === "" ? undefined : Math.round(Number(waist) * 10) / 10,
+      mood,
+      water: water.trim() === "" ? 0 : Math.max(0, Number(water) || 0),
+      workoutDone,
+      notes: notes.trim() || undefined,
+    });
+    onClose();
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Log check-in · ${clientName.split(" ")[0]}`} description="Recorded on the client's behalf.">
+      <div className="grid gap-3.5">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls} htmlFor="ci-date">Date *</label>
+            <input id="ci-date" className={inputCls} type="date" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="ci-weight">Weight (kg) *</label>
+            <input id="ci-weight" className={inputCls} type="number" min={0} step={0.1} value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="e.g. 82.5" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls} htmlFor="ci-waist">Waist (cm)</label>
+            <input id="ci-waist" className={inputCls} type="number" min={0} step={0.1} value={waist} onChange={(e) => setWaist(e.target.value)} placeholder="—" />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="ci-water">Water (L)</label>
+            <input id="ci-water" className={inputCls} type="number" min={0} step={0.5} value={water} onChange={(e) => setWater(e.target.value)} placeholder="—" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <span className={labelCls}>Mood</span>
+            <div className="mt-1"><MoodDots mood={mood} /></div>
+            <div className="mt-2 flex gap-1">
+              {[1, 2, 3, 4, 5].map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMood(m)}
+                  aria-pressed={mood === m}
+                  className={`h-8 flex-1 cursor-pointer rounded-lg border text-xs font-extrabold transition ${mood === m ? "border-volt-400 bg-volt-400/15 text-volt-300" : "border-night-600 bg-night-800 text-mist-500 hover:border-night-500"}`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <span className={labelCls}>Workout</span>
+            <button
+              type="button"
+              onClick={() => setWorkoutDone((v) => !v)}
+              aria-pressed={workoutDone}
+              className={`mt-1 flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border text-sm font-bold transition ${workoutDone ? "border-moss-400/40 bg-moss-400/10 text-moss-300" : "border-night-600 bg-night-800 text-mist-500 hover:border-night-500"}`}
+            >
+              {workoutDone && <Check className="h-4 w-4" strokeWidth={3} />}
+              {workoutDone ? "Done" : "Skipped"}
+            </button>
+          </div>
+        </div>
+        <div>
+          <label className={labelCls} htmlFor="ci-notes">Notes</label>
+          <input id="ci-notes" className={inputCls} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="How did they look / feel…" />
+        </div>
+      </div>
+      {error && <p role="alert" className="mt-3 text-xs font-bold text-danger-400">{error}</p>}
+      <div className="mt-5 flex gap-2">
+        <button className={`${btnSecondary} flex-1`} onClick={onClose}>Cancel</button>
+        <button className={`${btnPrimary} flex-1`} onClick={save}>Log check-in</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -964,8 +1130,9 @@ function ChatThreadCard({ clientId, clientName }: { clientId: string; clientName
 
   return (
     <SectionCard title={`Chat · ${clientName.split(" ")[0]}`} icon={<MessageCircle className="h-4.5 w-4.5" />} bodyCls="p-0">
-      <div className="flex h-72 flex-col">
-        <div className="flex-1 space-y-2.5 overflow-y-auto p-4">
+      {/* bounded height with internal scroll — never stretches the page */}
+      <div id="coach-chat" className="flex h-72 scroll-mt-24 flex-col">
+        <div className="flex-1 space-y-2.5 overflow-y-auto overscroll-contain p-4">
           {thread.length === 0 && (
             <p className="grid h-full place-items-center text-center text-xs text-mist-500">No messages yet.<br />Say hi — it lands on their Chat tab.</p>
           )}
@@ -984,6 +1151,7 @@ function ChatThreadCard({ clientId, clientName }: { clientId: string; clientName
         </div>
         <div className="flex gap-2 border-t border-night-700 p-3">
           <input
+            id="coach-chat-input"
             className={`${inputCls} h-11 min-w-0 flex-1`}
             placeholder={`Message ${clientName.split(" ")[0]}…`}
             value={draft}
@@ -1002,12 +1170,15 @@ function ChatThreadCard({ clientId, clientName }: { clientId: string; clientName
 /* ---------------- coach notes ---------------- */
 
 function CoachNotesCard({ client }: { client: Client }) {
-  const { addCoachNote, updateCoachNote, deleteCoachNote } = useApp();
+  const { addCoachNote, updateCoachNote, deleteCoachNote, toggleCoachNotePin } = useApp();
   const [draft, setDraft] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
-  const notes = [...(client.coachNotes ?? [])].sort((a, b) => b.createdAt - a.createdAt);
+  // Pinned notes float to the top, then newest first.
+  const notes = [...(client.coachNotes ?? [])].sort(
+    (a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false) || b.createdAt - a.createdAt,
+  );
 
   const add = () => {
     if (!draft.trim()) return;
@@ -1016,9 +1187,18 @@ function CoachNotesCard({ client }: { client: Client }) {
   };
 
   return (
-    <SectionCard title="Coach notes" icon={<StickyNote className="h-4.5 w-4.5" />} bodyCls="p-5">
+    <SectionCard
+      title="Coach notes"
+      icon={<StickyNote className="h-4.5 w-4.5" />}
+      bodyCls="p-5"
+      action={
+        <span className="rounded-full bg-white/[0.05] px-2.5 py-1 text-[11px] font-bold text-mist-400 tnum">
+          {notes.length}
+        </span>
+      }
+    >
       <div className="flex gap-2">
-        <input className={`${inputCls} h-10 min-w-0 flex-1`} placeholder="Private note — the client never sees this…" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
+        <input className={`${inputCls} h-10 min-w-0 flex-1`} placeholder="Add note…" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} aria-label="Add note" />
         <button onClick={add} disabled={!draft.trim()} className={`${btnPrimary} h-10 shrink-0 px-3.5`} aria-label="Add note">
           <Plus className="h-4 w-4" strokeWidth={2.6} />
         </button>
@@ -1026,22 +1206,34 @@ function CoachNotesCard({ client }: { client: Client }) {
       {notes.length === 0 ? (
         <p className="mt-4 rounded-xl border border-dashed border-night-600 px-4 py-5 text-center text-xs text-mist-500">No notes yet.</p>
       ) : (
-        <ul className="mt-4 grid gap-2">
+        <ul className="mt-3 grid max-h-80 gap-2 overflow-y-auto overscroll-contain pe-0.5">
           {notes.map((n) => (
-            <li key={n.id} className="group rounded-xl border border-night-700 bg-night-800 p-3">
+            <li key={n.id} className={`group rounded-xl border p-3 transition-colors ${n.pinned ? "border-volt-400/30 bg-volt-400/[0.05]" : "border-night-700 bg-night-800"}`}>
               {editingId === n.id ? (
                 <div className="flex gap-2">
-                  <input className={`${inputCls} h-9 min-w-0 flex-1`} value={editText} onChange={(e) => setEditText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { updateCoachNote(client.id, n.id, editText.trim()); setEditingId(null); } }} autoFocus />
-                  <button className={`${btnPrimary} h-9 px-3`} onClick={() => { updateCoachNote(client.id, n.id, editText.trim()); setEditingId(null); }}>
+                  <input className={`${inputCls} h-9 min-w-0 flex-1`} value={editText} onChange={(e) => setEditText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && editText.trim()) { updateCoachNote(client.id, n.id, editText.trim()); setEditingId(null); } }} autoFocus aria-label="Edit note" />
+                  <button className={`${btnPrimary} h-9 px-3`} disabled={!editText.trim()} onClick={() => { if (editText.trim()) { updateCoachNote(client.id, n.id, editText.trim()); setEditingId(null); } }} aria-label="Save note">
                     <Check className="h-3.5 w-3.5" strokeWidth={2.6} />
                   </button>
                 </div>
               ) : (
                 <>
-                  <p className="text-sm font-semibold leading-6 text-mist-100">{n.text}</p>
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-mist-500">{relTime(n.createdAt)}</span>
-                    <span className="ms-auto flex gap-1 opacity-0 transition group-hover:opacity-100">
+                  <div className="flex items-start gap-2">
+                    {n.pinned && <Pin className="mt-1 h-3.5 w-3.5 shrink-0 fill-volt-400 text-volt-400" aria-label="Pinned" />}
+                    <p className="min-w-0 flex-1 text-sm font-semibold leading-6 text-mist-100">{n.text}</p>
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold text-mist-500">
+                      Added {relDay(toISO(new Date(n.createdAt)))}{n.by ? ` • ${n.by}` : ""}
+                    </span>
+                    <span className="ms-auto flex gap-0.5 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+                      <button
+                        className={`grid h-6 w-6 cursor-pointer place-items-center rounded-md transition-all duration-200 ${n.pinned ? "text-volt-300 hover:bg-volt-400/15" : "text-mist-400 hover:bg-night-700 hover:text-mist-100"}`}
+                        title={n.pinned ? "Unpin" : "Pin to top"}
+                        onClick={() => toggleCoachNotePin(client.id, n.id)}
+                      >
+                        <Pin className={`h-3 w-3 ${n.pinned ? "fill-volt-400" : ""}`} />
+                      </button>
                       <button className="grid h-6 w-6 cursor-pointer place-items-center rounded-md text-mist-400 transition-all duration-200 hover:bg-night-700 hover:text-mist-100" title="Edit" onClick={() => { setEditingId(n.id); setEditText(n.text); }}>
                         <Pencil className="h-3 w-3" />
                       </button>

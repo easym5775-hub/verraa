@@ -22,12 +22,13 @@ import { OwnerDashboard } from "./components/OwnerDashboard";
 import { OwnerCoachesView } from "./components/OwnerCoachesView";
 import { OwnerCoachDetail } from "./components/OwnerCoachDetail";
 import { OwnerSubscriptionsView } from "./components/OwnerSubscriptionsView";
+import { OwnerRequestsView } from "./components/OwnerRequestsView";
 import { OwnerAnalyticsView } from "./components/OwnerAnalyticsView";
 import { OwnerSettingsView } from "./components/OwnerSettingsView";
 import { OwnerAuditLogView } from "./components/OwnerAuditLogView";
 import { signOut } from "./services/auth";
 
-type OwnerView = "dashboard" | "coaches" | "subscriptions" | "analytics" | "audit" | "settings";
+type OwnerView = "dashboard" | "coaches" | "subscriptions" | "requests" | "analytics" | "audit" | "settings";
 
 function Splash({ label }: { label: string }) {
   return (
@@ -99,6 +100,7 @@ function Root() {
             <OwnerCoachesView onOpenCoach={(id) => setOwnerCoachId(id)} />
           ))}
         {ownerView === "subscriptions" && <OwnerSubscriptionsView />}
+        {ownerView === "requests" && <OwnerRequestsView />}
         {ownerView === "analytics" && <OwnerAnalyticsView />}
         {ownerView === "audit" && <OwnerAuditLogView />}
         {ownerView === "settings" && <OwnerSettingsView />}
