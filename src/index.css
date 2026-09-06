@@ -489,14 +489,32 @@ details > summary::-webkit-details-marker {
   display: none;
 }
 
-/* ---------- mobile client app ---------- */
+/* ---------- mobile client app: kill scroll jank ---------- */
+
+/* Client mode renders instantly; the tab container does one cheap opacity
+   fade (see ClientApp). This neutralizes every staggered `rise`
+   (translateY + delay) inside it — including SectionCard internals — which
+   was causing ~10 simultaneous transform animations + delayed pop-ins
+   (the "lag / chopping" on tab switch and scroll). Delays without an
+   animation are inert, so old `delay` props are harmless. */
+.client-app .rise {
+  animation: none;
+}
 
 button {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* bottom nav sits above toasts on small screens */
 @media (max-width: 1023px) {
+  /* Fixed full-screen texture layers repaint on every scroll frame on
+     mobile GPUs. Keep the cheap static glow, drop noise + dot-grid here. */
+  .client-app.noise::after {
+    display: none;
+  }
+  .client-app .dot-grid {
+    display: none;
+  }
+  /* bottom nav sits above toasts on small screens */
   [role="status"][aria-live="polite"] {
     bottom: 92px;
   }

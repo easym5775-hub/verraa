@@ -25,12 +25,12 @@ import {
   UtensilsCrossed,
   X,
 } from "lucide-react";
-import type { AppNotification, Client, Meal, MealType, NutritionTargets } from "../types";
+import type { AppNotification, Client, Meal, MealType } from "../types";
 import { CAT_META, GOAL_META, MEAL_META, MEAL_TYPES, NOTIFICATION_META, SUB_PAYMENT_META, SUB_STATE_META, WEEK_DAYS, WEEK_SHORT } from "../types";
 import { dayNum, fileToDataUrl, fmtDate, fmtMoney, fmtTime, relTime, round1, signed, todayISO } from "../lib";
 import { attendance, currentSubscription, progressOf, remainingLabel, subscriptionState } from "../logic";
 import { useApp } from "../store";
-import { Avatar, Badge, EmptyState, MoodPicker, SectionCard, Toggle, btnPrimary, btnSecondary, btnSm, chip, useCountUp } from "./ui";
+import { Avatar, Badge, EmptyState, MoodPicker, SectionCard, Toggle, btnPrimary, chip, useCountUp } from "./ui";
 import { WeightLine } from "./Chart";
 
 type Tab = "today" | "nutrition" | "checkin" | "progress" | "chat" | "subscription";
@@ -85,11 +85,12 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
   const goTab = (t: Tab) => {
     setTab(t);
     setBellOpen(false);
-    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+    // Instant jump — smooth scrolling fights the tab-switch paint on mobile GPUs.
+    if (typeof window !== "undefined") window.scrollTo(0, 0);
   };
 
   return (
-    <div className="noise relative min-h-screen">
+    <div className="client-app noise relative min-h-screen">
       <div className="app-glow pointer-events-none fixed inset-0" />
       <div className="dot-grid pointer-events-none fixed inset-0 opacity-40" />
 
@@ -186,12 +187,15 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
       </header>
 
       <main id="main-content" className="relative z-10 mx-auto w-full max-w-4xl px-4 pb-32 pt-4 sm:px-6 sm:pt-6 lg:pb-12 lg:py-8">
-        {tab === "today" && <TodayTab plans={plans} meals={meals} exercises={state.exercises} onCheckIn={() => goTab("checkin")} sessionsToday={sessions.filter((s) => s.date === todayISO())} />}
-        {tab === "nutrition" && <NutritionTab clientId={clientId} client={client} allMeals={state.meals} />}
-        {tab === "checkin" && <CheckInTab clientId={clientId} onDone={() => goTab("progress")} alreadyToday={checkIns.some((c) => c.date === todayISO())} />}
-        {tab === "progress" && <ProgressTab checkIns={checkIns} sessionsCount={attendance(sessions)} />}
-        {tab === "chat" && <ChatTab clientId={clientId} />}
-        {tab === "subscription" && <SubscriptionTab clientId={clientId} onLogout={onLogout} />}
+        {/* Single cheap opacity fade per tab — replaces staggered rise animations (see .client-app CSS). */}
+        <div key={tab} className="animate-fade">
+          {tab === "today" && <TodayTab plans={plans} meals={meals} exercises={state.exercises} onCheckIn={() => goTab("checkin")} sessionsToday={sessions.filter((s) => s.date === todayISO())} />}
+          {tab === "nutrition" && <NutritionTab clientId={clientId} client={client} allMeals={state.meals} />}
+          {tab === "checkin" && <CheckInTab clientId={clientId} onDone={() => goTab("progress")} alreadyToday={checkIns.some((c) => c.date === todayISO())} />}
+          {tab === "progress" && <ProgressTab checkIns={checkIns} sessionsCount={attendance(sessions)} />}
+          {tab === "chat" && <ChatTab clientId={clientId} />}
+          {tab === "subscription" && <SubscriptionTab clientId={clientId} onLogout={onLogout} />}
+        </div>
       </main>
 
       {/* ── mobile bottom navigation ── */}
@@ -229,7 +233,7 @@ function BottomItem({ active, onClick, icon, label, badge = 0 }: { active: boole
       <span className={`relative grid h-7 w-12 place-items-center rounded-full transition-all duration-200 ${active ? "bg-volt-400/15 text-volt-300" : "text-mist-500"}`}>
         {icon}
         {badge > 0 && (
-          <span className="absolute -end-0.5 -top-1 grid h-[17px] min-w-[17px] place-items-center rounded-full bg-danger-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-night-950 tnum">{badge}</span>
+          <span className="absolute -end-0.5 -top-1 grid h-[17px] min-w-[17px] place-items-center rounded-full bg-danger-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-night-950 tnum">{badge}</span>
         )}
       </span>
       <span className={`text-[10px] font-extrabold tracking-wide ${active ? "text-volt-300" : "text-mist-500"}`}>{label}</span>
@@ -239,6 +243,91 @@ function BottomItem({ active, onClick, icon, label, badge = 0 }: { active: boole
 }
 
 /* ---------------- nutrition (weekly plan) ---------------- */
+
+/* Isolated summary card: the count-up animation re-renders ONLY this card,
+   never the meals list below it (was ~36 full-tab renders per day switch). */
+function DailySummary({ meals, dayName, targets }: { meals: Meal[]; dayName: string; targets: Client["nutritionTargets"] }) {
+  const totals = useMemo(
+    () =>
+      meals.reduce(
+        (acc, m) => ({
+          calories: acc.calories + m.calories,
+          protein: acc.protein + m.protein,
+          carbs: acc.carbs + m.carbs,
+          fats: acc.fats + m.fats,
+        }),
+        { calories: 0, protein: 0, carbs: 0, fats: 0 },
+      ),
+    [meals],
+  );
+  const animCalories = useCountUp(totals.calories, 600);
+  const animProtein = useCountUp(totals.protein, 600);
+  const animCarbs = useCountUp(totals.carbs, 600);
+  const animFats = useCountUp(totals.fats, 600);
+
+  return (
+    <div className="rounded-xl border border-night-700 bg-night-850 p-4 sm:p-5">
+      <div className="flex items-center gap-3">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-warn-400/15 text-warn-300">
+          <Flame className="h-6 w-6" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-display text-[26px] font-bold leading-7 text-mist-100 tnum sm:text-[28px]">
+            {Math.round(animCalories).toLocaleString("en-US")}
+            <span className="ms-1.5 text-sm font-semibold text-mist-500">kcal</span>
+          </p>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-mist-500">{dayName}</p>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 border-t border-night-700 pt-3">
+        {([
+          ["Protein", animProtein, "text-volt-300"],
+          ["Carbs", animCarbs, "text-sky-300"],
+          ["Fats", animFats, "text-warn-300"],
+        ] as const).map(([label, v, tone]) => (
+          <div key={label} className="rounded-xl bg-night-800 px-2 py-2 text-center">
+            <p className={`font-display text-lg font-bold tnum ${tone}`}>{Math.round(v)}g</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {targets && (
+        <div className="mt-3 grid grid-cols-2 gap-2 border-t border-night-700 pt-3 sm:grid-cols-4">
+          <div className="rounded-xl bg-night-800 px-2.5 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">Target</p>
+            <p className="mt-0.5 font-display text-lg font-bold text-mist-200 tnum">{targets.calories} kcal</p>
+          </div>
+          <div className="rounded-xl bg-night-800 px-2.5 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">Protein</p>
+            <p className={`mt-0.5 font-display text-lg font-bold tnum ${totals.protein >= targets.protein ? "text-volt-300" : "text-mist-400"}`}>
+              {totals.protein}/{targets.protein}g
+            </p>
+          </div>
+          <div className="rounded-xl bg-night-800 px-2.5 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">Carbs</p>
+            <p className={`mt-0.5 font-display text-lg font-bold tnum ${totals.carbs >= targets.carbs ? "text-sky-300" : "text-mist-400"}`}>
+              {totals.carbs}/{targets.carbs}g
+            </p>
+          </div>
+          <div className="rounded-xl bg-night-800 px-2.5 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">Fat</p>
+            <p className={`mt-0.5 font-display text-lg font-bold tnum ${totals.fats >= targets.fats ? "text-warn-300" : "text-mist-400"}`}>
+              {totals.fats}/{targets.fats}g
+            </p>
+          </div>
+        </div>
+      )}
+
+      {targets?.water && (
+        <div className="mt-3 flex items-center gap-2 text-mist-400">
+          <Droplets className="h-4 w-4 shrink-0 text-sky-300" />
+          <span className="text-xs font-bold">Water target: {targets.water}L / day</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function NutritionTab({ clientId, client, allMeals }: { clientId: string; client: Client; allMeals: Meal[] }) {
   const [selectedDay, setSelectedDay] = useState<number>(dayNum()); // Default to today's day
@@ -259,7 +348,7 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
   
   // Filter meals for selected day
   const dayMeals = useMemo(() => meals.filter((m) => m.day === selectedDay), [meals, selectedDay]);
-  
+
   // Sort meals by time then by type order
   const sortedMeals = useMemo(() => {
     const typeOrder: Record<MealType, number> = { Breakfast: 0, Lunch: 1, Dinner: 2, Snack: 3 };
@@ -270,27 +359,6 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
       return typeOrder[a.type] - typeOrder[b.type];
     });
   }, [dayMeals]);
-  
-  // Calculate daily totals
-  const dailyTotals = useMemo(
-    () =>
-      dayMeals.reduce(
-        (acc, m) => ({
-          calories: acc.calories + m.calories,
-          protein: acc.protein + m.protein,
-          carbs: acc.carbs + m.carbs,
-          fats: acc.fats + m.fats,
-        }),
-        { calories: 0, protein: 0, carbs: 0, fats: 0 }
-      ),
-    [dayMeals]
-  );
-  
-  // Get animated values for totals
-  const animCalories = useCountUp(dailyTotals.calories, 600);
-  const animProtein = useCountUp(dailyTotals.protein, 600);
-  const animCarbs = useCountUp(dailyTotals.carbs, 600);
-  const animFats = useCountUp(dailyTotals.fats, 600);
   
   // Weekly overview data
   const weeklyOverview = useMemo(() => {
@@ -328,7 +396,7 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
   return (
     <div className="grid gap-3 sm:gap-4">
       {/* Header */}
-      <div className="rise relative overflow-hidden rounded-2xl border border-night-700 bg-night-850 p-4 sm:p-6">
+      <div className="relative overflow-hidden rounded-2xl border border-night-700 bg-night-850 p-4 sm:p-6">
         <div className="pointer-events-none absolute inset-0 opacity-[0.35]" style={{ backgroundImage: "repeating-linear-gradient(-45deg, transparent 0 14px, rgba(205,241,75,0.04) 14px 15px)" }} />
         <div className="relative">
           <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-mist-500 sm:text-[11px]">Weekly nutrition plan</p>
@@ -343,7 +411,7 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
       </div>
 
       {/* Week Navigation — fixed 7-col grid, no scroll on mobile */}
-      <div className="rise rounded-xl border border-night-700 bg-night-850 p-2 sm:p-3" style={{ animationDelay: "60ms" }}>
+      <div className="rounded-xl border border-night-700 bg-night-850 p-2 sm:p-3">
         <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
           {weeklyOverview.map((d) => {
             const isSelected = selectedDay === d.day;
@@ -354,7 +422,7 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
                 onClick={() => setSelectedDay(d.day)}
                 aria-pressed={isSelected}
                 aria-label={`${d.name}${isCurrentDay ? ", today" : ""}${d.hasPlan ? `, ${d.mealCount} meals` : ", no plan"}`}
-                className={`flex min-h-[52px] min-w-0 flex-col items-center justify-center rounded-lg border px-0 py-2 text-xs font-bold transition-all duration-200 active:scale-95 ${
+                className={`flex min-h-[52px] min-w-0 flex-col items-center justify-center rounded-xl border px-0 py-2 text-xs font-bold transition-all duration-200 active:scale-95 ${
                   isSelected
                     ? "border-volt-400 bg-volt-400/15 text-volt-300 shadow-[0_0_12px_-2px_rgba(205,241,75,0.3)]"
                     : d.hasPlan
@@ -371,76 +439,15 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
         </div>
       </div>
 
-      {/* Daily Summary */}
-      <div className="rise rounded-xl border border-night-700 bg-night-850 p-4 sm:p-5" style={{ animationDelay: "100ms" }}>
-        <div className="flex items-center gap-3">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-warn-400/15 text-warn-300">
-            <Flame className="h-6 w-6" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="font-display text-[26px] font-bold leading-7 text-mist-100 sm:text-[28px]">
-              {Math.round(animCalories).toLocaleString("en-US")}
-              <span className="ms-1.5 text-sm font-semibold text-mist-500">kcal</span>
-            </p>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-mist-500">{WEEK_DAYS[selectedDay - 1]}</p>
-          </div>
-        </div>
-        <div className="mt-3 grid grid-cols-3 gap-2 border-t border-night-700 pt-3">
-          {([
-            ["Protein", animProtein, "text-volt-300"],
-            ["Carbs", animCarbs, "text-sky-300"],
-            ["Fats", animFats, "text-warn-300"],
-          ] as const).map(([label, v, tone]) => (
-            <div key={label} className="rounded-lg bg-night-800 px-2 py-2 text-center">
-              <p className={`font-display text-lg font-bold tnum ${tone}`}>{Math.round(v)}g</p>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">{label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Targets Comparison */}
-        {targets && (
-          <div className="mt-4 grid grid-cols-2 gap-3 pt-4 sm:grid-cols-4 sm:gap-4 border-t border-night-700">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">Target</p>
-              <p className="font-display text-base font-bold text-mist-300">{targets.calories} kcal</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">Protein</p>
-              <p className={`font-display text-base font-bold ${dailyTotals.protein >= targets.protein ? "text-volt-300" : "text-mist-400"}`}>
-                {dailyTotals.protein} / {targets.protein}g
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">Carbs</p>
-              <p className={`font-display text-base font-bold ${dailyTotals.carbs >= targets.carbs ? "text-sky-300" : "text-mist-400"}`}>
-                {dailyTotals.carbs} / {targets.carbs}g
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">Fat</p>
-              <p className={`font-display text-base font-bold ${dailyTotals.fats >= targets.fats ? "text-warn-300" : "text-mist-400"}`}>
-                {dailyTotals.fats} / {targets.fats}g
-              </p>
-            </div>
-          </div>
-        )}
-        
-        {/* Water target if available */}
-        {targets?.water && (
-          <div className="mt-3 flex items-center gap-2 text-mist-400">
-            <Droplets className="h-4 w-4" />
-            <span className="text-xs font-bold">Water target: {targets.water}L / day</span>
-          </div>
-        )}
-      </div>
+      {/* Daily Summary — isolated so its count-up frames never re-render the meals list */}
+      <DailySummary meals={dayMeals} dayName={WEEK_DAYS[selectedDay - 1]} targets={targets} />
 
       {/* Meals List — grouped by type like coach mode */}
-      <div className="rise" style={{ animationDelay: "140ms" }}>
-        <h2 className="mb-3 text-lg font-bold uppercase tracking-wider text-mist-300">Meals · {WEEK_DAYS[selectedDay - 1]}</h2>
+      <div>
+        <h2 className="mb-2 px-1 text-[13px] font-bold uppercase tracking-[0.14em] text-mist-100">Meals · {WEEK_DAYS[selectedDay - 1]}</h2>
 
         {sortedMeals.length === 0 ? (
-          <SectionCard title="" icon={<UtensilsCrossed className="h-5 w-5" />} bodyCls="p-6">
+          <SectionCard title="No meals planned" icon={<UtensilsCrossed className="h-5 w-5" />} bodyCls="p-6">
             <div className="text-center py-8">
               <UtensilsCrossed className="mx-auto h-12 w-12 text-night-500" />
               <p className="mt-3 text-sm font-semibold text-mist-400">No nutrition plan for this day</p>
@@ -481,7 +488,7 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
                   key={t}
                   title={`${t} · ${list.length}`}
                   icon={<UtensilsCrossed className="h-5 w-5" />}
-                  bodyCls="p-3"
+                  bodyCls="p-2.5 sm:p-3"
                   action={
                     <span className="text-[11px] font-bold text-mist-500">
                       {totals.calories.toLocaleString("en-US")} kcal
@@ -523,19 +530,19 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
       </div>
       
       {/* Weekly Overview */}
-      <SectionCard title="Week Overview" icon={<ClipboardList className="h-4.5 w-4.5" />} delay={200} bodyCls="p-3">
+      <SectionCard title="Week Overview" icon={<ClipboardList className="h-4.5 w-4.5" />} bodyCls="p-2.5 sm:p-3">
         <div className="grid grid-cols-7 gap-1 sm:gap-2">
           {weeklyOverview.map((d) => (
-            <button
+              <button
               key={d.day}
               onClick={() => setSelectedDay(d.day)}
-              className={`min-w-0 rounded-lg border p-1.5 text-center transition active:scale-95 sm:p-2 ${
+              className={`min-w-0 rounded-xl border p-1.5 text-center transition active:scale-95 sm:p-2 ${
                 d.hasPlan
                   ? "border-night-600 bg-night-800"
                   : "border-night-700 bg-night-900"
               } ${selectedDay === d.day ? "ring-1 ring-volt-400" : ""}`}
             >
-              <p className="truncate text-[9px] font-bold text-mist-500 sm:text-[10px]">{d.short}</p>
+              <p className="truncate text-[10px] font-bold text-mist-500">{d.short}</p>
               <p className={`mt-0.5 font-display text-[13px] font-bold tnum sm:text-sm ${d.hasPlan ? "text-mist-200" : "text-mist-600"}`}>
                 {d.mealCount}
               </p>
@@ -594,14 +601,14 @@ function TodayTab({
 
   return (
     <div className="grid gap-3 sm:gap-4">
-      <div className="rise relative overflow-hidden rounded-2xl border border-night-700 bg-night-850 p-4 sm:p-6">
+      <div className="relative overflow-hidden rounded-2xl border border-night-700 bg-night-850 p-4 sm:p-6">
         <div className="pointer-events-none absolute inset-0 opacity-[0.35]" style={{ backgroundImage: "repeating-linear-gradient(-45deg, transparent 0 14px, rgba(205,241,75,0.04) 14px 15px)" }} />
         <div className="relative">
           <div className="flex items-center gap-2">
             <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-mist-500 sm:text-[11px]">Your program</p>
             <span className="rounded-full bg-volt-400/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-volt-300">{WEEK_DAYS[dn - 1]}</span>
           </div>
-          <h1 className="mt-1.5 font-display text-[32px] font-bold uppercase leading-[0.95] text-mist-100 sm:text-[54px]">
+          <h1 className="mt-1.5 font-display text-[30px] font-bold uppercase leading-[0.95] text-mist-100 sm:text-[44px]">
             Day {dn}
           </h1>
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
@@ -627,7 +634,7 @@ function TodayTab({
       </div>
 
       {sessionsToday.length > 0 && (
-        <SectionCard title="Today's sessions" icon={<ClipboardList className="h-4.5 w-4.5" />} bodyCls="p-3">
+        <SectionCard title="Today's sessions" icon={<ClipboardList className="h-4.5 w-4.5" />} bodyCls="p-2.5 sm:p-3">
           <ul className="grid gap-2">
             {sessionsToday.map((s) => (
               <li key={s.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-night-700 bg-night-800 p-3 transition hover:border-night-500">
@@ -640,7 +647,7 @@ function TodayTab({
         </SectionCard>
       )}
 
-      <SectionCard title="Today's workout" icon={<Dumbbell className="h-4.5 w-4.5" />} delay={80} bodyCls="p-3">
+      <SectionCard title="Today's workout" icon={<Dumbbell className="h-4.5 w-4.5" />} bodyCls="p-2.5 sm:p-3">
         {todayPlan.length === 0 ? (
           <EmptyState icon={<Dumbbell className="h-6 w-6" />} title="Rest day" sub="No session programmed today. Sleep well, eat well, come back stronger tomorrow." />
         ) : (
@@ -648,7 +655,7 @@ function TodayTab({
             {todayPlan.map((item, i) => {
               const ex = exOf(item.exerciseId);
               return (
-                <li key={item.id} className="rise flex items-center gap-3 rounded-xl border border-night-700 bg-night-800 p-3 transition active:scale-[0.99] sm:p-3 hover:border-night-500" style={{ animationDelay: `${i * 50}ms` }}>
+                <li key={item.id} className="flex items-center gap-3 rounded-xl border border-night-700 bg-night-800 p-3 transition active:scale-[0.99] hover:border-night-500">
                   <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-night-700 font-display text-lg font-bold text-volt-300">{i + 1}</span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -680,7 +687,7 @@ function TodayTab({
         )}
       </SectionCard>
 
-      <SectionCard title="Today's meals" icon={<UtensilsCrossed className="h-4.5 w-4.5" />} delay={160} bodyCls="p-3">
+      <SectionCard title="Today's meals" icon={<UtensilsCrossed className="h-4.5 w-4.5" />} bodyCls="p-2.5 sm:p-3">
         {todayMeals.length === 0 ? (
           <EmptyState icon={<UtensilsCrossed className="h-6 w-6" />} title="No meal plan yet" sub="Your coach hasn't assigned meals — check back soon.">
             {plannedDayNames.length > 0 && (
@@ -697,14 +704,14 @@ function TodayTab({
                 if (list.length === 0) return null;
                 const totals = list.reduce((s, m) => s + m.calories, 0);
                 return (
-                  <div key={t} className="rounded-lg border border-night-700 bg-night-800 p-3">
+                  <div key={t} className="rounded-xl border border-night-700 bg-night-800 p-3">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <Badge className={MEAL_META[t].chip}>{t} · {list.length}</Badge>
                       <span className="font-display text-sm font-bold text-warn-300 tnum">{totals.toLocaleString("en-US")} kcal</span>
                     </div>
                     <div className="grid gap-2">
                       {list.map((m) => (
-                        <div key={m.id} className="rounded-lg border border-night-700 bg-night-850 p-2.5">
+                        <div key={m.id} className="rounded-xl border border-night-700 bg-night-850 p-2.5">
                           <p className="text-sm font-semibold leading-5 text-mist-100">{m.description}</p>
                           <p className="mt-1.5 flex gap-3 text-[11px] font-bold tnum">
                             <span className="text-warn-300">{m.calories} kcal</span>
@@ -782,20 +789,20 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
 
   return (
     <div className="grid gap-3 sm:gap-4">
-      <div className="rise rounded-2xl border border-night-700 bg-night-850 p-4 sm:p-5">
+      <div className="rounded-2xl border border-night-700 bg-night-850 p-4 sm:p-5">
         <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-mist-500 tnum">{todayISO()}</p>
-        <h1 className="mt-1 font-display text-[32px] font-bold uppercase leading-none text-mist-100 sm:text-5xl">
+        <h1 className="mt-1 font-display text-[30px] font-bold uppercase leading-[0.95] text-mist-100 sm:text-[44px]">
           Daily <span className="text-volt-400">check-in</span>
         </h1>
         <p className="mt-1.5 text-[13px] text-mist-400">Sixty honest seconds. Your coach sees this instantly.</p>
         {alreadyToday && (
-          <p className="mt-3 rounded-lg border border-warn-400/25 bg-warn-400/10 px-3 py-2 text-xs font-semibold text-warn-300">
+          <p className="mt-3 rounded-xl border border-warn-400/25 bg-warn-400/10 px-3 py-2 text-xs font-semibold text-warn-300">
             You already checked in today — logging again is fine, the latest numbers count.
           </p>
         )}
       </div>
 
-      <SectionCard title="Numbers" icon={<Scale className="h-4.5 w-4.5" />} delay={80} bodyCls="p-4 sm:p-5">
+      <SectionCard title="Numbers" icon={<Scale className="h-4.5 w-4.5" />} bodyCls="p-4 sm:p-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-mist-400">Weight (kg) *</label>
@@ -814,7 +821,7 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
             <input className="h-12 w-full rounded-xl border border-night-600 bg-night-800 px-3.5 text-base font-semibold text-mist-100 outline-none transition focus:border-volt-400 sm:h-11 sm:text-sm tnum" type="number" step="0.1" min="0" value={water} onChange={(e) => setWater(e.target.value)} inputMode="decimal" />
             <div className="mt-2 flex flex-wrap gap-1.5">
               {[1.5, 2, 2.5, 3].map((v) => (
-                <button key={v} type="button" onClick={() => setWater(String(v))} aria-pressed={water === String(v)} className={`min-h-[40px] min-w-[52px] cursor-pointer rounded-lg border px-3 py-1.5 text-xs font-bold transition active:scale-95 ${water === String(v) ? "border-sky-400 bg-sky-400/15 text-sky-300" : "border-night-600 bg-night-800 text-mist-400 hover:border-night-500"}`}>
+                <button key={v} type="button" onClick={() => setWater(String(v))} aria-pressed={water === String(v)} className={`min-h-[40px] min-w-[52px] cursor-pointer rounded-xl border px-3 py-1.5 text-xs font-bold transition active:scale-95 ${water === String(v) ? "border-sky-400 bg-sky-400/15 text-sky-300" : "border-night-600 bg-night-800 text-mist-400 hover:border-night-500"}`}>
                   {v}L
                 </button>
               ))}
@@ -827,7 +834,7 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
         </div>
       </SectionCard>
 
-      <SectionCard title="Photo & notes" icon={<Camera className="h-4.5 w-4.5" />} delay={160} bodyCls="p-4 sm:p-5">
+      <SectionCard title="Photo & notes" icon={<Camera className="h-4.5 w-4.5" />} bodyCls="p-4 sm:p-5">
         <div className="grid gap-4">
           <div>
             <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-mist-400">Progress photo (optional)</label>
@@ -859,7 +866,7 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
         </div>
         {error && <p className="mt-3 text-xs font-bold text-danger-400">{error}</p>}
         <div className="sticky bottom-[92px] z-10 mt-4 lg:static">
-          <button className={`${btnPrimary} h-13 w-full py-3.5 text-base shadow-[0_10px_28px_-10px_rgba(205,241,75,0.65)]`} onClick={submit}>
+          <button className={`${btnPrimary} h-12 w-full text-base shadow-[0_10px_28px_-10px_rgba(205,241,75,0.65)]`} onClick={submit}>
             <Check className="h-5 w-5" strokeWidth={2.4} /> Submit check-in
           </button>
         </div>
@@ -894,17 +901,17 @@ function ProgressTab({ checkIns, sessionsCount }: { checkIns: Parameters<typeof 
 
   return (
     <div className="grid gap-3 sm:gap-4">
-      <div className="rise grid grid-cols-3 gap-2 sm:gap-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <MiniKpi icon={<Scale className="h-3.5 w-3.5" />} label="Weight" value={prog.currentWeight !== null ? `${prog.currentWeight}` : "—"} unit="kg" />
         <MiniKpi icon={<Droplets className="h-3.5 w-3.5" />} label="Change" value={prog.weightChange !== null ? signed(prog.weightChange) : "—"} unit="kg" tone={prog.weightChange !== null && prog.weightChange <= 0 ? "text-moss-300" : "text-warn-300"} />
         <MiniKpi icon={<Flame className="h-3.5 w-3.5" />} label="Streak" value={String(streak)} unit={streak === 1 ? "day" : "days"} tone="text-volt-300" />
       </div>
 
-      <SectionCard title="Weight trend" icon={<Scale className="h-4.5 w-4.5" />} delay={80} bodyCls="p-3 sm:p-4">
+      <SectionCard title="Weight trend" icon={<Scale className="h-4.5 w-4.5" />} bodyCls="p-3 sm:p-4">
         <WeightLine entries={sorted} />
       </SectionCard>
 
-      <SectionCard title="Attendance" icon={<Check className="h-4.5 w-4.5" />} delay={120} bodyCls="p-4 sm:p-5">
+      <SectionCard title="Attendance" icon={<Check className="h-4.5 w-4.5" />} bodyCls="p-4 sm:p-5">
         <p className="text-sm text-mist-300">
           You've completed <span className="font-display text-xl font-bold text-volt-300 tnum">{sessionsCount.completed}</span> of{" "}
           <span className="font-bold tnum">{sessionsCount.countable}</span> sessions ({sessionsCount.pct}%).
@@ -915,8 +922,8 @@ function ProgressTab({ checkIns, sessionsCount }: { checkIns: Parameters<typeof 
       </SectionCard>
 
       {sorted.length > 0 && (
-        <SectionCard title="Recent check-ins" icon={<ClipboardList className="h-4.5 w-4.5" />} delay={160} bodyCls="p-2.5 sm:p-3">
-          <ul className="grid gap-1.5">
+        <SectionCard title="Recent check-ins" icon={<ClipboardList className="h-4.5 w-4.5" />} bodyCls="p-2.5 sm:p-3">
+          <ul className="grid gap-2">
             {[...sorted].reverse().slice(0, 5).map((c) => (
               <li key={c.id} className="flex items-center gap-3 rounded-xl border border-night-700 bg-night-800 px-3 py-2.5">
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-night-700 font-display text-sm font-bold text-volt-300 tnum">{c.weight}</span>
@@ -938,7 +945,7 @@ function ProgressTab({ checkIns, sessionsCount }: { checkIns: Parameters<typeof 
 function MiniKpi({ icon, label, value, unit, tone }: { icon: ReactNode; label: string; value: string; unit: string; tone?: string }) {
   return (
     <div className="min-w-0 rounded-xl border border-night-700 bg-night-850 p-2.5 sm:p-4">
-      <p className="flex min-w-0 items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-mist-500 sm:text-[10px]">
+      <p className="flex min-w-0 items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-mist-500">
         <span className="shrink-0 text-volt-400">{icon}</span> <span className="truncate">{label}</span>
       </p>
       <p className={`mt-0.5 truncate font-display text-[22px] font-bold leading-7 tnum sm:text-[30px] sm:leading-8 ${tone ?? "text-mist-100"}`}>
@@ -970,7 +977,7 @@ function ChatTab({ clientId }: { clientId: string }) {
   }, [clientId, thread.length]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    endRef.current?.scrollIntoView({ block: "nearest" });
   }, [thread.length]);
 
   const submit = () => {
@@ -980,7 +987,7 @@ function ChatTab({ clientId }: { clientId: string }) {
   };
 
   return (
-    <div className="rise flex h-[calc(100dvh-215px)] min-h-[380px] flex-col overflow-hidden rounded-2xl border border-night-700 bg-night-850 sm:h-[calc(100vh-230px)] sm:min-h-96">
+    <div className="flex h-[calc(100dvh-215px)] min-h-[380px] flex-col overflow-hidden rounded-2xl border border-night-700 bg-night-850 sm:h-[calc(100vh-230px)] sm:min-h-96">
       <header className="flex items-center gap-2.5 border-b border-night-700 px-4 py-3 sm:px-5 sm:py-3.5">
         <MessageCircle className="h-4.5 w-4.5 shrink-0 text-volt-400" />
         <h2 className="truncate font-display text-base font-semibold uppercase tracking-wide text-mist-100 sm:text-lg">Chat with your coach</h2>
@@ -1066,8 +1073,8 @@ function SubscriptionTab({ clientId, onLogout }: { clientId: string; onLogout: (
               <ReadOnly k="Price" v={`${fmtMoney(sub.price)} EGP`} />
               <ReadOnly k="Starts" v={fmtDate(sub.startDate)} />
               <ReadOnly k="Ends" v={fmtDate(sub.endDate)} />
-              <div className="rounded-lg border border-night-700 bg-night-800 p-3">
-                <p className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-mist-500">Payment</p>
+              <div className="rounded-xl border border-night-700 bg-night-800 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-mist-500">Payment</p>
                 <Badge className={`${SUB_PAYMENT_META[sub.paymentStatus].chip} mt-1.5`}>{sub.paymentStatus}</Badge>
               </div>
             </div>
@@ -1084,18 +1091,18 @@ function SubscriptionTab({ clientId, onLogout }: { clientId: string; onLogout: (
               </div>
             </div>
 
-            <p className="rounded-lg border border-night-700 bg-night-800/60 px-3.5 py-2.5 text-[11px] leading-5 text-mist-400">
+            <p className="rounded-xl border border-night-700 bg-night-800/60 px-3.5 py-2.5 text-[11px] leading-5 text-mist-400">
               To renew or change your plan, message your coach — renewals are handled on their side.
             </p>
           </div>
         )}
       </SectionCard>
 
-      <SectionCard title="Payment history" icon={<CreditCard className="h-4.5 w-4.5" />} delay={100} bodyCls="p-2.5 sm:p-3">
+      <SectionCard title="Payment history" icon={<CreditCard className="h-4.5 w-4.5" />} bodyCls="p-2.5 sm:p-3">
         {payments.length === 0 ? (
           <p className="rounded-lg border border-dashed border-night-600 px-4 py-6 text-center text-xs text-mist-500">No payments recorded yet.</p>
         ) : (
-          <ul className="grid gap-1.5">
+          <ul className="grid gap-2">
             {payments.map((p) => (
               <li key={p.id} className="flex min-w-0 items-center gap-2.5 rounded-xl border border-night-700 bg-night-800 px-3 py-2.5 sm:gap-3 sm:px-3.5">
                 <span className="shrink-0 text-xs font-bold text-mist-300 tnum">{fmtDate(p.date)}</span>
@@ -1123,12 +1130,9 @@ function SubscriptionTab({ clientId, onLogout }: { clientId: string; onLogout: (
 
 function ReadOnly({ k, v }: { k: string; v: string }) {
   return (
-    <div className="rounded-lg border border-night-700 bg-night-800 p-3">
-      <p className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-mist-500">{k}</p>
+    <div className="rounded-xl border border-night-700 bg-night-800 p-3">
+      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-mist-500">{k}</p>
       <p className="mt-1 font-display text-lg font-bold text-mist-100 tnum">{v}</p>
     </div>
   );
 }
-
-void btnSecondary;
-void btnSm;
