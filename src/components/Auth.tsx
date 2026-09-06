@@ -4,7 +4,9 @@
    ================================================================ */
 
 import { useId, useState, type FormEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
+  ArrowLeft,
   ArrowRight,
   Check,
   CheckCircle2,
@@ -24,9 +26,19 @@ import { btnPrimary, inputCls, labelCls } from "./ui";
 
 const TICKER = ["STRENGTH", "NUTRITION", "RECOVERY", "CONSISTENCY", "PROGRESS", "DISCIPLINE", "OVERLOAD", "FORM FIRST"];
 
-export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
-  const [role, setRole] = useState<"coach" | "client">("coach");
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+export function Auth({
+  onShowAdmin,
+  initialMode,
+  initialRole,
+}: {
+  onShowAdmin?: () => void;
+  /** Route-driven entry mode: /login → signin, /signup → signup. */
+  initialMode?: "signin" | "signup";
+  initialRole?: "coach" | "client";
+}) {
+  const navigate = useNavigate();
+  const [role, setRole] = useState<"coach" | "client">(initialRole ?? "coach");
+  const [mode, setMode] = useState<"signin" | "signup">(initialMode ?? "signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -97,7 +109,7 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
         <div className="orb orb-b -left-24 bottom-1/4" />
       </div>
 
-      <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 items-center gap-12 px-5 py-12 lg:gap-16 lg:px-8">
+      <main id="main-content" className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 items-center gap-12 px-5 py-12 lg:gap-16 lg:px-8">
         {/* brand side */}
         <div className="hidden min-w-0 flex-1 flex-col lg:flex">
           <div className="rise flex items-center gap-3">
@@ -153,6 +165,13 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
 
         {/* sign-in side */}
         <div className="rise w-full max-w-[440px] flex-none max-lg:mx-auto" style={{ animationDelay: "140ms" }}>
+          <Link
+            to="/"
+            className="mb-4 inline-flex min-h-[36px] items-center gap-1.5 rounded-xl px-2 py-1 text-[13px] font-bold text-mist-400 transition hover:text-volt-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50"
+          >
+            <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
+            Back to home
+          </Link>
           <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-night-900/75 p-6 shadow-xl backdrop-blur-xl sm:p-8">
             <span
               aria-hidden="true"
@@ -294,7 +313,14 @@ export function Auth({ onShowAdmin }: { onShowAdmin?: () => void }) {
                   <button
                     type="button"
                     className="cursor-pointer rounded-lg py-1 text-center text-[13px] font-bold text-mist-400 transition hover:text-volt-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50"
-                    onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); setNotice(""); }}
+                    onClick={() => {
+                      const next = mode === "signin" ? "signup" : "signin";
+                      setMode(next);
+                      setError("");
+                      setNotice("");
+                      // Keep the URL in sync with the visible auth mode.
+                      navigate(next === "signup" ? "/signup" : "/login");
+                    }}
                     disabled={busy}
                   >
                     {mode === "signin" ? "No account yet? Create one" : "Already have an account? Sign in"}

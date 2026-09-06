@@ -9,6 +9,7 @@ import { Dumbbell, Image as ImageIcon, RefreshCw, X } from "lucide-react";
 import type {
   Client,
   ClientStatus,
+  DayLabelMode,
   Exercise,
   ExerciseCategory,
   Goal,
@@ -32,6 +33,8 @@ import {
   SESSION_STATUSES,
   STATUSES,
   WEEK_DAYS,
+  WEEK_ORDER_SAT_FIRST,
+  formatDayName,
 } from "../types";
 import { fileToDataUrl, isValidUsername, randomPassword, todayISO } from "../lib";
 import { useApp } from "../store";
@@ -479,6 +482,7 @@ export function MealFormModal({
   initial,
   defaultType,
   defaultDay,
+  labelMode,
   onClose,
 }: {
   open: boolean;
@@ -486,6 +490,7 @@ export function MealFormModal({
   initial: Meal | null;
   defaultType?: MealType;
   defaultDay?: number;
+  labelMode?: DayLabelMode;
   onClose: () => void;
 }) {
   const { addMeal, updateMeal } = useApp();
@@ -538,9 +543,9 @@ export function MealFormModal({
         <div>
           <label className={labelCls}>Day</label>
           <select className={inputCls} value={day} onChange={(e) => setDay(Number(e.target.value))}>
-            {WEEK_DAYS.map((d, i) => (
-              <option key={d} value={i + 1}>
-                {d}
+            {WEEK_ORDER_SAT_FIRST.map((d) => (
+              <option key={d} value={d}>
+                {labelMode === "numbered" ? `${formatDayName(d, labelMode)} — ${WEEK_DAYS[d - 1]}` : WEEK_DAYS[d - 1]}
               </option>
             ))}
           </select>
@@ -1086,12 +1091,14 @@ export function CopyDayModal({
   clientId,
   sourceDay,
   meals,
+  labelMode,
   onClose,
 }: {
   open: boolean;
   clientId: string;
   sourceDay: number;
   meals: Meal[];
+  labelMode?: DayLabelMode;
   onClose: () => void;
 }) {
   const { addMeal } = useApp();
@@ -1106,7 +1113,8 @@ export function CopyDayModal({
   }, [open]);
 
   const sourceMeals = meals.filter((m) => m.day === sourceDay);
-  const otherDays = [1, 2, 3, 4, 5, 6, 7].filter((d) => d !== sourceDay);
+  const otherDays = WEEK_ORDER_SAT_FIRST.filter((d) => d !== sourceDay);
+  const sourceLabel = labelMode === "numbered" ? `${formatDayName(sourceDay, labelMode)} (${WEEK_DAYS[sourceDay - 1]})` : WEEK_DAYS[sourceDay - 1];
 
   const toggleDay = (day: number) => {
     setDestDays((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]));
@@ -1153,12 +1161,12 @@ export function CopyDayModal({
     <Modal open={open} onClose={onClose} title="Copy Day">
       <div className="grid gap-4">
         <p className="text-sm text-mist-400">
-          Copy all meals from <strong>{WEEK_DAYS[sourceDay - 1]}</strong> to:
+          Copy all meals from <strong>{sourceLabel}</strong> to:
         </p>
         
         {!hasSourceMeals ? (
           <div className="rounded-xl border border-warn-400/25 bg-warn-400/10 p-3 text-sm text-warn-300">
-            {WEEK_DAYS[sourceDay - 1]} has no meals to copy.
+            {sourceLabel} has no meals to copy.
           </div>
         ) : (
           <>
@@ -1182,7 +1190,9 @@ export function CopyDayModal({
                       onChange={() => toggleDay(day)}
                       className="h-4 w-4 accent-volt-400"
                     />
-                    <span className="flex-1 font-semibold">{WEEK_DAYS[day - 1]}</span>
+                    <span className="flex-1 font-semibold">
+                      {labelMode === "numbered" ? `${formatDayName(day, labelMode)} · ${WEEK_DAYS[day - 1]}` : WEEK_DAYS[day - 1]}
+                    </span>
                     {dayHasMeals && <span className="text-[10px] text-warn-400">(has meals)</span>}
                   </label>
                 );

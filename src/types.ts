@@ -260,6 +260,36 @@ export const WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"
 export const WEEK_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export const FOLLOW_UP_PRESETS = [1, 3, 7, 14];
 
+/* ---------------- week display (Sat-first convention) ---------------- */
+
+/** How day buttons/titles are labelled in nutrition views. */
+export type DayLabelMode = "weekdays" | "numbered";
+
+/**
+ * Display order of the week, starting Saturday (EG gym convention).
+ * Values are STORED day numbers (Mon = 1 … Sun = 7) — data is untouched,
+ * only the presentation order changes: Sat, Sun, Mon, Tue, Wed, Thu, Fri.
+ */
+export const WEEK_ORDER_SAT_FIRST = [6, 7, 1, 2, 3, 4, 5];
+
+/** Position (1..7) of a stored day inside the displayed Sat-first week. */
+export function weekPos(day: number): number {
+  const i = WEEK_ORDER_SAT_FIRST.indexOf(day);
+  return i < 0 ? day : i + 1;
+}
+
+/** Full label for a stored day: weekday name, or "Day N" (Sat = Day 1). */
+export function formatDayName(day: number, mode: DayLabelMode = "weekdays"): string {
+  if (mode === "numbered") return `Day ${weekPos(day)}`;
+  return WEEK_DAYS[day - 1] ?? `Day ${day}`;
+}
+
+/** Short label for a stored day: "Mon", or "D1" (Sat = D1). */
+export function formatDayShort(day: number, mode: DayLabelMode = "weekdays"): string {
+  if (mode === "numbered") return `D${weekPos(day)}`;
+  return WEEK_SHORT[day - 1] ?? `D${day}`;
+}
+
 /* ---------------- visual metadata ---------------- */
 
 export const GOAL_META: Record<Goal, { chip: string; dot: string; bar: string }> = {

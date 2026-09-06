@@ -43,7 +43,7 @@ export function AdminAuth({ onBack }: { onBack: () => void }) {
         <div className="orb orb-b -left-24 bottom-1/4" />
       </div>
 
-      <main className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-5 py-10">
+      <main id="main-content" className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-5 py-10">
         <button
           onClick={onBack}
           className="absolute left-4 top-4 inline-flex min-h-[40px] cursor-pointer items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2 text-[13px] font-bold text-mist-400 transition hover:border-volt-400/30 hover:text-volt-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50 lg:left-8 lg:top-8"

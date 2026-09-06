@@ -3,8 +3,9 @@
    ================================================================ */
 
 import { useEffect, useState, useMemo, useRef } from "react";
-import type { Meal, MealType, Client } from "../types";
-import { MEAL_TYPES, WEEK_DAYS, WEEK_SHORT } from "../types";
+import type { Meal, MealType, Client, DayLabelMode } from "../types";
+import { MEAL_TYPES, WEEK_DAYS, WEEK_SHORT, WEEK_ORDER_SAT_FIRST, formatDayName, formatDayShort } from "../types";
+import { getDayLabelMode, setDayLabelMode } from "../lib";
 import { useApp } from "../store";
 import { Avatar, EmptyState, SectionCard, labelCls, btnPrimary, btnSecondary } from "./ui";
 import { MealFormModal, CopyDayModal, NutritionTargetsModal } from "./modals";
@@ -211,7 +212,8 @@ function ClientSearchPicker({
 export function NutritionPlanView({ presetClientId }: { presetClientId: string | null }) {
   const { state, addMeal, updateMeal, deleteMeal, toast } = useApp();
   const [clientId, setClientId] = useState(presetClientId ?? state.clients[0]?.id ?? "");
-  const [selectedDay, setSelectedDay] = useState<number>(1); // 1 = Monday
+  const [selectedDay, setSelectedDay] = useState<number>(1); // 1 = Monday (stored numbering)
+  const [labelMode, setLabelMode] = useState<DayLabelMode>(() => getDayLabelMode());
   const [modalOpen, setModalOpen] = useState(false);
   const [copyModalOpen, setCopyModalOpen] = useState(false);
   const [targetsOpen, setTargetsOpen] = useState(false);
@@ -296,6 +298,11 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
     const sum = p + c + f;
     return { p, c, f, sum };
   }, [dailyTotals]);
+
+  const switchLabelMode = (m: DayLabelMode) => {
+    setLabelMode(m);
+    setDayLabelMode(m);
+  };
 
   const handleAddMeal = (type?: MealType) => {
     setEditing(null);
@@ -479,22 +486,40 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
 
       {/* Week Navigation */}
       <div className="rise mt-6 rounded-xl border border-night-700 bg-night-850 p-4" style={{ animationDelay: "80ms" }}>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <h2 className="text-sm font-bold uppercase tracking-wider text-mist-400">Week Overview</h2>
-          <span className="text-xs font-semibold text-mist-500">
-            {weeklyStatus.planned} / {weeklyStatus.total} days planned
-          </span>
+          <div className="flex items-center gap-3">
+            {/* Day label mode toggle */}
+            <div className="flex items-center rounded-full border border-night-600 bg-night-900 p-0.5" role="group" aria-label="Day label style">
+              {(["weekdays", "numbered"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => switchLabelMode(m)}
+                  aria-pressed={labelMode === m}
+                  className={`cursor-pointer rounded-full px-3 py-1 text-[11px] font-bold transition ${
+                    labelMode === m ? "bg-volt-400 text-night-950" : "text-mist-500 hover:text-mist-200"
+                  }`}
+                  title={m === "weekdays" ? "Show weekday names (Sat … Fri)" : "Show Day 1 … Day 7 (Sat = Day 1)"}
+                >
+                  {m === "weekdays" ? "Sat–Fri" : "Day 1–7"}
+                </button>
+              ))}
+            </div>
+            <span className="text-xs font-semibold text-mist-500">
+              {weeklyStatus.planned} / {weeklyStatus.total} days planned
+            </span>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {WEEK_DAYS.map((dayName, idx) => {
-            const dayNum = idx + 1;
+          {WEEK_ORDER_SAT_FIRST.map((dayNum) => {
             const hasMeals = weeklyStatus.hasMeals(dayNum);
             const isSelected = selectedDay === dayNum;
             
             return (
               <button
-                key={dayName}
+                key={dayNum}
                 onClick={() => setSelectedDay(dayNum)}
+                title={labelMode === "numbered" ? `${formatDayName(dayNum, labelMode)} · ${WEEK_DAYS[dayNum - 1]}` : undefined}
                 className={`flex min-w-[86px] flex-col items-center gap-0.5 rounded-lg border px-3 py-2 transition ${
                   isSelected
                     ? "border-volt-400 bg-volt-400/15 text-volt-300"
@@ -504,11 +529,15 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
                 }`}
               >
                 <span className="flex items-center gap-1.5 text-sm font-bold">
-                  {WEEK_SHORT[idx]}
+                  {labelMode === "numbered" ? formatDayName(dayNum, labelMode) : formatDayShort(dayNum, labelMode)}
                   {hasMeals && <span className="h-1.5 w-1.5 rounded-full bg-volt-400" />}
                 </span>
                 <span className={`text-[10px] font-semibold ${isSelected ? "text-volt-300/80" : "text-mist-500"}`}>
-                  {hasMeals ? `${dayCalories[dayNum].toLocaleString("en-US")} kcal` : "—"}
+                  {labelMode === "numbered"
+                    ? `${WEEK_SHORT[dayNum - 1]}${hasMeals ? ` · ${dayCalories[dayNum].toLocaleString("en-US")}` : ""}`
+                    : hasMeals
+                      ? `${dayCalories[dayNum].toLocaleString("en-US")} kcal`
+                      : "—"}
                 </span>
               </button>
             );
@@ -533,7 +562,10 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
                   </span>
                 )}
               </p>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-mist-500">{WEEK_DAYS[selectedDay - 1]}</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-mist-500">
+                {formatDayName(selectedDay, labelMode)}
+                {labelMode === "numbered" && <span className="normal-case"> · {WEEK_DAYS[selectedDay - 1]}</span>}
+              </p>
             </div>
           </div>
           <div className="flex gap-5">
@@ -608,7 +640,10 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
       {/* Meals List */}
       <div className="rise mt-4" style={{ animationDelay: "160ms" }}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-bold uppercase tracking-wider text-mist-300">{WEEK_DAYS[selectedDay - 1]}</h2>
+          <h2 className="text-lg font-bold uppercase tracking-wider text-mist-300">
+            {formatDayName(selectedDay, labelMode)}
+            {labelMode === "numbered" && <span className="ms-2 text-sm normal-case text-mist-500">· {WEEK_DAYS[selectedDay - 1]}</span>}
+          </h2>
           <div className="flex flex-wrap gap-2">
             <button
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-night-600 bg-night-800 px-3 py-1.5 text-xs font-bold text-mist-300 transition hover:border-volt-400 hover:text-volt-300"
@@ -667,7 +702,7 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
           >
             <div className="text-center py-8">
               <IconUtensils className="mx-auto h-12 w-12 text-night-500" />
-              <p className="mt-3 text-sm font-semibold text-mist-400">No meals planned for {WEEK_DAYS[selectedDay - 1]}</p>
+              <p className="mt-3 text-sm font-semibold text-mist-400">No meals planned for {formatDayName(selectedDay, labelMode)}</p>
               <p className="mt-1 text-xs text-mist-500">Start building this day's nutrition plan</p>
               <button className={`${btnPrimary} mt-4`} onClick={() => handleAddMeal()}>
                 <IconPlus className="h-4 w-4" />
@@ -787,6 +822,7 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
         initial={editing}
         defaultType={defaultType}
         defaultDay={editing?.day ?? selectedDay}
+        labelMode={labelMode}
         onClose={() => setModalOpen(false)}
       />
 
@@ -797,6 +833,7 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
         clientId={client.id}
         sourceDay={selectedDay}
         meals={allClientMeals}
+        labelMode={labelMode}
         onClose={() => setCopyModalOpen(false)}
       />
 

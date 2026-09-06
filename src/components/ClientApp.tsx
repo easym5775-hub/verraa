@@ -25,9 +25,10 @@ import {
   UtensilsCrossed,
   X,
 } from "lucide-react";
-import type { AppNotification, Client, Meal, MealType } from "../types";
-import { CAT_META, GOAL_META, MEAL_META, MEAL_TYPES, NOTIFICATION_META, SUB_PAYMENT_META, SUB_STATE_META, WEEK_DAYS, WEEK_SHORT } from "../types";
-import { dayNum, fileToDataUrl, fmtDate, fmtMoney, fmtTime, relTime, round1, signed, todayISO } from "../lib";
+import type { AppNotification, Client, Meal, MealType, DayLabelMode } from "../types";
+import { CAT_META, GOAL_META, MEAL_META, MEAL_TYPES, NOTIFICATION_META, SUB_PAYMENT_META, SUB_STATE_META, WEEK_DAYS,
+WEEK_SHORT, WEEK_ORDER_SAT_FIRST, formatDayName, formatDayShort } from "../types";
+import { dayNum, fileToDataUrl, fmtDate, fmtMoney, fmtTime, getDayLabelMode, relTime, round1, signed, todayISO } from "../lib";
 import { attendance, currentSubscription, progressOf, remainingLabel, subscriptionState } from "../logic";
 import { useApp } from "../store";
 import { Avatar, Badge, EmptyState, MoodPicker, SectionCard, Toggle, btnPrimary, chip, useCountUp } from "./ui";
@@ -330,7 +331,8 @@ function DailySummary({ meals, dayName, targets }: { meals: Meal[]; dayName: str
 }
 
 function NutritionTab({ clientId, client, allMeals }: { clientId: string; client: Client; allMeals: Meal[] }) {
-  const [selectedDay, setSelectedDay] = useState<number>(dayNum()); // Default to today's day
+  const [selectedDay, setSelectedDay] = useState<number>(dayNum()); // Default to today's day (stored numbering)
+  const [labelMode] = useState<DayLabelMode>(() => getDayLabelMode()); // Follows the coach's label choice
   const autoJumped = useRef(false);
   const meals = useMemo(() => allMeals.filter((m) => m.clientId === clientId), [allMeals, clientId]);
 
@@ -341,7 +343,7 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
     if (autoJumped.current || meals.length === 0) return;
     autoJumped.current = true;
     if (!meals.some((m) => m.day === dayNum())) {
-      const first = [1, 2, 3, 4, 5, 6, 7].find((d) => meals.some((m) => m.day === d));
+      const first = WEEK_ORDER_SAT_FIRST.find((d) => meals.some((m) => m.day === d));
       if (first) setSelectedDay(first);
     }
   }, [meals]);
@@ -360,11 +362,11 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
     });
   }, [dayMeals]);
   
-  // Weekly overview data
+  // Weekly overview data (displayed Sat-first)
   const weeklyOverview = useMemo(() => {
     const today = dayNum();
-    const daysData = Array.from({ length: 7 }, (_, i) => {
-      const day = i + 1;
+    const daysData = WEEK_ORDER_SAT_FIRST.map((day) => {
+      const i = day - 1;
       const dayMeals = meals.filter((m) => m.day === day);
       return {
         day,
@@ -401,11 +403,11 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
         <div className="relative">
           <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-mist-500 sm:text-[11px]">Weekly nutrition plan</p>
           <h1 className="mt-1 font-display text-[30px] font-bold uppercase leading-[0.95] text-mist-100 sm:text-[44px]">
-            {isToday ? "TODAY" : WEEK_DAYS[selectedDay - 1]}{" "}
+            {isToday ? "TODAY" : formatDayName(selectedDay, labelMode)}{" "}
             <span className={isToday ? "text-volt-400" : "text-mist-400"}>{WEEK_SHORT[selectedDay - 1]}</span>
           </h1>
           <p className="mt-1.5 text-[13px] text-mist-400">
-            {isToday ? "Your meals for today" : `Meals for ${WEEK_DAYS[selectedDay - 1]}`} · {sortedMeals.length} meal{sortedMeals.length === 1 ? "" : "s"}
+            {isToday ? "Your meals for today" : `Meals for ${formatDayName(selectedDay, labelMode)}`} · {sortedMeals.length} meal{sortedMeals.length === 1 ? "" : "s"}
           </p>
         </div>
       </div>
@@ -421,7 +423,7 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
                 key={d.day}
                 onClick={() => setSelectedDay(d.day)}
                 aria-pressed={isSelected}
-                aria-label={`${d.name}${isCurrentDay ? ", today" : ""}${d.hasPlan ? `, ${d.mealCount} meals` : ", no plan"}`}
+                aria-label={`${labelMode === "numbered" ? `${formatDayName(d.day, labelMode)} (${d.name})` : d.name}${isCurrentDay ? ", today" : ""}${d.hasPlan ? `, ${d.mealCount} meals` : ", no plan"}`}
                 className={`flex min-h-[52px] min-w-0 flex-col items-center justify-center rounded-xl border px-0 py-2 text-xs font-bold transition-all duration-200 active:scale-95 ${
                   isSelected
                     ? "border-volt-400 bg-volt-400/15 text-volt-300 shadow-[0_0_12px_-2px_rgba(205,241,75,0.3)]"
@@ -430,7 +432,7 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
                     : "border-transparent bg-transparent text-mist-500 hover:border-night-600"
                 }`}
               >
-                <span className="text-[10px] leading-none sm:text-xs">{d.short}</span>
+                <span className="text-[10px] leading-none sm:text-xs">{formatDayShort(d.day, labelMode)}</span>
                 <span className={`mt-1 font-display text-[13px] leading-none tnum sm:text-sm ${d.hasPlan ? "" : "opacity-40"}`}>{d.mealCount}</span>
                 <span className={`mt-1 h-1 w-1 rounded-full ${isSelected || isCurrentDay ? "bg-volt-400" : "bg-transparent"}`} />
               </button>
@@ -440,18 +442,18 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
       </div>
 
       {/* Daily Summary — isolated so its count-up frames never re-render the meals list */}
-      <DailySummary meals={dayMeals} dayName={WEEK_DAYS[selectedDay - 1]} targets={targets} />
+      <DailySummary meals={dayMeals} dayName={formatDayName(selectedDay, labelMode)} targets={targets} />
 
       {/* Meals List — grouped by type like coach mode */}
       <div>
-        <h2 className="mb-2 px-1 text-[13px] font-bold uppercase tracking-[0.14em] text-mist-100">Meals · {WEEK_DAYS[selectedDay - 1]}</h2>
+        <h2 className="mb-2 px-1 text-[13px] font-bold uppercase tracking-[0.14em] text-mist-100">Meals · {formatDayName(selectedDay, labelMode)}</h2>
 
         {sortedMeals.length === 0 ? (
           <SectionCard title="No meals planned" icon={<UtensilsCrossed className="h-5 w-5" />} bodyCls="p-6">
             <div className="text-center py-8">
               <UtensilsCrossed className="mx-auto h-12 w-12 text-night-500" />
               <p className="mt-3 text-sm font-semibold text-mist-400">No nutrition plan for this day</p>
-              <p className="mt-1 text-xs text-mist-500">Your coach hasn't assigned meals for {WEEK_DAYS[selectedDay - 1]} yet</p>
+              <p className="mt-1 text-xs text-mist-500">Your coach hasn't assigned meals for {formatDayName(selectedDay, labelMode)} yet</p>
               {weeklyOverview.some((d) => d.hasPlan) && (
                 <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                   {weeklyOverview
@@ -462,7 +464,7 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
                         onClick={() => setSelectedDay(d.day)}
                         className="cursor-pointer rounded-full border border-volt-400/40 bg-volt-400/10 px-3.5 py-1.5 text-xs font-bold text-volt-300 transition hover:bg-volt-400/20"
                       >
-                        View {d.name} · {d.mealCount} meal{d.mealCount === 1 ? "" : "s"}
+                        View {labelMode === "numbered" ? `${formatDayName(d.day, labelMode)} (${d.short})` : d.name} · {d.mealCount} meal{d.mealCount === 1 ? "" : "s"}
                       </button>
                     ))}
                 </div>
@@ -542,7 +544,7 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
                   : "border-night-700 bg-night-900"
               } ${selectedDay === d.day ? "ring-1 ring-volt-400" : ""}`}
             >
-              <p className="truncate text-[10px] font-bold text-mist-500">{d.short}</p>
+              <p className="truncate text-[10px] font-bold text-mist-500">{formatDayShort(d.day, labelMode)}</p>
               <p className={`mt-0.5 font-display text-[13px] font-bold tnum sm:text-sm ${d.hasPlan ? "text-mist-200" : "text-mist-600"}`}>
                 {d.mealCount}
               </p>
@@ -591,9 +593,9 @@ function TodayTab({
   const todayMeals = meals.filter((m) => m.day === dn);
   const plannedDayNames = useMemo(
     () =>
-      [1, 2, 3, 4, 5, 6, 7]
-        .filter((d) => d !== dn && meals.some((m) => m.day === d))
-        .map((d) => WEEK_DAYS[d - 1]),
+      WEEK_ORDER_SAT_FIRST.filter((d) => d !== dn && meals.some((m) => m.day === d)).map(
+        (d) => WEEK_DAYS[d - 1]
+      ),
     [meals, dn]
   );
   const kcal = todayMeals.reduce((s, m) => s + m.calories, 0);

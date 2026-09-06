@@ -3,6 +3,7 @@
    ================================================================ */
 
 import { v4 as uuidv4 } from "uuid";
+import type { DayLabelMode } from "./types";
 
 export const uuid = (): string => uuidv4();
 
@@ -40,6 +41,26 @@ export const relDay = (iso: string): string => {
 
 /** Monday = 1 ... Sunday = 7 */
 export const dayNum = (d: Date = new Date()): number => ((d.getDay() + 6) % 7) + 1;
+
+/* ---------------- day label mode preference (nutrition views) ---------------- */
+
+const DAY_LABEL_KEY = "forge-day-label-mode-v1";
+
+export function getDayLabelMode(): DayLabelMode {
+  try {
+    return localStorage.getItem(DAY_LABEL_KEY) === "numbered" ? "numbered" : "weekdays";
+  } catch {
+    return "weekdays";
+  }
+}
+
+export function setDayLabelMode(m: DayLabelMode): void {
+  try {
+    localStorage.setItem(DAY_LABEL_KEY, m);
+  } catch {
+    /* storage unavailable — non-fatal */
+  }
+}
 
 /** Whole days from → to (positive when `to` is in the future). */
 export const diffDays = (fromIso: string, toIso: string): number =>

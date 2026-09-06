@@ -2,13 +2,16 @@
    VERRAA — app root: auth phases + coach/client/owner routing.
    ================================================================ */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dumbbell } from "lucide-react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import type { CoachView } from "./types";
 import { StoreProvider, useApp } from "./store";
 import { Toasts } from "./components/ui";
 import { Auth } from "./components/Auth";
 import { AdminAuth } from "./components/AdminAuth";
+import { LandingPage } from "./components/landing/LandingPage";
+import { PrivacyPage, TermsPage } from "./components/landing/LandingFooter";
 import { CoachShell } from "./components/Shell";
 import { OwnerShell } from "./components/OwnerShell";
 import { Dashboard } from "./components/Dashboard";
@@ -29,6 +32,15 @@ import { OwnerAuditLogView } from "./components/OwnerAuditLogView";
 import { signOut } from "./services/auth";
 
 type OwnerView = "dashboard" | "coaches" | "subscriptions" | "requests" | "analytics" | "audit" | "settings";
+
+/** Reset scroll position on pathname change (hash-only changes are ignored). */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
 
 function Splash({ label }: { label: string }) {
   return (
@@ -118,7 +130,24 @@ function Root() {
   }
 
   if (phase === "signed-out" || !me) {
-    return <Auth onShowAdmin={() => setShowAdminAuth(true)} />;
+    return (
+      <Routes>
+        {/* Public marketing page — no authentication required, no private data. */}
+        <Route path="/" element={<LandingPage />} />
+        {/* Existing authentication flows (coach email+password, client username). */}
+        <Route path="/login" element={<Auth initialMode="signin" onShowAdmin={() => setShowAdminAuth(true)} />} />
+        <Route path="/signup" element={<Auth initialMode="signup" onShowAdmin={() => setShowAdminAuth(true)} />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
+        {/* App areas stay protected: unauthenticated visitors go to sign-in.
+            No owner/admin surface is exposed publicly. */}
+        <Route path="/coach" element={<Navigate to="/login" replace />} />
+        <Route path="/client" element={<Navigate to="/login" replace />} />
+        <Route path="/owner" element={<Navigate to="/login" replace />} />
+        <Route path="/admin" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    );
   }
 
   if (me.role === "client") {
@@ -147,6 +176,7 @@ export default function App() {
       <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-4 focus:left-4 focus:px-4 focus:py-2 focus:bg-volt-400 focus:text-night-950 focus:font-bold focus:rounded-xl focus:shadow-lg">
         Skip to main content
       </a>
+      <ScrollToTop />
       <Root />
       <Toasts />
     </StoreProvider>
