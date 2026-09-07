@@ -18,13 +18,16 @@ import type {
   AppState,
   CheckIn,
   Client,
+  ClientExercise,
   CoachNote,
   CoachPlan,
   CoachPlanConfig,
   CoachPlanRequest,
   CoachSubscription,
   Exercise,
+  ExerciseCategory,
   Meal,
+  MealEditRequest,
   NewClientInput,
   NutritionTargets,
   Payment,
@@ -32,7 +35,10 @@ import type {
   Session,
   SessionStatus,
   Subscription,
+  WorkoutEntry,
+  WorkoutSession,
 } from "./types";
+import { workoutExerciseKey } from "./types";
 import { errorMessage, todayISO, uid, uuid } from "./lib";
 import {
   getCoachClientCount,
@@ -45,8 +51,10 @@ import {
   backend,
   type RoleInfo,
   checkInToRow,
+  clientExerciseToRow,
   clientToRow,
   exerciseToRow,
+  mealRequestToRow,
   mealToRow,
   messageToRow,
   notificationToRow,
@@ -54,6 +62,8 @@ import {
   planToRow,
   sessionToRow,
   subscriptionToRow,
+  workoutEntryToRow,
+  workoutSessionToRow,
 } from "./services/backend";
 import { getSessionUserId, onAuthChange, resolveRole } from "./services/auth";
 
@@ -99,6 +109,34 @@ interface Store {
 
   addCheckIn: (input: Omit<CheckIn, "id" | "ts" | "coachId">) => void;
   deleteCheckIn: (id: string) => void;
+
+  /* ---- Strength tracker (client mode) ---- */
+  addClientExercise: (input: { name: string; category: ExerciseCategory; notes?: string; clientId?: string }) => ClientExercise | null;
+  deleteClientExercise: (id: string) => void;
+  logWorkoutSession: (input: {
+    name: string;
+    templateId?: string;
+    notes?: string;
+    date?: string;
+    clientId?: string;
+    entries: Array<{
+      exerciseId?: string;
+      clientExerciseId?: string;
+      exerciseName: string;
+      category?: ExerciseCategory;
+      weight: number;
+      reps: number;
+      sets: number;
+    }>;
+  }) => { session: WorkoutSession; prCount: number } | null;
+  updateWorkoutEntry: (e: WorkoutEntry) => void;
+  deleteWorkoutEntry: (id: string) => void;
+  deleteWorkoutSession: (id: string) => void;
+
+  /* ---- Meal edit requests (client asks, coach decides) ---- */
+  requestMealEdit: (input: { meal: Meal; message: string; suggestion?: string; clientId?: string }) => MealEditRequest | null;
+  cancelMealRequest: (id: string) => void;
+  reviewMealRequest: (id: string, approve: boolean, coachNote?: string) => void;
 
   addSubscription: (input: Omit<Subscription, "id" | "createdAt" | "coachId">, opts?: { paymentMethod?: Payment["method"] }) => Subscription;
   updateSubscription: (sub: Subscription, opts?: { paymentMethod?: Payment["method"] }) => void;
@@ -157,6 +195,11 @@ const EMPTY: AppState = {
   coaches: [],
   coachSubscriptions: [],
   planRequests: [],
+  clientExercises: [],
+  workoutTemplates: [],
+  workoutSessions: [],
+  workoutEntries: [],
+  mealRequests: [],
 };
 
 export function StoreProvider({ children }: { children: ReactNode }) {
@@ -390,6 +433,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           sessions: s.sessions.filter((x) => x.clientId !== id),
           messages: s.messages.filter((x) => x.clientId !== id),
           notifications: s.notifications.filter((x) => x.clientId !== id),
+          clientExercises: s.clientExercises.filter((x) => x.clientId !== id),
+          workoutTemplates: s.workoutTemplates.filter((x) => x.clientId !== id),
+          workoutSessions: s.workoutSessions.filter((x) => x.clientId !== id),
+          workoutEntries: s.workoutEntries.filter((x) => x.clientId !== id),
+          mealRequests: (s.mealRequests ?? []).filter((x) => x.clientId !== id),
         }),
         () => backend.deleteClientAccount(id),
       );
@@ -546,6 +594,260 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       );
     },
     [mutate],
+  );
+
+  /* ---------------- strength tracker ---------------- */
+
+  /** Resolve the owning client for tracker writes (client self, or explicit id). */
+  const trackerClientId = useCallback((explicit?: string): string => {
+    if (explicit) return explicit;
+    const me = meRef.current;
+    return me?.role === "client" ? me.userId : "";
+  }, []);
+
+  const addClientExercise = useCallback(
+    (input: { name: string; category: ExerciseCategory; notes?: string; clientId?: string }) => {
+      const clientId = trackerClientId(input.clientId);
+      if (!clientId) {
+        toast("Couldn't save — not signed in as a client.", "warn");
+        return null;
+      }
+      const ex: ClientExercise = {
+        id: uuid(),
+        coachId: coachId(),
+        clientId,
+        name: input.name.trim().slice(0, 80),
+        category: input.category,
+        notes: (input.notes ?? "").trim().slice(0, 300),
+        createdAt: Date.now(),
+      };
+      if (!ex.name) {
+        toast("Give the exercise a name first.", "warn");
+        return null;
+      }
+      mutate(
+        (s) => ({ ...s, clientExercises: [ex, ...s.clientExercises] }),
+        () => backend.insert("client_exercises", { id: ex.id, coach_id: ex.coachId, ...clientExerciseToRow(ex) }),
+        `${ex.name} added`,
+      );
+      return ex;
+    },
+    [mutate, toast, trackerClientId],
+  );
+
+  const deleteClientExercise = useCallback(
+    (id: string) => {
+      const name = stateRef.current.clientExercises.find((x) => x.id === id)?.name ?? "Exercise";
+      mutate(
+        (s) => ({ ...s, clientExercises: s.clientExercises.filter((x) => x.id !== id) }),
+        () => backend.remove("client_exercises", id),
+      );
+      toast(`${name} removed`, "warn");
+    },
+    [mutate, toast],
+  );
+
+  const logWorkoutSession = useCallback(
+    (input: {
+      name: string;
+      templateId?: string;
+      notes?: string;
+      date?: string;
+      clientId?: string;
+      entries: Array<{
+        exerciseId?: string;
+        clientExerciseId?: string;
+        exerciseName: string;
+        category?: ExerciseCategory;
+        weight: number;
+        reps: number;
+        sets: number;
+      }>;
+    }) => {
+      const clientId = trackerClientId(input.clientId);
+      if (!clientId) {
+        toast("Couldn't save — not signed in as a client.", "warn");
+        return null;
+      }
+      const valid = input.entries.filter((e) => e.exerciseName.trim() && e.weight > 0 && e.reps > 0);
+      if (valid.length === 0) {
+        toast("Log at least one exercise with a weight.", "warn");
+        return null;
+      }
+      const cid = coachId();
+      const session: WorkoutSession = {
+        id: uuid(),
+        coachId: cid,
+        clientId,
+        templateId: input.templateId,
+        name: input.name.trim().slice(0, 60) || "Workout",
+        date: input.date ?? todayISO(),
+        ts: Date.now(),
+        notes: input.notes?.trim() || undefined,
+      };
+      // PR = top weight strictly above the previous all-time max for the
+      // same exercise key. First-ever log is a baseline, not a PR.
+      const prev = stateRef.current.workoutEntries.filter((e) => e.clientId === clientId);
+      const batchMax = new Map<string, number>();
+      const entries: WorkoutEntry[] = valid.map((e) => {
+        const key = workoutExerciseKey(e);
+        let max = batchMax.get(key);
+        if (max === undefined) {
+          max = prev.filter((p) => workoutExerciseKey(p) === key).reduce((m, p) => Math.max(m, p.weight), -Infinity);
+          if (max === -Infinity) max = -Infinity;
+        }
+        const isPR = max !== -Infinity && e.weight > (max as number);
+        batchMax.set(key, Math.max(max === -Infinity ? -Infinity : (max as number), e.weight));
+        return {
+          id: uuid(),
+          coachId: cid,
+          clientId,
+          sessionId: session.id,
+          exerciseId: e.exerciseId,
+          clientExerciseId: e.clientExerciseId,
+          exerciseName: e.exerciseName.trim().slice(0, 80),
+          category: e.category,
+          weight: Math.round(e.weight * 10) / 10,
+          reps: Math.max(1, Math.floor(e.reps)),
+          sets: Math.max(1, Math.floor(e.sets)),
+          isPR,
+          createdAt: Date.now(),
+        };
+      });
+      const prCount = entries.filter((e) => e.isPR).length;
+      mutate(
+        (s) => ({ ...s, workoutSessions: [session, ...s.workoutSessions], workoutEntries: [...s.workoutEntries, ...entries] }),
+        async () => {
+          await backend.insert("workout_sessions", { id: session.id, coach_id: session.coachId, ...workoutSessionToRow(session) });
+          for (const e of entries) {
+            await backend.insert("workout_entries", { id: e.id, coach_id: e.coachId, ...workoutEntryToRow(e) });
+          }
+        },
+        prCount > 0 ? `Workout saved — ${prCount} new PR${prCount > 1 ? "s" : ""}!` : "Workout saved",
+      );
+      return { session, prCount };
+    },
+    [mutate, toast, trackerClientId],
+  );
+
+  const updateWorkoutEntry = useCallback(
+    (e: WorkoutEntry) => {
+      // Recompute PR flag against every OTHER entry for the same exercise:
+      // still the max → stays a PR; edited below the max → flag clears;
+      // edited above the max → becomes a PR.
+      const others = stateRef.current.workoutEntries.filter(
+        (x) => x.clientId === e.clientId && x.id !== e.id && workoutExerciseKey(x) === workoutExerciseKey(e),
+      );
+      const othersMax = others.reduce((m, x) => Math.max(m, x.weight), -Infinity);
+      const next: WorkoutEntry = { ...e, isPR: othersMax !== -Infinity && e.weight > othersMax };
+      mutate(
+        (s) => ({ ...s, workoutEntries: s.workoutEntries.map((x) => (x.id === e.id ? next : x)) }),
+        () => backend.update("workout_entries", e.id, workoutEntryToRow(next)),
+        "Entry updated",
+      );
+    },
+    [mutate],
+  );
+
+  const deleteWorkoutEntry = useCallback(
+    (id: string) => {
+      mutate(
+        (s) => ({ ...s, workoutEntries: s.workoutEntries.filter((x) => x.id !== id) }),
+        () => backend.remove("workout_entries", id),
+        "Entry deleted",
+      );
+    },
+    [mutate],
+  );
+
+  const deleteWorkoutSession = useCallback(
+    (id: string) => {
+      mutate(
+        (s) => ({
+          ...s,
+          workoutSessions: s.workoutSessions.filter((x) => x.id !== id),
+          workoutEntries: s.workoutEntries.filter((x) => x.sessionId !== id),
+        }),
+        () => backend.remove("workout_sessions", id),
+        "Workout deleted",
+      );
+    },
+    [mutate],
+  );
+
+  /* ---------------- meal edit requests ---------------- */
+
+  const requestMealEdit = useCallback(
+    (input: { meal: Meal; message: string; suggestion?: string; clientId?: string }) => {
+      const clientId = trackerClientId(input.clientId);
+      if (!clientId) {
+        toast("Couldn't send — not signed in as a client.", "warn");
+        return null;
+      }
+      const message = input.message.trim().slice(0, 500);
+      if (!message) {
+        toast("Describe the issue first.", "warn");
+        return null;
+      }
+      const req: MealEditRequest = {
+        id: uuid(),
+        coachId: coachId(),
+        clientId,
+        mealId: input.meal.id,
+        day: input.meal.day,
+        mealType: input.meal.type,
+        mealDescription: input.meal.description,
+        message,
+        suggestion: input.suggestion?.trim().slice(0, 500) || undefined,
+        status: "PENDING",
+        createdAt: Date.now(),
+      };
+      mutate(
+        (s) => ({ ...s, mealRequests: [req, ...(s.mealRequests ?? [])] }),
+        () => backend.insert("meal_edit_requests", { id: req.id, coach_id: req.coachId, ...mealRequestToRow(req) }),
+        "Request sent — your coach will review it",
+      );
+      return req;
+    },
+    [mutate, toast, trackerClientId],
+  );
+
+  const cancelMealRequest = useCallback(
+    (id: string) => {
+      mutate(
+        (s) => ({ ...s, mealRequests: (s.mealRequests ?? []).filter((x) => x.id !== id) }),
+        () => backend.remove("meal_edit_requests", id),
+        "Request cancelled",
+      );
+    },
+    [mutate],
+  );
+
+  const reviewMealRequest = useCallback(
+    (id: string, approve: boolean, coachNote?: string) => {
+      const cur = stateRef.current.mealRequests?.find((x) => x.id === id);
+      if (!cur || cur.status !== "PENDING") return;
+      const note = coachNote?.trim().slice(0, 500) || undefined;
+      const next: MealEditRequest = {
+        ...cur,
+        status: approve ? "APPROVED" : "REJECTED",
+        coachNote: note,
+        reviewedAt: Date.now(),
+      };
+      mutate(
+        (s) => ({ ...s, mealRequests: (s.mealRequests ?? []).map((x) => (x.id === id ? next : x)) }),
+        () => backend.update("meal_edit_requests", id, mealRequestToRow(next)),
+        approve ? "Approved — client notified" : "Rejected — client notified",
+      );
+      addNotification({
+        clientId: cur.clientId,
+        kind: "meal_updated",
+        text: approve
+          ? "Your coach approved your meal edit — it's updated"
+          : `Your coach reviewed your meal request${note ? `: ${note}` : ""}`,
+      });
+    },
+    [mutate, addNotification],
   );
 
   /* ---------------- subscriptions & payments ---------------- */
@@ -973,6 +1275,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         deleteMeal,
         addCheckIn,
         deleteCheckIn,
+        addClientExercise,
+        deleteClientExercise,
+        logWorkoutSession,
+        updateWorkoutEntry,
+        deleteWorkoutEntry,
+        deleteWorkoutSession,
+        requestMealEdit,
+        cancelMealRequest,
+        reviewMealRequest,
         addSubscription,
         updateSubscription,
         renewSubscription,

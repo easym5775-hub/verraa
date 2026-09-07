@@ -18,6 +18,7 @@ import {
   Image as ImageIcon,
   LogOut,
   MessageCircle,
+  Pencil,
   Play,
   Scale,
   Send,
@@ -25,17 +26,23 @@ import {
   UtensilsCrossed,
   X,
 } from "lucide-react";
-import type { AppNotification, Client, Meal, MealType, DayLabelMode } from "../types";
+import type { AppNotification, Client, Meal, MealRequestStatus, MealType, DayLabelMode } from "../types";
 import { CAT_META, GOAL_META, MEAL_META, MEAL_TYPES, NOTIFICATION_META, SUB_PAYMENT_META, SUB_STATE_META, WEEK_DAYS,
 WEEK_SHORT, WEEK_ORDER_SAT_FIRST, formatDayName, formatDayShort } from "../types";
-import { dayNum, fmtDate, fmtMoney, fmtTime, getDayLabelMode, relTime, round1, signed, todayISO } from "../lib";
-import { uploadCheckinPhoto } from "../services/googleDrive";
+import { dayNum, fileToDataUrl, fmtDate, fmtMoney, fmtTime, getDayLabelMode, relTime, round1, signed, todayISO } from "../lib";
 import { attendance, currentSubscription, progressOf, remainingLabel, subscriptionState } from "../logic";
 import { useApp } from "../store";
-import { Avatar, Badge, EmptyState, MoodPicker, SectionCard, Toggle, btnPrimary, chip, useCountUp } from "./ui";
+import { Avatar, Badge, EmptyState, Modal, MoodPicker, SectionCard, Toggle, btnPrimary, btnSecondary, btnVolt, chip, inputCls, labelCls, textareaCls, useCountUp } from "./ui";
 import { WeightLine } from "./Chart";
+import { StrengthTracker } from "./StrengthTracker";
 
-type Tab = "today" | "nutrition" | "checkin" | "progress" | "chat" | "subscription";
+const MEAL_REQ_META: Record<MealRequestStatus, { chip: string; label: string }> = {
+  PENDING: { chip: "border-warn-400/25 bg-warn-400/10 text-warn-300", label: "Pending review" },
+  APPROVED: { chip: "border-moss-400/25 bg-moss-400/10 text-moss-300", label: "Approved" },
+  REJECTED: { chip: "border-danger-500/25 bg-danger-500/10 text-danger-300", label: "Rejected" },
+};
+
+type Tab = "today" | "training" | "nutrition" | "checkin" | "progress" | "chat" | "subscription";
 
 export function ClientApp({ onLogout }: { onLogout: () => void }) {
   const { state, me, markAllNotificationsRead } = useApp();
@@ -69,6 +76,7 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "today", label: "Today" },
+    { id: "training", label: "Training" },
     { id: "nutrition", label: "Nutrition" },
     { id: "checkin", label: "Check-in" },
     { id: "progress", label: "Progress" },
@@ -122,6 +130,15 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
               </button>
             ))}
           </nav>
+          {/* training shortcut — visible on mobile/tablet where bottom nav hides it */}
+          <button
+            onClick={() => goTab("training")}
+            aria-label="Strength tracker"
+            aria-current={tab === "training" ? "page" : undefined}
+            className={`grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-xl border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50 lg:hidden ${tab === "training" ? "border-volt-400/50 bg-volt-400/15 text-volt-300" : "border-white/[0.08] bg-white/[0.02] text-mist-400 hover:border-white/[0.14] hover:text-mist-100"}`}
+          >
+            <Dumbbell className="h-[18px] w-[18px]" />
+          </button>
           {/* subscription shortcut — visible on mobile/tablet where bottom nav hides it */}
           <button
             onClick={() => goTab("subscription")}
@@ -191,7 +208,8 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
       <main id="main-content" className="relative z-10 mx-auto w-full max-w-4xl px-4 pb-32 pt-4 sm:px-6 sm:pt-6 lg:pb-12 lg:py-8">
         {/* Single cheap opacity fade per tab — replaces staggered rise animations (see .client-app CSS). */}
         <div key={tab} className="animate-fade">
-          {tab === "today" && <TodayTab plans={plans} meals={meals} exercises={state.exercises} onCheckIn={() => goTab("checkin")} sessionsToday={sessions.filter((s) => s.date === todayISO())} />}
+          {tab === "today" && <TodayTab plans={plans} meals={meals} exercises={state.exercises} onCheckIn={() => goTab("checkin")} onOpenTraining={() => goTab("training")} sessionsToday={sessions.filter((s) => s.date === todayISO())} />}
+          {tab === "training" && <StrengthTracker clientId={clientId} />}
           {tab === "nutrition" && <NutritionTab clientId={clientId} client={client} allMeals={state.meals} />}
           {tab === "checkin" && <CheckInTab clientId={clientId} onDone={() => goTab("progress")} alreadyToday={checkIns.some((c) => c.date === todayISO())} />}
           {tab === "progress" && <ProgressTab checkIns={checkIns} sessionsCount={attendance(sessions)} />}
@@ -332,10 +350,17 @@ function DailySummary({ meals, dayName, targets }: { meals: Meal[]; dayName: str
 }
 
 function NutritionTab({ clientId, client, allMeals }: { clientId: string; client: Client; allMeals: Meal[] }) {
+  const { state, requestMealEdit, cancelMealRequest } = useApp();
   const [selectedDay, setSelectedDay] = useState<number>(dayNum()); // Default to today's day (stored numbering)
   const [labelMode] = useState<DayLabelMode>(() => getDayLabelMode()); // Follows the coach's label choice
+  const [reqMeal, setReqMeal] = useState<Meal | null>(null);
   const autoJumped = useRef(false);
   const meals = useMemo(() => allMeals.filter((m) => m.clientId === clientId), [allMeals, clientId]);
+  const myRequests = useMemo(
+    () => (state.mealRequests ?? []).filter((r) => r.clientId === clientId).sort((a, b) => b.createdAt - a.createdAt),
+    [state.mealRequests, clientId],
+  );
+  const pendingFor = (mealId: string) => myRequests.filter((r) => r.mealId === mealId && r.status === "PENDING");
 
   // If today has no plan but another day does (the coach usually builds
   // Monday first), jump once to the first planned day so the client
@@ -507,7 +532,20 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
                   <ul className="grid gap-2">
                     {list.map((meal) => (
                       <li key={meal.id} className="rounded-lg border border-night-700 bg-night-800 p-3">
-                        <p className="text-sm font-semibold leading-5 text-mist-100">{meal.description}</p>
+                        <div className="flex items-start gap-2">
+                          <p className="min-w-0 flex-1 text-sm font-semibold leading-5 text-mist-100">{meal.description}</p>
+                          {pendingFor(meal.id).length > 0 && (
+                            <Badge className={`shrink-0 ${MEAL_REQ_META.PENDING.chip}`}>Pending{pendingFor(meal.id).length > 1 ? ` × ${pendingFor(meal.id).length}` : ""}</Badge>
+                          )}
+                          <button
+                            onClick={() => setReqMeal(meal)}
+                            title="Request a change"
+                            aria-label={`Request a change to ${meal.description}`}
+                            className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-lg text-mist-500 transition hover:bg-night-700 hover:text-volt-300"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                         {meal.time && (
                           <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-mist-500">
                             <span className="font-display text-xs tnum">{fmtTime(meal.time)}</span>
@@ -532,6 +570,34 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
         )}
       </div>
       
+      {/* My edit requests */}
+      {myRequests.length > 0 && (
+        <SectionCard title={`My edit requests · ${myRequests.filter((r) => r.status === "PENDING").length} pending`} icon={<Pencil className="h-4.5 w-4.5" />} bodyCls="p-2.5 sm:p-3">
+          <ul className="grid gap-2">
+            {myRequests.slice(0, 10).map((r) => (
+              <li key={r.id} className="rounded-xl border border-night-700 bg-night-800 p-3">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-mist-500 tnum">{formatDayName(r.day, labelMode)} · {r.mealType}</span>
+                  <Badge className={`ms-auto ${MEAL_REQ_META[r.status].chip}`}>{MEAL_REQ_META[r.status].label}</Badge>
+                </div>
+                <p className="mt-1 truncate text-[13px] font-bold text-mist-100">“{r.mealDescription}”</p>
+                <p className="mt-1 text-xs leading-5 text-mist-300">{r.message}</p>
+                {r.suggestion && <p className="mt-1 text-xs leading-5 text-volt-200/90">Suggestion: {r.suggestion}</p>}
+                {r.coachNote && <p className="mt-1.5 rounded-lg bg-night-850 px-2.5 py-1.5 text-[11px] italic leading-5 text-mist-400">Coach: {r.coachNote}</p>}
+                <div className="mt-1.5 flex items-center justify-between">
+                  <span className="text-[10px] font-semibold text-mist-600">{relTime(r.createdAt)}</span>
+                  {r.status === "PENDING" && (
+                    <button onClick={() => cancelMealRequest(r.id)} className="cursor-pointer rounded-lg px-2 py-1 text-[11px] font-bold text-mist-500 transition hover:bg-danger-500/10 hover:text-danger-300">
+                      Cancel request
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      )}
+
       {/* Weekly Overview */}
       <SectionCard title="Week Overview" icon={<ClipboardList className="h-4.5 w-4.5" />} bodyCls="p-2.5 sm:p-3">
         <div className="grid grid-cols-7 gap-1 sm:gap-2">
@@ -569,7 +635,65 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
           </div>
         </div>
       </SectionCard>
+
+      <MealRequestModal meal={reqMeal} dayLabel={reqMeal ? formatDayName(reqMeal.day, labelMode) : ""} clientId={clientId} onClose={() => setReqMeal(null)} />
     </div>
+  );
+}
+
+function MealRequestModal({ meal, dayLabel, clientId, onClose }: {
+  meal: Meal | null;
+  dayLabel: string;
+  clientId: string;
+  onClose: () => void;
+}) {
+  const { requestMealEdit } = useApp();
+  const [message, setMessage] = useState("");
+  const [suggestion, setSuggestion] = useState("");
+
+  useEffect(() => {
+    setMessage("");
+    setSuggestion("");
+  }, [meal?.id]);
+
+  const submit = () => {
+    if (!meal) return;
+    const req = requestMealEdit({ meal, message, suggestion, clientId });
+    if (req) onClose();
+  };
+
+  return (
+    <Modal open={!!meal} onClose={onClose} title="Request a change" description={meal ? `${dayLabel} · ${meal.type}` : undefined}>
+      {meal && (
+        <div className="rounded-xl border border-night-600 bg-night-800 px-3.5 py-2.5">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-mist-500">Current meal</p>
+          <p className="mt-0.5 text-sm font-bold text-mist-100">“{meal.description}”</p>
+          <p className="mt-0.5 text-[11px] font-bold text-mist-500 tnum">{meal.calories} kcal · P {meal.protein}g · C {meal.carbs}g · F {meal.fats}g</p>
+        </div>
+      )}
+      <label className={`${labelCls} mt-3 block`}>What's the issue? *</label>
+      <textarea
+        className={`${textareaCls} mt-1.5 min-h-20`}
+        placeholder="e.g. I don't like oats — they upset my stomach…"
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        rows={3}
+      />
+      <label className={`${labelCls} mt-3 block`}>Your suggested alternative (optional)</label>
+      <textarea
+        className={`${textareaCls} mt-1.5 min-h-16`}
+        placeholder="e.g. Replace with 80g whole-wheat bread + cheese…"
+        value={suggestion}
+        onChange={(e) => setSuggestion(e.target.value)}
+        rows={2}
+      />
+      <div className="mt-4 flex gap-2">
+        <button onClick={submit} disabled={!message.trim()} className={`${btnVolt} h-11 flex-1 disabled:opacity-40`}>
+          <Send className="h-4 w-4" /> Request for edit
+        </button>
+        <button onClick={onClose} className={`${btnSecondary} h-11`}>Cancel</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -580,12 +704,14 @@ function TodayTab({
   meals,
   exercises,
   onCheckIn,
+  onOpenTraining,
   sessionsToday,
 }: {
   plans: { id: string; day: number; exerciseId: string; sets: number; reps: number; rest: number; notes: string }[];
   meals: Meal[];
   exercises: { id: string; name: string; category: "Chest" | "Back" | "Legs" | "Arms" | "Core" | "Cardio"; videoUrl: string }[];
   onCheckIn: () => void;
+  onOpenTraining: () => void;
   sessionsToday: { id: string; time: string; type: string; status: string }[];
 }) {
   const dn = dayNum();
@@ -635,6 +761,20 @@ function TodayTab({
           </button>
         </div>
       </div>
+
+      <button
+        onClick={onOpenTraining}
+        className="group flex w-full cursor-pointer items-center gap-3 overflow-hidden rounded-2xl border border-volt-400/25 bg-gradient-to-r from-volt-400/[0.12] to-transparent p-4 text-start transition active:scale-[0.99] hover:border-volt-400/45 sm:p-5"
+      >
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-volt-400 text-night-950 shadow-[0_8px_24px_-8px_rgba(205,241,75,0.6)]">
+          <Dumbbell className="h-6 w-6" strokeWidth={2.2} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-extrabold text-mist-100">Log today's weights</span>
+          <span className="mt-0.5 block truncate text-xs font-semibold text-mist-400">Strength tracker · last weights + PR celebration</span>
+        </span>
+        <ArrowRight className="h-5 w-5 shrink-0 text-volt-300 transition-transform group-hover:translate-x-0.5 rtl:rotate-180" />
+      </button>
 
       {sessionsToday.length > 0 && (
         <SectionCard title="Today's sessions" icon={<ClipboardList className="h-4.5 w-4.5" />} bodyCls="p-2.5 sm:p-3">
@@ -754,57 +894,27 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
   const [water, setWater] = useState("2");
   const [done, setDone] = useState(true);
   const [notes, setNotes] = useState("");
-  // Drive mode: keep the raw File + a local preview. Nothing is stored in the
-  // DB until submit uploads to Drive and returns a short public link.
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | undefined>(undefined);
+  const [photo, setPhoto] = useState<string | undefined>(undefined);
   const [photoErr, setPhotoErr] = useState("");
-  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => () => {
-    if (photoPreview?.startsWith("blob:")) URL.revokeObjectURL(photoPreview);
-  }, [photoPreview]);
-
-  const pickPhoto = (e: ChangeEvent<HTMLInputElement>) => {
+  const pickPhoto = async (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    setPhotoErr("");
-    if (photoPreview?.startsWith("blob:")) URL.revokeObjectURL(photoPreview);
-    setPhotoFile(f);
-    setPhotoPreview(URL.createObjectURL(f));
+    try {
+      setPhotoErr("");
+      setPhoto(await fileToDataUrl(f, 640));
+    } catch {
+      setPhotoErr("Could not read that image.");
+    }
   };
 
-  const clearPhoto = () => {
-    if (photoPreview?.startsWith("blob:")) URL.revokeObjectURL(photoPreview);
-    setPhotoFile(null);
-    setPhotoPreview(undefined);
-    setPhotoErr("");
-  };
-
-  const submit = async () => {
+  const submit = () => {
     const w = Number(weight);
     if (!weight || Number.isNaN(w) || w <= 0) {
       setError("Enter your weight — it's the core of the check-in.");
       return;
-    }
-    setError("");
-    // Upload to the client's own Google Drive first — only the link is saved.
-    let photo: string | undefined;
-    if (photoFile) {
-      setUploading(true);
-      setPhotoErr("");
-      try {
-        const day = todayISO();
-        const res = await uploadCheckinPhoto(photoFile, `checkin-${day}.jpg`);
-        photo = res.url;
-      } catch (e) {
-        setPhotoErr(e instanceof Error ? e.message : "Couldn't upload to Google Drive.");
-        setUploading(false);
-        return;
-      }
-      setUploading(false);
     }
     addCheckIn({
       clientId,
@@ -870,12 +980,12 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
       <SectionCard title="Photo & notes" icon={<Camera className="h-4.5 w-4.5" />} bodyCls="p-4 sm:p-5">
         <div className="grid gap-4">
           <div>
-            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-mist-400">Progress photo (optional) · saves to Google Drive</label>
+            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-mist-400">Progress photo (optional)</label>
             <div className="flex items-center gap-3">
-              {photoPreview ? (
+              {photo ? (
                 <div className="relative">
-                  <img src={photoPreview} alt="Client progress photo" loading="lazy" className="h-20 w-20 rounded-xl object-cover ring-1 ring-night-600" />
-                  <button type="button" onClick={clearPhoto} className="absolute -end-2 -top-2 grid h-7 w-7 cursor-pointer place-items-center rounded-full bg-danger-500 text-white shadow" aria-label="Remove photo">
+                  <img src={photo} alt="Client progress photo" loading="lazy" className="h-20 w-20 rounded-xl object-cover ring-1 ring-night-600" />
+                  <button type="button" onClick={() => setPhoto(undefined)} className="absolute -end-2 -top-2 grid h-7 w-7 cursor-pointer place-items-center rounded-full bg-danger-500 text-white shadow" aria-label="Remove photo">
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -886,19 +996,11 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
               )}
               <label className="inline-flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl border border-night-500 bg-night-700 px-4 text-[13px] font-bold text-mist-100 transition active:scale-95 hover:bg-night-600">
                 <Camera className="h-4 w-4" />
-                {photoPreview ? "Replace" : "Upload to Drive"}
-                <input type="file" accept="image/*" className="hidden" onChange={pickPhoto} />
+                {photo ? "Replace" : "Upload"}
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => void pickPhoto(e)} />
               </label>
             </div>
-            <p className="mt-1.5 text-[11px] leading-4 text-mist-500">First upload asks for Google permission once — the photo lives on your Drive, only a link is saved (zero DB space).</p>
-            {photoErr && (
-              <p className="mt-1 text-xs font-semibold text-danger-400">
-                {photoErr}{" "}
-                <button type="button" onClick={clearPhoto} className="cursor-pointer underline hover:no-underline">
-                  Submit without photo
-                </button>
-              </p>
-            )}
+            {photoErr && <p className="mt-1 text-xs font-semibold text-danger-400">{photoErr}</p>}
           </div>
           <div>
             <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-mist-400">Notes for your coach</label>
@@ -907,12 +1009,8 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
         </div>
         {error && <p className="mt-3 text-xs font-bold text-danger-400">{error}</p>}
         <div className="sticky bottom-[92px] z-10 mt-4 lg:static">
-          <button
-            className={`${btnPrimary} h-12 w-full text-base shadow-[0_10px_28px_-10px_rgba(205,241,75,0.65)] disabled:opacity-60`}
-            onClick={() => void submit()}
-            disabled={uploading}
-          >
-            <Check className="h-5 w-5" strokeWidth={2.4} /> {uploading ? "Uploading to Drive…" : "Submit check-in"}
+          <button className={`${btnPrimary} h-12 w-full text-base shadow-[0_10px_28px_-10px_rgba(205,241,75,0.65)]`} onClick={submit}>
+            <Check className="h-5 w-5" strokeWidth={2.4} /> Submit check-in
           </button>
         </div>
       </SectionCard>

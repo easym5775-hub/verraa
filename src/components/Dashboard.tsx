@@ -198,6 +198,34 @@ export function Dashboard({
     const out: AttentionItem[] = [];
     const covered = new Set<string>(); // client ids already carrying a high-severity card
 
+    // Meal change requests first — the client is actively waiting on you.
+    const pendingMealReqs = (state.mealRequests ?? []).filter((r) => r.status === "PENDING");
+    if (pendingMealReqs.length > 0) {
+      const byClient = new Map<string, typeof pendingMealReqs>();
+      for (const r of pendingMealReqs) {
+        const list = byClient.get(r.clientId) ?? [];
+        list.push(r);
+        byClient.set(r.clientId, list);
+      }
+      for (const [cid, reqs] of byClient) {
+        const client = clientById.get(cid);
+        if (!client) continue;
+        const latest = [...reqs].sort((a, b) => b.createdAt - a.createdAt)[0];
+        out.push({
+          key: `mealreq-${cid}`,
+          client,
+          severity: "high",
+          title: reqs.length === 1 ? "Meal change request" : `${reqs.length} meal change requests`,
+          detail: latest.message.length > 60 ? `${latest.message.slice(0, 60)}…` : latest.message,
+          meta: "Review",
+          actionLabel: "Review",
+          run: () => go("meals", cid),
+          sort: 0,
+        });
+        covered.add(cid);
+      }
+    }
+
     for (const { client, info } of lists.expired) {
       out.push({
         key: `exp-${client.id}`,
@@ -347,7 +375,7 @@ export function Dashboard({
     }
     return out.sort((a, b) => a.sort - b.sort);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lists, state.sessions, state.payments, state.subscriptions, state.checkIns, clientById, pendingCheckIns, today]);
+  }, [lists, state.sessions, state.payments, state.subscriptions, state.checkIns, state.mealRequests, clientById, pendingCheckIns, today]);
 
   /* ----- clients to review (actionable roster slice) ----- */
   const reviewRows = useMemo<ReviewRow[]>(() => {

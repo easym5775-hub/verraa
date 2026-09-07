@@ -3,14 +3,14 @@
    ================================================================ */
 
 import { useEffect, useState, useMemo, useRef } from "react";
-import type { Meal, MealType, Client, DayLabelMode } from "../types";
+import type { Meal, MealEditRequest, MealType, Client, DayLabelMode } from "../types";
 import { MEAL_TYPES, WEEK_DAYS, WEEK_SHORT, WEEK_ORDER_SAT_FIRST, formatDayName, formatDayShort } from "../types";
-import { getDayLabelMode, setDayLabelMode } from "../lib";
+import { getDayLabelMode, setDayLabelMode, relTime } from "../lib";
 import { useApp } from "../store";
-import { Avatar, EmptyState, SectionCard, labelCls, btnPrimary, btnSecondary } from "./ui";
+import { Avatar, EmptyState, SectionCard, labelCls, btnPrimary, btnSecondary, textareaCls } from "./ui";
 import { MealFormModal, CopyDayModal, NutritionTargetsModal } from "./modals";
 import { IconFlame, IconPlus, IconTrash, IconPencil, IconUtensils, IconCopy, IconCalendar, IconWhatsapp, IconSearch, IconCheck } from "../icons";
-import { Printer, Share2, Target, AlertTriangle, Droplets, Copy } from "lucide-react";
+import { Printer, Share2, Target, AlertTriangle, Droplets, Copy, Check, X, MessageCircle } from "lucide-react";
 
 /* ---------- helpers ---------- */
 
@@ -210,7 +210,7 @@ function ClientSearchPicker({
 }
 
 export function NutritionPlanView({ presetClientId }: { presetClientId: string | null }) {
-  const { state, addMeal, updateMeal, deleteMeal, toast } = useApp();
+  const { state, addMeal, updateMeal, deleteMeal, toast, reviewMealRequest } = useApp();
   const [clientId, setClientId] = useState(presetClientId ?? state.clients[0]?.id ?? "");
   const [selectedDay, setSelectedDay] = useState<number>(1); // 1 = Monday (stored numbering)
   const [labelMode, setLabelMode] = useState<DayLabelMode>(() => getDayLabelMode());
@@ -220,6 +220,34 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
   const [editing, setEditing] = useState<Meal | null>(null);
   const [deleting, setDeleting] = useState<Meal | null>(null);
   const [defaultType, setDefaultType] = useState<MealType>("Breakfast");
+  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
+
+  // Pending edit requests for the viewed client — newest first.
+  const pendingReqs = useMemo(
+    () =>
+      (state.mealRequests ?? [])
+        .filter((r) => r.clientId === clientId && r.status === "PENDING")
+        .sort((a, b) => b.createdAt - a.createdAt),
+    [state.mealRequests, clientId],
+  );
+  const pendingMealIds = useMemo(() => new Set(pendingReqs.map((r) => r.mealId).filter(Boolean) as string[]), [pendingReqs]);
+
+  const confirmReject = (r: MealEditRequest) => {
+    reviewMealRequest(r.id, false, rejectNote);
+    setRejecting(null);
+    setRejectNote("");
+  };
+
+  const jumpToMeal = (r: MealEditRequest) => {
+    const live = r.mealId ? state.meals.find((m) => m.id === r.mealId) : undefined;
+    if (!live) {
+      toast("That meal was deleted — the request snapshot is all that remains", "warn");
+      return;
+    }
+    setSelectedDay(live.day);
+    handleEditMeal(live);
+  };
 
   useEffect(() => {
     if (presetClientId) setClientId(presetClientId);
@@ -483,6 +511,72 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
           </button>
         </div>
       </header>
+
+      {/* Pending edit requests — review queue for this client */}
+      {pendingReqs.length > 0 && (
+        <div className="rise mt-6 overflow-hidden rounded-xl border border-warn-400/30 bg-warn-400/[0.05]" style={{ animationDelay: "60ms" }}>
+          <div className="flex items-center gap-2 border-b border-warn-400/20 px-4 py-3">
+            <MessageCircle className="h-4 w-4 text-warn-300" />
+            <p className="text-[13px] font-bold uppercase tracking-[0.14em] text-warn-200">
+              Edit requests · {pendingReqs.length} pending
+            </p>
+          </div>
+          <ul className="grid gap-2 p-3">
+            {pendingReqs.map((r) => (
+              <li key={r.id} className="rounded-xl border border-night-700 bg-night-850 p-3.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="rounded-full bg-white/[0.04] px-2.5 py-1 text-[11px] font-bold text-mist-300 tnum">
+                    {formatDayName(r.day, labelMode)} · {r.mealType}
+                  </span>
+                  <span className="text-[11px] font-semibold text-mist-600">{relTime(r.createdAt)}</span>
+                </div>
+                <p className="mt-1.5 truncate text-sm font-bold text-mist-100">“{r.mealDescription}”</p>
+                <p className="mt-1 text-[13px] leading-5 text-mist-300">{r.message}</p>
+                {r.suggestion && (
+                  <p className="mt-1.5 rounded-lg border border-volt-400/20 bg-volt-400/[0.06] px-2.5 py-1.5 text-xs leading-5 text-volt-200">
+                    Client suggests: {r.suggestion}
+                  </p>
+                )}
+                {rejecting === r.id ? (
+                  <div className="mt-2.5">
+                    <textarea
+                      className={`${textareaCls} min-h-16`}
+                      placeholder="Reason for rejection (optional — sent to the client)…"
+                      value={rejectNote}
+                      onChange={(e) => setRejectNote(e.target.value)}
+                      rows={2}
+                    />
+                    <div className="mt-2 flex gap-2">
+                      <button onClick={() => confirmReject(r)} className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-danger-500 px-3.5 text-[13px] font-bold text-white transition hover:bg-danger-600">
+                        <X className="h-3.5 w-3.5" /> Confirm reject
+                      </button>
+                      <button onClick={() => { setRejecting(null); setRejectNote(""); }} className={`${btnSecondary} h-9 !text-[13px]`}>
+                        Back
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    <button onClick={() => reviewMealRequest(r.id, true)} title="Meal already edited — approve and notify the client"
+                      className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-moss-400 px-3.5 text-[13px] font-bold text-night-950 transition hover:bg-moss-300">
+                      <Check className="h-3.5 w-3.5" strokeWidth={2.6} /> Approve
+                    </button>
+                    <button onClick={() => jumpToMeal(r)}
+                      className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-night-600 bg-night-800 px-3.5 text-[13px] font-bold text-mist-200 transition hover:border-volt-400 hover:text-volt-300">
+                      <IconPencil className="h-3.5 w-3.5" /> Edit meal
+                    </button>
+                    <button onClick={() => { setRejecting(r.id); setRejectNote(""); }}
+                      className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-danger-500/30 bg-danger-500/[0.07] px-3.5 text-[13px] font-bold text-danger-300 transition hover:bg-danger-500/[0.14]">
+                      <X className="h-3.5 w-3.5" /> Reject
+                    </button>
+                  </div>
+                )}
+                <p className="mt-2 text-[11px] font-semibold text-mist-600">Tip: edit the meal below first, then hit Approve — the client is notified instantly.</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Week Navigation */}
       <div className="rise mt-6 rounded-xl border border-night-700 bg-night-850 p-4" style={{ animationDelay: "80ms" }}>
@@ -764,11 +858,16 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
                       </p>
                       <ul className="grid gap-2">
                         {list.map((meal) => (
-                          <li key={meal.id} className="group rounded-lg border border-night-700 bg-night-800 p-3 transition hover:border-night-500">
+                          <li key={meal.id} className={`group rounded-lg border bg-night-800 p-3 transition hover:border-night-500 ${pendingMealIds.has(meal.id) ? "border-warn-400/50 shadow-[0_0_16px_-8px_rgba(255,197,61,0.5)]" : "border-night-700"}`}>
                             <div className="flex items-start gap-2">
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
                                   <p className="truncate text-sm font-semibold leading-5 text-mist-100">{meal.description}</p>
+                                  {pendingMealIds.has(meal.id) && (
+                                    <span className="shrink-0 rounded-full border border-warn-400/30 bg-warn-400/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-warn-300">
+                                      requested
+                                    </span>
+                                  )}
                                 </div>
                                 {meal.time && (
                                   <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-mist-500">

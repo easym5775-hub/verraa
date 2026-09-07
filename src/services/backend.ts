@@ -16,17 +16,22 @@ import type {
   AppState,
   CheckIn,
   Client,
+  ClientExercise,
   CoachPlan,
   CoachPlanConfig,
   CoachPlanRequest,
   Exercise,
   Meal,
   Message,
+  MealEditRequest,
   NewClientInput,
   Payment,
   PlanItem,
   Session,
   Subscription,
+  WorkoutEntry,
+  WorkoutSession,
+  WorkoutTemplate,
 } from "../types";
 import { todayISO } from "../lib";
 import { rememberAwareStorage, setRemember } from "./remember";
@@ -324,6 +329,120 @@ export const notificationToRow = (n: AppNotification): Row => ({
   text: n.text,
   created_at: n.createdAt,
   read: n.read,
+});
+
+/* ---------------- strength tracker row mappers ---------------- */
+
+export const clientExerciseToRow = (e: ClientExercise): Row => ({
+  client_id: e.clientId,
+  name: e.name,
+  category: e.category,
+  notes: e.notes,
+});
+
+export const rowToClientExercise = (r: Row): ClientExercise => ({
+  id: String(r.id),
+  coachId: String(r.coach_id ?? ""),
+  clientId: String(r.client_id ?? ""),
+  name: String(r.name ?? ""),
+  category: (r.category as ClientExercise["category"]) ?? "Core",
+  notes: String(r.notes ?? ""),
+  createdAt: typeof r.created_at === "number" ? r.created_at : Date.parse(String(r.created_at ?? "")) || 0,
+});
+
+export const workoutTemplateToRow = (t: WorkoutTemplate): Row => ({
+  client_id: t.clientId,
+  name: t.name,
+  items: JSON.stringify(t.items ?? []),
+});
+
+export const rowToWorkoutTemplate = (r: Row): WorkoutTemplate => ({
+  id: String(r.id),
+  coachId: String(r.coach_id ?? ""),
+  clientId: String(r.client_id ?? ""),
+  name: String(r.name ?? ""),
+  items: jsonField<WorkoutTemplate["items"]>(r.items, []),
+  createdAt: typeof r.created_at === "number" ? r.created_at : Date.parse(String(r.created_at ?? "")) || 0,
+});
+
+export const workoutSessionToRow = (s: WorkoutSession): Row => ({
+  client_id: s.clientId,
+  template_id: s.templateId ?? null,
+  name: s.name,
+  date: s.date,
+  ts: s.ts,
+  notes: s.notes ?? null,
+});
+
+export const rowToWorkoutSession = (r: Row): WorkoutSession => ({
+  id: String(r.id),
+  coachId: String(r.coach_id ?? ""),
+  clientId: String(r.client_id ?? ""),
+  templateId: r.template_id ? String(r.template_id) : undefined,
+  name: String(r.name ?? ""),
+  date: String(r.date ?? todayISO()),
+  ts: Number(r.ts) || 0,
+  notes: r.notes ? String(r.notes) : undefined,
+});
+
+export const workoutEntryToRow = (e: WorkoutEntry): Row => ({
+  client_id: e.clientId,
+  session_id: e.sessionId,
+  exercise_id: e.exerciseId ?? null,
+  client_exercise_id: e.clientExerciseId ?? null,
+  exercise_name: e.exerciseName,
+  category: e.category ?? null,
+  weight: e.weight,
+  reps: e.reps,
+  sets: e.sets,
+  is_pr: e.isPR,
+});
+
+/* ---------------- meal edit request row mappers ---------------- */
+
+export const mealRequestToRow = (q: MealEditRequest): Row => ({
+  client_id: q.clientId,
+  meal_id: q.mealId ?? null,
+  day: q.day,
+  meal_type: q.mealType,
+  meal_description: q.mealDescription,
+  message: q.message,
+  suggestion: q.suggestion ?? null,
+  status: q.status,
+  coach_note: q.coachNote ?? null,
+  reviewed_at: q.reviewedAt ? new Date(q.reviewedAt).toISOString() : null,
+});
+
+export const rowToMealRequest = (r: Row): MealEditRequest => ({
+  id: String(r.id),
+  coachId: String(r.coach_id ?? ""),
+  clientId: String(r.client_id ?? ""),
+  mealId: r.meal_id ? String(r.meal_id) : undefined,
+  day: Number(r.day) || 1,
+  mealType: (r.meal_type as MealEditRequest["mealType"]) ?? "Snack",
+  mealDescription: String(r.meal_description ?? ""),
+  message: String(r.message ?? ""),
+  suggestion: r.suggestion ? String(r.suggestion) : undefined,
+  status: (String(r.status ?? "PENDING").toUpperCase() as MealEditRequest["status"]) ?? "PENDING",
+  coachNote: r.coach_note ? String(r.coach_note) : undefined,
+  createdAt: typeof r.created_at === "number" ? r.created_at : Date.parse(String(r.created_at ?? "")) || 0,
+  reviewedAt: r.reviewed_at ? Date.parse(String(r.reviewed_at)) || undefined : undefined,
+});
+
+export const rowToWorkoutEntry = (r: Row): WorkoutEntry => ({
+  id: String(r.id),
+  coachId: String(r.coach_id ?? ""),
+  clientId: String(r.client_id ?? ""),
+  sessionId: String(r.session_id ?? ""),
+  exerciseId: r.exercise_id ? String(r.exercise_id) : undefined,
+  clientExerciseId: r.client_exercise_id ? String(r.client_exercise_id) : undefined,
+  exerciseName: String(r.exercise_name ?? ""),
+  category: (r.category as WorkoutEntry["category"]) ?? undefined,
+  weight: Number(r.weight) || 0,
+  reps: Number(r.reps) || 0,
+  sets: Number(r.sets) || 0,
+  isPR: Boolean(r.is_pr),
+  createdAt: typeof r.created_at === "number" ? r.created_at : Date.parse(String(r.created_at ?? "")) || 0,
 });
 
 export const rowToNotification = (r: Row): AppNotification => ({
@@ -1174,6 +1293,30 @@ class SupabaseBackend implements Backend {
     } catch {
       /* table may not exist on older projects — fall back to defaults */
     }
+    // Strength tracker tables are loaded best-effort: older projects that
+    // haven't applied migration 0015 yet return [] instead of breaking
+    // the whole app load.
+    const trackerTables = ["client_exercises", "workout_templates", "workout_sessions", "workout_entries"] as const;
+    const trackerResults = await Promise.all(
+      trackerTables.map(async (t) => {
+        try {
+          const res = await supabase.from(t).select("*");
+          if (res.error) return [];
+          return (res.data ?? []) as Row[];
+        } catch {
+          return [];
+        }
+      }),
+    );
+    const [clientExerciseRows, templateRows, workoutSessionRows, workoutEntryRows] = trackerResults;
+    // Meal edit requests (migration 0016) — same best-effort deal.
+    let mealRequestRows: Row[] = [];
+    try {
+      const res = await supabase.from("meal_edit_requests").select("*");
+      if (!res.error) mealRequestRows = (res.data ?? []) as Row[];
+    } catch {
+      /* older project without the table — not fatal */
+    }
     return {
       clients: (clients.data as Row[]).map(rowToClient),
       exercises: (exercises.data as Row[]).map(rowToExercise),
@@ -1188,6 +1331,11 @@ class SupabaseBackend implements Backend {
       coaches: (coaches.data as Row[]).map(rowToCoach),
       coachSubscriptions: (coachSubscriptions.data as Row[]).map(rowToCoachSubscription),
       coachPlans,
+      clientExercises: (clientExerciseRows ?? []).map(rowToClientExercise),
+      workoutTemplates: (templateRows ?? []).map(rowToWorkoutTemplate),
+      workoutSessions: (workoutSessionRows ?? []).map(rowToWorkoutSession),
+      workoutEntries: (workoutEntryRows ?? []).map(rowToWorkoutEntry),
+      mealRequests: mealRequestRows.map(rowToMealRequest),
     };
   }
 

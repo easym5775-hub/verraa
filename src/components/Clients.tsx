@@ -65,6 +65,7 @@ import {
   labelCls,
 } from "./ui";
 import { WeightLine } from "./Chart";
+import { CoachStrengthView } from "./StrengthTracker";
 import {
   ClientFormModal,
   PaymentFormModal,
@@ -525,6 +526,7 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
         <div className="grid content-start gap-4">
           <FollowUpCard client={client} checkIns={checkIns} />
           <ProgressCard checkIns={checkIns} sessionsCount={attendance(sessions)} />
+          <CoachStrengthView clientId={client.id} />
           <ChatThreadCard clientId={client.id} clientName={client.name} />
           <CoachNotesCard client={client} />
           <BasicInfoCard client={client} />

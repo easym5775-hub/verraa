@@ -105,12 +105,7 @@ export interface CheckIn {
   water: number; // liters
   workoutDone: boolean;
   notes?: string;
-  /**
-   * Check-in photo. Legacy rows hold a base64 data URL; new rows hold a
-   * public Google Drive embeddable link (see services/googleDrive.ts) so the
-   * DB only stores ~60 chars. Both render directly in <img>.
-   */
-  photo?: string;
+  photo?: string; // data URL
 }
 
 export interface Meal {
@@ -219,6 +214,105 @@ export interface CoachPlanRequest {
   createdAt: string;
 }
 
+/* ---------------- strength tracker (client mode) ----------------
+   The client logs ONE top weight per exercise per session
+   (weight kg + reps + sets) — fast to fill in the gym.
+   Identity of an exercise for "last weight" / PR purposes is:
+   exerciseId (coach library) ?? clientExerciseId (own) ?? name. */
+
+export interface ClientExercise {
+  id: string;
+  coachId: string;
+  clientId: string;
+  name: string;
+  category: ExerciseCategory;
+  notes: string;
+  createdAt: number;
+}
+
+export interface WorkoutTemplateItem {
+  key: string;
+  exerciseId?: string;
+  clientExerciseId?: string;
+  name: string;
+  category?: ExerciseCategory;
+  targetSets: number;
+  targetReps: number;
+}
+
+export interface WorkoutTemplate {
+  id: string;
+  coachId: string;
+  clientId: string;
+  name: string;
+  items: WorkoutTemplateItem[];
+  createdAt: number;
+}
+
+export interface WorkoutSession {
+  id: string;
+  coachId: string;
+  clientId: string;
+  templateId?: string;
+  name: string;
+  date: string; // ISO
+  ts: number; // epoch ms — insertion order
+  notes?: string;
+}
+
+export interface WorkoutEntry {
+  id: string;
+  coachId: string;
+  clientId: string;
+  sessionId: string;
+  exerciseId?: string;
+  clientExerciseId?: string;
+  exerciseName: string; // snapshot — history survives library deletes
+  category?: ExerciseCategory;
+  weight: number; // kg — top weight for the exercise
+  reps: number;
+  sets: number;
+  isPR: boolean;
+  createdAt: number;
+}
+
+/* ---------------- meal edit requests (client asks, coach decides) ----------------
+   The client can't edit their own meals — they file a request with the
+   issue + an optional suggested alternative. The coach edits the meal
+   manually, then Approves (or Rejects with a note). Both sides are
+   notified through the existing meal_updated channel. */
+
+export type MealRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface MealEditRequest {
+  id: string;
+  coachId: string;
+  clientId: string;
+  mealId?: string; // empty when the meal was deleted — snapshot below survives
+  day: number; // 1..7 — snapshot at request time
+  mealType: MealType; // snapshot at request time
+  mealDescription: string; // snapshot at request time
+  message: string; // the client's issue
+  suggestion?: string; // the client's proposed alternative
+  status: MealRequestStatus;
+  coachNote?: string;
+  createdAt: number;
+  reviewedAt?: number;
+}
+
+/** Stable identity key for last-weight / PR matching. */
+export function workoutExerciseKey(e: {
+  exerciseId?: string;
+  clientExerciseId?: string;
+  exerciseName?: string;
+  name?: string;
+}): string {
+  if (e.exerciseId) return `lib:${e.exerciseId}`;
+  if (e.clientExerciseId) return `custom:${e.clientExerciseId}`;
+  const n = (e.exerciseName ?? e.name ?? "").trim().toLowerCase();
+  return `name:${n}`;
+}
+
 export interface AppState {
   clients: Client[];
   exercises: Exercise[];
@@ -234,6 +328,11 @@ export interface AppState {
   coachSubscriptions?: CoachSubscription[];
   coachPlans?: CoachPlanConfig[];
   planRequests?: CoachPlanRequest[];
+  clientExercises: ClientExercise[];
+  workoutTemplates: WorkoutTemplate[];
+  workoutSessions: WorkoutSession[];
+  workoutEntries: WorkoutEntry[];
+  mealRequests: MealEditRequest[];
 }
 
 /* ---------------- input types ---------------- */

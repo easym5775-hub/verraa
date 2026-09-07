@@ -3,9 +3,8 @@
  *
  * This is what powers the "Link with Google" button. No secret ever lives in
  * the frontend: an OAuth *client id* is public by design, and the access token
- * is short-lived, scoped to spreadsheets + app-created Drive files
- * (check-in photos), granted through Google's consent screen, and revocable
- * from the Google account at any time.
+ * is short-lived, scoped to the coach's own spreadsheets, granted by the coach
+ * through Google's consent screen, and revocable from their Google account.
  *
  * The token is kept in memory only. When it expires it is refreshed silently —
  * if the coach still has a Google session and already granted consent, the
@@ -14,10 +13,6 @@
 
 const GIS_SRC = "https://accounts.google.com/gsi/client";
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
-/** drive.file = the app only sees files IT created (check-in photos) — never the whole Drive. */
-const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
-/** Combined scopes: Sheets sync + check-in photo uploads to the uploader's own Drive. */
-const ALL_SCOPES = `${SHEETS_SCOPE} ${DRIVE_SCOPE}`;
 /** Refresh a little early so a call never fires with a token about to die. */
 const EXPIRY_BUFFER_MS = 60_000;
 
@@ -106,7 +101,7 @@ function requestToken(clientId: string, prompt: string): Promise<{ token: string
     }
     const client = oauth2.initTokenClient({
       client_id: clientId,
-      scope: ALL_SCOPES,
+      scope: SHEETS_SCOPE,
       prompt,
       callback: (resp) => {
         if (resp.error || !resp.access_token) {
