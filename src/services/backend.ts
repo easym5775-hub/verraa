@@ -482,7 +482,7 @@ export interface Backend {
   deleteClientAccount(clientId: string): Promise<void>;
   updateCoachName(name: string): Promise<void>;
   /** Load all coaches and subscriptions — for owner dashboard. */
-  loadAllCoachesAndSubscriptions?(): Promise<{ coaches: Coach[]; subscriptions: Row[] }>;
+  loadAllCoachesAndSubscriptions?(): Promise<{ coaches: Coach[]; subscriptions: CoachSubscription[] }>;
   /* ---- Coach Pricing & Limits (real, backend-enforced) ---- */
   /** Centralized pricing catalog (DB-backed, falls back to defaults). */
   loadCoachPlans(): Promise<CoachPlanConfig[]>;
@@ -826,16 +826,19 @@ class SupabaseBackend implements Backend {
   }
 
   /** Load all coaches and subscriptions — works for owners due to RLS policy. */
-  async loadAllCoachesAndSubscriptions(): Promise<{ coaches: Coach[]; subscriptions: Row[] }> {
+  async loadAllCoachesAndSubscriptions(): Promise<{ coaches: Coach[]; subscriptions: CoachSubscription[] }> {
     const [{ data: coaches, error: e1 }, { data: subscriptions, error: e2 }] = await Promise.all([
       supabase.from("coaches").select("*"),
       supabase.from("coach_subscriptions").select("*"),
     ]);
     if (e1) throw new Error(e1.message);
     if (e2) throw new Error(e2.message);
-    return { 
-      coaches: (coaches as Row[]).map(rowToCoach), 
-      subscriptions: subscriptions as Row[] 
+    // NOTE: subscriptions MUST be mapped to camelCase here — every Owner view
+    // reads s.coachId / s.planName / s.endDate. Returning raw snake_case rows
+    // silently breaks plan resolution (everything reads as "No Plan").
+    return {
+      coaches: (coaches as Row[]).map(rowToCoach),
+      subscriptions: (subscriptions as Row[]).map(rowToCoachSubscription),
     };
   }
 

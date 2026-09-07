@@ -28,7 +28,8 @@ import {
 import type { AppNotification, Client, Meal, MealType, DayLabelMode } from "../types";
 import { CAT_META, GOAL_META, MEAL_META, MEAL_TYPES, NOTIFICATION_META, SUB_PAYMENT_META, SUB_STATE_META, WEEK_DAYS,
 WEEK_SHORT, WEEK_ORDER_SAT_FIRST, formatDayName, formatDayShort } from "../types";
-import { dayNum, fileToDataUrl, fmtDate, fmtMoney, fmtTime, getDayLabelMode, relTime, round1, signed, todayISO } from "../lib";
+import { dayNum, fmtDate, fmtMoney, fmtTime, getDayLabelMode, relTime, round1, signed, todayISO } from "../lib";
+import { uploadCheckinPhoto } from "../services/googleDrive";
 import { attendance, currentSubscription, progressOf, remainingLabel, subscriptionState } from "../logic";
 import { useApp } from "../store";
 import { Avatar, Badge, EmptyState, MoodPicker, SectionCard, Toggle, btnPrimary, chip, useCountUp } from "./ui";
@@ -753,27 +754,57 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
   const [water, setWater] = useState("2");
   const [done, setDone] = useState(true);
   const [notes, setNotes] = useState("");
-  const [photo, setPhoto] = useState<string | undefined>(undefined);
+  // Drive mode: keep the raw File + a local preview. Nothing is stored in the
+  // DB until submit uploads to Drive and returns a short public link.
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | undefined>(undefined);
   const [photoErr, setPhotoErr] = useState("");
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
-  const pickPhoto = async (e: ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => () => {
+    if (photoPreview?.startsWith("blob:")) URL.revokeObjectURL(photoPreview);
+  }, [photoPreview]);
+
+  const pickPhoto = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    try {
-      setPhotoErr("");
-      setPhoto(await fileToDataUrl(f, 640));
-    } catch {
-      setPhotoErr("Could not read that image.");
-    }
+    setPhotoErr("");
+    if (photoPreview?.startsWith("blob:")) URL.revokeObjectURL(photoPreview);
+    setPhotoFile(f);
+    setPhotoPreview(URL.createObjectURL(f));
   };
 
-  const submit = () => {
+  const clearPhoto = () => {
+    if (photoPreview?.startsWith("blob:")) URL.revokeObjectURL(photoPreview);
+    setPhotoFile(null);
+    setPhotoPreview(undefined);
+    setPhotoErr("");
+  };
+
+  const submit = async () => {
     const w = Number(weight);
     if (!weight || Number.isNaN(w) || w <= 0) {
       setError("Enter your weight — it's the core of the check-in.");
       return;
+    }
+    setError("");
+    // Upload to the client's own Google Drive first — only the link is saved.
+    let photo: string | undefined;
+    if (photoFile) {
+      setUploading(true);
+      setPhotoErr("");
+      try {
+        const day = todayISO();
+        const res = await uploadCheckinPhoto(photoFile, `checkin-${day}.jpg`);
+        photo = res.url;
+      } catch (e) {
+        setPhotoErr(e instanceof Error ? e.message : "Couldn't upload to Google Drive.");
+        setUploading(false);
+        return;
+      }
+      setUploading(false);
     }
     addCheckIn({
       clientId,
@@ -839,12 +870,12 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
       <SectionCard title="Photo & notes" icon={<Camera className="h-4.5 w-4.5" />} bodyCls="p-4 sm:p-5">
         <div className="grid gap-4">
           <div>
-            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-mist-400">Progress photo (optional)</label>
+            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-mist-400">Progress photo (optional) · saves to Google Drive</label>
             <div className="flex items-center gap-3">
-              {photo ? (
+              {photoPreview ? (
                 <div className="relative">
-                  <img src={photo} alt="Client progress photo" loading="lazy" className="h-20 w-20 rounded-xl object-cover ring-1 ring-night-600" />
-                  <button type="button" onClick={() => setPhoto(undefined)} className="absolute -end-2 -top-2 grid h-7 w-7 cursor-pointer place-items-center rounded-full bg-danger-500 text-white shadow" aria-label="Remove photo">
+                  <img src={photoPreview} alt="Client progress photo" loading="lazy" className="h-20 w-20 rounded-xl object-cover ring-1 ring-night-600" />
+                  <button type="button" onClick={clearPhoto} className="absolute -end-2 -top-2 grid h-7 w-7 cursor-pointer place-items-center rounded-full bg-danger-500 text-white shadow" aria-label="Remove photo">
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -855,11 +886,19 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
               )}
               <label className="inline-flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl border border-night-500 bg-night-700 px-4 text-[13px] font-bold text-mist-100 transition active:scale-95 hover:bg-night-600">
                 <Camera className="h-4 w-4" />
-                {photo ? "Replace" : "Upload"}
-                <input type="file" accept="image/*" className="hidden" onChange={(e) => void pickPhoto(e)} />
+                {photoPreview ? "Replace" : "Upload to Drive"}
+                <input type="file" accept="image/*" className="hidden" onChange={pickPhoto} />
               </label>
             </div>
-            {photoErr && <p className="mt-1 text-xs font-semibold text-danger-400">{photoErr}</p>}
+            <p className="mt-1.5 text-[11px] leading-4 text-mist-500">First upload asks for Google permission once — the photo lives on your Drive, only a link is saved (zero DB space).</p>
+            {photoErr && (
+              <p className="mt-1 text-xs font-semibold text-danger-400">
+                {photoErr}{" "}
+                <button type="button" onClick={clearPhoto} className="cursor-pointer underline hover:no-underline">
+                  Submit without photo
+                </button>
+              </p>
+            )}
           </div>
           <div>
             <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-mist-400">Notes for your coach</label>
@@ -868,8 +907,12 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
         </div>
         {error && <p className="mt-3 text-xs font-bold text-danger-400">{error}</p>}
         <div className="sticky bottom-[92px] z-10 mt-4 lg:static">
-          <button className={`${btnPrimary} h-12 w-full text-base shadow-[0_10px_28px_-10px_rgba(205,241,75,0.65)]`} onClick={submit}>
-            <Check className="h-5 w-5" strokeWidth={2.4} /> Submit check-in
+          <button
+            className={`${btnPrimary} h-12 w-full text-base shadow-[0_10px_28px_-10px_rgba(205,241,75,0.65)] disabled:opacity-60`}
+            onClick={() => void submit()}
+            disabled={uploading}
+          >
+            <Check className="h-5 w-5" strokeWidth={2.4} /> {uploading ? "Uploading to Drive…" : "Submit check-in"}
           </button>
         </div>
       </SectionCard>

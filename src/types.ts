@@ -105,7 +105,12 @@ export interface CheckIn {
   water: number; // liters
   workoutDone: boolean;
   notes?: string;
-  photo?: string; // data URL
+  /**
+   * Check-in photo. Legacy rows hold a base64 data URL; new rows hold a
+   * public Google Drive embeddable link (see services/googleDrive.ts) so the
+   * DB only stores ~60 chars. Both render directly in <img>.
+   */
+  photo?: string;
 }
 
 export interface Meal {
