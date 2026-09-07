@@ -7,6 +7,7 @@
 
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
+import { Seo } from "../Seo";
 import { LandingHeader } from "./LandingHeader";
 import { HeroSection } from "./HeroSection";
 import { ProblemSolutionSection } from "./ProblemSolutionSection";
@@ -17,19 +18,12 @@ import { PricingSection } from "./PricingSection";
 import { FinalCTA, WhyVerraa } from "./FinalCTA";
 import { LandingFooter } from "./LandingFooter";
 
-const PAGE_TITLE = "VERRAA — The Operating System for Modern Coaches";
+const PAGE_TITLE = "VERRAA — Personal Trainer Software & Coaching Client Management Platform";
 const PAGE_DESC =
-  "VERRAA helps personal trainers manage clients, track progress, organize subscriptions, and grow their coaching business from one powerful platform.";
+  "VERRAA is the operating system for modern coaches: manage clients, workout plans, nutrition, check-ins, subscriptions & payments from one powerful platform.";
 
 export function LandingPage() {
   const location = useLocation();
-
-  // SEO for the public marketing page (crawlers also get static index.html tags).
-  useEffect(() => {
-    document.title = PAGE_TITLE;
-    const meta = document.querySelector('meta[name="description"]');
-    if (meta) meta.setAttribute("content", PAGE_DESC);
-  }, []);
 
   // Support /#features, /#how-it-works, /#pricing deep links from other routes.
   useEffect(() => {
@@ -47,6 +41,7 @@ export function LandingPage() {
 
   return (
     <div className="noise relative flex min-h-screen flex-col overflow-x-clip">
+      <Seo page="home" titleOverride={PAGE_TITLE} descOverride={PAGE_DESC} pathOverride="/" />
       <div className="app-glow pointer-events-none fixed inset-0" aria-hidden="true" />
       <div className="dot-grid pointer-events-none fixed inset-0" aria-hidden="true" />
       <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">

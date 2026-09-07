@@ -586,7 +586,7 @@ export function CheckInsView({ go }: { go?: (v: CoachView, id?: string) => void 
                   </div>
                   {ci.photo && (
                     <button onClick={() => setPhoto(ci.photo ?? null)} className="shrink-0 cursor-zoom-in" aria-label="View photo">
-                      <img src={ci.photo} alt="" className="h-12 w-12 rounded-xl object-cover ring-1 ring-night-600 transition hover:ring-volt-400" />
+                      <img src={ci.photo} alt={`Check-in progress photo from ${ci.date}`} loading="lazy" className="h-12 w-12 rounded-xl object-cover ring-1 ring-night-600 transition hover:ring-volt-400" />
                     </button>
                   )}
                   <Badge className={ci.workoutDone ? "border-moss-400/25 bg-moss-400/10 text-moss-300" : "border-danger-500/25 bg-danger-500/10 text-danger-300"}>
@@ -631,7 +631,7 @@ export function CheckInsView({ go }: { go?: (v: CoachView, id?: string) => void 
             <div className="mt-3">
               <p className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-mist-500">Progress photo</p>
               <button className="mt-1.5 cursor-zoom-in" onClick={() => setPhoto(detail.photo ?? null)}>
-                <img src={detail.photo} alt="Progress" className="h-32 rounded-xl object-cover ring-1 ring-night-600 transition hover:ring-volt-400" />
+                <img src={detail.photo} alt="Check-in progress photo detail" loading="lazy" className="h-32 rounded-xl object-cover ring-1 ring-night-600 transition hover:ring-volt-400" />
               </button>
             </div>
           )}

@@ -29,6 +29,7 @@ import { OwnerRequestsView } from "./components/OwnerRequestsView";
 import { OwnerAnalyticsView } from "./components/OwnerAnalyticsView";
 import { OwnerSettingsView } from "./components/OwnerSettingsView";
 import { OwnerAuditLogView } from "./components/OwnerAuditLogView";
+import { Seo } from "./components/Seo";
 import { signOut } from "./services/auth";
 
 type OwnerView = "dashboard" | "coaches" | "subscriptions" | "requests" | "analytics" | "audit" | "settings";
@@ -104,6 +105,7 @@ function Root() {
     };
     return (
       <OwnerShell view={ownerView} setView={setView} onLogout={() => void signOut()}>
+        <Seo page="app" titleOverride="Owner Console — VERRAA" pathOverride="/owner" />
         {ownerView === "dashboard" && <OwnerDashboard setView={setView} />}
         {ownerView === "coaches" &&
           (ownerCoachId ? (
@@ -151,12 +153,18 @@ function Root() {
   }
 
   if (me.role === "client") {
-    return <ClientApp onLogout={() => void signOut()} />;
+    return (
+      <>
+        <Seo page="app" titleOverride="My Training — VERRAA" pathOverride="/client" />
+        <ClientApp onLogout={() => void signOut()} />
+      </>
+    );
   }
 
   // Coach mode (me.role === "coach")
   return (
     <CoachShell view={coachView} setView={nav} onLogout={() => void signOut()}>
+      <Seo page="app" titleOverride="Coach Dashboard — VERRAA" pathOverride="/coach" />
       {coachView === "dashboard" && <Dashboard go={go} openClientsWithFilter={openClientsWithFilter} />}
       {coachView === "clients" && <ClientsView key={clientsFilter ?? "all"} go={go} initialFilter={clientsFilter ?? undefined} />}
       {coachView === "client" && clientPreset && <ClientProfile key={clientPreset} clientId={clientPreset} go={go} />}

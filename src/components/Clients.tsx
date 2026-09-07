@@ -676,7 +676,7 @@ function CheckInsCard({ checkIns, clientId }: { checkIns: CheckIn[]; clientId: s
               {latest.notes && <p className="mt-3 text-xs italic text-mist-400">"{latest.notes}"</p>}
               {latest.photo && (
                 <button className="mt-3 cursor-zoom-in" onClick={() => setPhoto(latest.photo ?? null)}>
-                  <img src={latest.photo} alt="Progress" className="h-20 rounded-xl object-cover ring-1 ring-night-600 transition-all duration-200 hover:ring-volt-400" />
+                  <img src={latest.photo} alt="Latest client check-in progress photo" loading="lazy" className="h-20 rounded-xl object-cover ring-1 ring-night-600 transition-all duration-200 hover:ring-volt-400" />
                 </button>
               )}
             </div>
@@ -723,7 +723,7 @@ function CheckInsCard({ checkIns, clientId }: { checkIns: CheckIn[]; clientId: s
             <div className="mt-3">
               <p className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-mist-500">Progress photo</p>
               <button className="mt-1.5 cursor-zoom-in" onClick={() => setPhoto(detail.photo ?? null)}>
-                <img src={detail.photo} alt="Progress" className="h-32 rounded-xl object-cover ring-1 ring-night-600 transition-all duration-200 hover:ring-volt-400" />
+                <img src={detail.photo} alt="Client check-in progress photo detail" loading="lazy" className="h-32 rounded-xl object-cover ring-1 ring-night-600 transition-all duration-200 hover:ring-volt-400" />
               </button>
             </div>
           )}

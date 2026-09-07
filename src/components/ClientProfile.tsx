@@ -896,7 +896,7 @@ function CheckInDetailModal({ checkIn, onClose, onPhoto }: { checkIn: CheckIn; o
             <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-mist-500">Progress photos</p>
             {checkIn.photo ? (
               <button className="cursor-zoom-in" onClick={() => onPhoto(checkIn.photo!)} aria-label="View photo larger">
-                <img src={checkIn.photo} alt={`Check-in ${checkIn.date}`} className="max-h-56 rounded-lg object-cover ring-1 ring-night-600 transition hover:ring-volt-400" />
+                <img src={checkIn.photo} alt={`Check-in ${checkIn.date}`} loading="lazy" className="max-h-56 rounded-lg object-cover ring-1 ring-night-600 transition hover:ring-volt-400" />
               </button>
             ) : (
               <p className="text-xs font-semibold text-mist-500">No progress photos for this check-in.</p>

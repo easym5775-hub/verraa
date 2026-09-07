@@ -23,6 +23,7 @@ import {
 import { coachSignIn, coachSignUp, clientSignIn } from "../services/auth";
 import { errorMessage } from "../lib";
 import { btnPrimary, inputCls, labelCls } from "./ui";
+import { Seo } from "./Seo";
 
 const TICKER = ["STRENGTH", "NUTRITION", "RECOVERY", "CONSISTENCY", "PROGRESS", "DISCIPLINE", "OVERLOAD", "FORM FIRST"];
 
@@ -102,6 +103,7 @@ export function Auth({
 
   return (
     <div className="noise relative flex min-h-screen flex-col overflow-hidden">
+      <Seo page={mode === "signup" ? "signup" : "login"} />
       <div className="app-glow pointer-events-none fixed inset-0" />
       <div className="dot-grid pointer-events-none fixed inset-0" />
       <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">

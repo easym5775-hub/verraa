@@ -1,0 +1,11 @@
+# VERRAA robots.txt — update Sitemap URL when you set your final domain.
+User-agent: *
+Allow: /
+Disallow: /coach
+Disallow: /client
+Disallow: /owner
+Disallow: /admin
+Disallow: /login
+Disallow: /signup
+
+Sitemap: https://verraa.vercel.app/sitemap.xml

@@ -843,7 +843,7 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
             <div className="flex items-center gap-3">
               {photo ? (
                 <div className="relative">
-                  <img src={photo} alt="Progress" className="h-20 w-20 rounded-xl object-cover ring-1 ring-night-600" />
+                  <img src={photo} alt="Client progress photo" loading="lazy" className="h-20 w-20 rounded-xl object-cover ring-1 ring-night-600" />
                   <button type="button" onClick={() => setPhoto(undefined)} className="absolute -end-2 -top-2 grid h-7 w-7 cursor-pointer place-items-center rounded-full bg-danger-500 text-white shadow" aria-label="Remove photo">
                     <X className="h-3.5 w-3.5" />
                   </button>

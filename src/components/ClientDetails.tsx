@@ -95,7 +95,7 @@ export function CheckInsView() {
                   </div>
                   {ci.photo && (
                     <button onClick={() => setPhoto(ci.photo ?? null)} className="shrink-0 cursor-zoom-in" aria-label="View photo">
-                      <img src={ci.photo} alt="" className="h-12 w-12 rounded-lg object-cover ring-1 ring-night-600 transition hover:ring-volt-400" />
+                      <img src={ci.photo} alt={`Check-in progress photo from ${ci.date}`} loading="lazy" className="h-12 w-12 rounded-lg object-cover ring-1 ring-night-600 transition hover:ring-volt-400" />
                     </button>
                   )}
                   <Badge className={ci.workoutDone ? "border-volt-400/25 bg-volt-400/10 text-volt-300" : "border-danger-500/25 bg-danger-500/10 text-danger-300"}>

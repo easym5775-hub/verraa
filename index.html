@@ -1,24 +1,163 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="VERRAA helps personal trainers manage clients, track progress, organize subscriptions, and grow their coaching business from one powerful platform." />
-    <meta property="og:title" content="VERRAA — The Operating System for Modern Coaches" />
-    <meta property="og:description" content="VERRAA helps personal trainers manage clients, track progress, organize subscriptions, and grow their coaching business from one powerful platform." />
-    <meta property="og:type" content="website" />
+
+    <!-- ============================================================
+      VERRAA — SEO head. IMPORTANT: replace https://verraa.vercel.app
+      with your final production domain in: canonical, og:url,
+      hreflang, sitemap.xml, robots.txt and src/seo.ts (SITE_URL).
+      Or set VITE_SITE_URL env var (see src/seo.ts).
+    ============================================================= -->
+    <title>VERRAA — Personal Trainer Software & Coaching Client Management Platform</title>
+    <meta
+      name="description"
+      content="VERRAA is the operating system for modern coaches: manage clients, workout plans, nutrition, check-ins, subscriptions & payments from one powerful platform."
+    />
+    <meta
+      name="keywords"
+      content="personal trainer software, coaching management platform, client management for coaches, workout plan software, nutrition tracking for coaches, gym management software Egypt, online coaching platform, VERRAA, برنامج إدارة الجيم, برنامج للمدربين الشخصيين, إدارة عملاء الجيم, اشتراكات الجيم, متابعة تقدم العملاء, نظام إدارة التدريب"
+    />
+    <meta name="author" content="VERRAA" />
+    <meta name="publisher" content="VERRAA" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="bingbot" content="index, follow" />
     <meta name="theme-color" content="#080c0a" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="VERRAA" />
+    <meta name="application-name" content="VERRAA" />
+
+    <!-- Canonical + hreflang (bilingual: EN primary, AR alternate) -->
+    <link rel="canonical" href="https://verraa.vercel.app/" />
+    <link rel="alternate" hreflang="en" href="https://verraa.vercel.app/" />
+    <link rel="alternate" hreflang="ar" href="https://verraa.vercel.app/?lang=ar" />
+    <link rel="alternate" hreflang="x-default" href="https://verraa.vercel.app/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="VERRAA" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="ar_EG" />
+    <meta property="og:url" content="https://verraa.vercel.app/" />
+    <meta property="og:title" content="VERRAA — The Operating System for Modern Coaches" />
+    <meta
+      property="og:description"
+      content="Manage clients, workout plans, nutrition, check-ins, subscriptions & payments from one platform built for personal trainers."
+    />
+    <meta property="og:image" content="https://verraa.vercel.app/og-image.svg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="VERRAA — coaching client management dashboard preview" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@verraa" />
+    <meta name="twitter:title" content="VERRAA — The Operating System for Modern Coaches" />
+    <meta
+      name="twitter:description"
+      content="Manage clients, workout plans, nutrition, check-ins, subscriptions & payments from one platform built for personal trainers."
+    />
+    <meta name="twitter:image" content="https://verraa.vercel.app/og-image.svg" />
+    <meta name="twitter:image:alt" content="VERRAA — coaching client management dashboard preview" />
+
+    <!-- Icons / PWA -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23cdf14b'/%3E%3Cpath d='M20 26v12M26 22v20M38 22v20M44 26v12M14 29v6M50 29v6M20 32h24' stroke='%23080c0a' stroke-width='4.5' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <title>VERRAA — The Operating System for Modern Coaches</title>
+    <link rel="apple-touch-icon" href="/apple-touch-icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Performance -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
+
+    <!-- Structured data: Organization + WebSite + SoftwareApplication + FAQ (EN + AR intent) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://verraa.vercel.app/#org",
+          "name": "VERRAA",
+          "url": "https://verraa.vercel.app/",
+          "logo": "https://verraa.vercel.app/favicon.svg",
+          "description": "The operating system for modern personal trainers — client management, workout plans, nutrition, check-ins and subscriptions.",
+          "sameAs": []
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://verraa.vercel.app/#website",
+          "url": "https://verraa.vercel.app/",
+          "name": "VERRAA",
+          "publisher": { "@id": "https://verraa.vercel.app/#org" },
+          "inLanguage": ["en", "ar"]
+        },
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://verraa.vercel.app/#app",
+          "name": "VERRAA — Coaching OS",
+          "url": "https://verraa.vercel.app/",
+          "applicationCategory": "BusinessApplication",
+          "operatingSystem": "Web",
+          "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EGP" },
+          "description": "Personal trainer software to manage clients, track progress, organize workout & nutrition plans, check-ins, subscriptions and payments."
+        },
+        {
+          "@type": "FAQPage",
+          "@id": "https://verraa.vercel.app/#faq",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "What is VERRAA?",
+              "acceptedAnswer": { "@type": "Answer", "text": "VERRAA is a coaching management platform that helps personal trainers manage clients, workout plans, nutrition, check-ins, subscriptions and payments from one workspace." }
+            },
+            {
+              "@type": "Question",
+              "name": "Who is VERRAA for?",
+              "acceptedAnswer": { "@type": "Answer", "text": "Personal trainers, online coaches and gym coaches who want to replace spreadsheets with one calm client-management workspace — including coaches in Egypt and the MENA region." }
+            },
+            {
+              "@type": "Question",
+              "name": "ما هي منصة VERRAA؟",
+              "acceptedAnswer": { "@type": "Answer", "text": "VERRAA هي منصة لإدارة شغل المدربين الشخصيين: إدارة العملاء وخطط التمرين والتغذية والمتابعة اليومية والاشتراكات والمدفوعات من مكان واحد." }
+            },
+            {
+              "@type": "Question",
+              "name": "How much does VERRAA cost?",
+              "acceptedAnswer": { "@type": "Answer", "text": "VERRAA starts with a Free plan (1 client) and scales with Starter, Professional and Enterprise plans billed monthly in EGP. See /#pricing for current limits." }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <!-- Crawler / no-JS fallback: real content + links so the SPA is never an empty shell -->
+    <noscript>
+      <div style="font-family:system-ui,sans-serif;max-width:720px;margin:40px auto;padding:24px;color:#e8efe9;background:#080c0a">
+        <h1>VERRAA — The Operating System for Modern Coaches</h1>
+        <p>VERRAA helps personal trainers manage clients, track progress, organize workout &amp; nutrition plans, check-ins, subscriptions and payments from one powerful platform.</p>
+        <p>منصة VERRAA لإدارة المدربين الشخصيين: إدارة العملاء وخطط التمرين والتغذية والاشتراكات والمتابعة من مكان واحد.</p>
+        <ul>
+          <li><a href="/#features">Features</a></li>
+          <li><a href="/#pricing">Pricing</a></li>
+          <li><a href="/signup">Get started</a></li>
+          <li><a href="/login">Sign in</a></li>
+        </ul>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

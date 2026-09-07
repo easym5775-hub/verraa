@@ -6,6 +6,7 @@
 import { Link } from "react-router-dom";
 import { Dumbbell } from "lucide-react";
 import { LandingHeader } from "./LandingHeader";
+import { Seo } from "../Seo";
 
 export function LandingFooter() {
   const year = new Date().getFullYear();
@@ -88,7 +89,7 @@ function LegalShell({ title, updated, children }: { title: string; updated: stri
     <div className="noise relative flex min-h-screen flex-col overflow-x-clip">
       <div className="app-glow pointer-events-none fixed inset-0" />
       <LandingHeader />
-      <main className="relative z-10 mx-auto w-full max-w-3xl flex-1 px-5 py-12 sm:px-6">
+      <main id="main-content" className="relative z-10 mx-auto w-full max-w-3xl flex-1 px-5 py-12 sm:px-6">
         <p className="eyebrow">VERRAA</p>
         <h1 className="mt-2 text-[30px] font-extrabold tracking-tight text-mist-100 sm:text-[36px]">{title}</h1>
         <p className="mt-1 text-[13px] font-semibold text-mist-500">Last updated: {updated}</p>
@@ -107,6 +108,7 @@ function LegalShell({ title, updated, children }: { title: string; updated: stri
 export function PrivacyPage() {
   return (
     <LegalShell title="Privacy Policy" updated="2026">
+      <Seo page="privacy" />
       <p>
         VERRAA is a coaching workspace for personal trainers. Account information you provide
         when signing up (such as your name and email) is used to operate your workspace and
@@ -128,6 +130,7 @@ export function PrivacyPage() {
 export function TermsPage() {
   return (
     <LegalShell title="Terms of Service" updated="2026">
+      <Seo page="terms" />
       <p>
         VERRAA provides personal trainers with a workspace to manage clients, track progress,
         and organize subscriptions. Coach accounts are created through the sign-up flow and
