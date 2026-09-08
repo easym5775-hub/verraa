@@ -312,6 +312,7 @@ export function SectionCard({
   className = "",
   bodyCls = "p-4 sm:p-6",
   delay = 0,
+  id,
 }: {
   title: string;
   description?: string;
@@ -322,11 +323,13 @@ export function SectionCard({
   className?: string;
   bodyCls?: string;
   delay?: number;
+  id?: string;
 }) {
   return (
     <section
       aria-label={title}
-      className={`rise overflow-hidden rounded-[20px] border border-white/[0.07] bg-night-900/60 shadow-sm backdrop-blur-xl ${className}`}
+      id={id}
+      className={`rise scroll-mt-24 overflow-hidden rounded-[20px] border border-white/[0.07] bg-night-900/60 shadow-sm backdrop-blur-xl ${className}`}
       style={{ animationDelay: `${delay}ms` }}
     >
       <header className="flex items-center gap-2.5 border-b border-white/[0.06] px-4 py-3.5 sm:gap-3 sm:px-6 sm:py-4">

@@ -36,7 +36,7 @@ export function BenefitsSection() {
   return (
     <SectionShell
       id="features"
-      step="02"
+      step="04"
       eyebrow="The fix"
       title="Everything You Need to Coach Better."
       labelledBy="benefits-title"

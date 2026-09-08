@@ -139,6 +139,78 @@ export function followUpInfo(client: Client, checkIns: CheckIn[]): FollowUpInfo 
   return { frequency, basis, next, daysToNext, label, overdue: daysToNext < 0 };
 }
 
+/* ---------------- revenue forecast ---------------- */
+
+export interface RevenueForecast {
+  today: string;
+  /** "YYYY-MM" of the month after today. */
+  nextMonthKey: string;
+  /** Short label, e.g. "Oct 2026". */
+  nextMonthLabel: string;
+  /** Active clients whose current subscription ends inside next month. */
+  renewalsDue: number;
+  /** Expected value if those renewals happen at the same price. */
+  renewalValue: number;
+  /** Paid payments already dated inside next month (prepayments). */
+  prepaid: number;
+  /** renewalValue + prepaid — the headline projection. */
+  projected: number;
+  /** Active clients whose current subscription ends within 30 days. */
+  endingSoon: number;
+  endingSoonValue: number;
+}
+
+/**
+ * Simple next-month revenue projection, driven purely by subscription
+ * end dates: renewals expected (current subs of active clients ending
+ * next month, assumed to renew at the same price) + prepayments already
+ * recorded for next month. Expired subs and inactive clients are excluded
+ * — they belong to the at-risk/outstanding story, not the forecast.
+ */
+export function forecastRevenue(state: AppState, todayIso: string = todayISO()): RevenueForecast {
+  const [yStr, mStr] = todayIso.split("-");
+  const nextStart = new Date(Number(yStr) || 1970, Number(mStr) || 1, 1);
+  const nextMonthKey = `${nextStart.getFullYear()}-${String(nextStart.getMonth() + 1).padStart(2, "0")}`;
+  const nextMonthLabel = nextStart.toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+  const horizon = addDays(todayIso, 30);
+
+  let renewalsDue = 0;
+  let renewalValue = 0;
+  let endingSoon = 0;
+  let endingSoonValue = 0;
+
+  for (const client of state.clients) {
+    if (client.status !== "Active") continue;
+    const cur = currentSubscription(state.subscriptions.filter((s) => s.clientId === client.id));
+    if (!cur) continue;
+    if (diffDays(todayIso, cur.endDate) < 0) continue; // already expired
+    if (cur.endDate.slice(0, 7) === nextMonthKey) {
+      renewalsDue += 1;
+      renewalValue += cur.price;
+    }
+    if (cur.endDate >= todayIso && cur.endDate <= horizon) {
+      endingSoon += 1;
+      endingSoonValue += cur.price;
+    }
+  }
+
+  const prepaid = state.payments
+    .filter((p) => p.status === "Paid" && p.date.slice(0, 7) === nextMonthKey)
+    .reduce((s, p) => s + p.amount, 0);
+
+  return {
+    today: todayIso,
+    nextMonthKey,
+    nextMonthLabel,
+    renewalsDue,
+    renewalValue,
+    prepaid,
+    projected: renewalValue + prepaid,
+    endingSoon,
+    endingSoonValue,
+  };
+}
+
 /* ---------------- dashboard aggregates ---------------- */
 
 export interface ActionLists {

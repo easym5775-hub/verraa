@@ -8,7 +8,7 @@ import { Reveal, SectionShell } from "./Reveal";
 export function ProductPreviewSection() {
   return (
     <SectionShell
-      step="03"
+      step="05"
       eyebrow="The fix, on one screen"
       title="Your Coaching Business. At a Glance."
       labelledBy="product-title"

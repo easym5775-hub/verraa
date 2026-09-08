@@ -32,7 +32,7 @@ export function HowItWorksSection() {
   return (
     <SectionShell
       id="how-it-works"
-      step="04"
+      step="06"
       eyebrow="Getting started"
       title="Start Coaching Smarter in 3 Steps."
       labelledBy="how-title"

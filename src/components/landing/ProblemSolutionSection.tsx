@@ -88,7 +88,7 @@ const FIXES = [
 export function ProblemSolutionSection() {
   return (
     <SectionShell
-      step="01"
+      step="03"
       eyebrow="The problem"
       title="Stop Managing Your Coaching Business Manually."
       labelledBy="problem-title"

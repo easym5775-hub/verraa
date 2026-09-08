@@ -141,6 +141,13 @@
       ]
     }
     </script>
+    <!-- Pre-paint theme: apply the stored theme before CSS loads (no flash) -->
+    <script>
+      try {
+        var __t = localStorage.getItem("verraa-theme-v1");
+        if (__t === "light" || __t === "dark") document.documentElement.dataset.theme = __t;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

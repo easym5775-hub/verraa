@@ -1,7 +1,8 @@
 /* ================================================================
    VERRAA — public landing page (no auth required, no private data).
-   Pain-led narrative: hero → pains + fixes → fix cards → product
-   preview → how it works → pricing → why → final CTA → footer.
+   Pain-led narrative: hero → modes hub → outcomes → pains + fixes →
+   fix cards → product preview → how it works → pricing → why →
+   final CTA → footer.
    Handles SEO metadata + deep-hash scrolling (/#pricing etc.).
    ================================================================ */
 
@@ -10,6 +11,8 @@ import { useLocation } from "react-router-dom";
 import { Seo } from "../Seo";
 import { LandingHeader } from "./LandingHeader";
 import { HeroSection } from "./HeroSection";
+import { ModesSection } from "./ModesSection";
+import { OutcomesSection } from "./OutcomesSection";
 import { ProblemSolutionSection } from "./ProblemSolutionSection";
 import { BenefitsSection } from "./BenefitsSection";
 import { ProductPreviewSection } from "./ProductPreviewSection";
@@ -52,6 +55,8 @@ export function LandingPage() {
       <LandingHeader />
       <main id="main-content" className="relative z-10 flex-1">
         <HeroSection />
+        <ModesSection />
+        <OutcomesSection />
         <ProblemSolutionSection />
         <BenefitsSection />
         <ProductPreviewSection />

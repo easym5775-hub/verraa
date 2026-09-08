@@ -9,6 +9,7 @@ import { ArrowRight, Dumbbell, Menu, X } from "lucide-react";
 import { btnPrimary } from "../ui";
 
 const NAV = [
+  { id: "modes", label: "Modes" },
   { id: "features", label: "Features" },
   { id: "how-it-works", label: "How It Works" },
   { id: "pricing", label: "Pricing" },

@@ -660,21 +660,27 @@ export function CoachStrengthView({ clientId }: { clientId: string }) {
 
   return (
     <SectionCard
-      title={`Strength · ${sessions.length} workouts · ${prs} PRs`}
-      icon={<Dumbbell className="h-5 w-5" />}
-      bodyCls="p-4"
+      title={`Strength · ${sessions.length} workout${sessions.length === 1 ? "" : "s"} · ${prs} PR${prs === 1 ? "" : "s"}`}
+      icon={<Dumbbell className="h-4.5 w-4.5" />}
+      bodyCls="p-3"
       description={sessions.length > 0 ? `Last session ${fmtDate(sessions[0].date)}` : undefined}
     >
       {rows.length === 0 ? (
-        <EmptyState icon={<Dumbbell className="h-6 w-6" />} title="No strength logs yet" sub="When this client logs workouts in their Training tab, last weights and PRs appear here." />
+        <div className="grid place-items-center gap-1 rounded-xl border border-dashed border-white/10 bg-white/[0.015] px-4 py-5 text-center">
+          <span className="icon-tile h-9 w-9" aria-hidden="true">
+            <Dumbbell className="h-4 w-4" />
+          </span>
+          <p className="mt-1 text-[13px] font-bold text-mist-200">No strength logs yet</p>
+          <p className="max-w-[220px] text-xs leading-5 text-mist-500">Last weights and PRs appear here once logged.</p>
+        </div>
       ) : (
-        <ul className="grid gap-2 sm:grid-cols-2">
+        <ul className="grid gap-1.5">
           {rows.map((r) => (
-            <li key={`${r.name}-${r.last.id}`} className="flex items-center gap-3 rounded-xl border border-night-700 bg-night-800 p-3">
-              <span className="grid h-11 min-w-11 shrink-0 place-items-center rounded-xl bg-night-700 px-2 font-display text-base font-bold text-volt-300 tnum">{r.last.weight}</span>
+            <li key={`${r.name}-${r.last.id}`} className="flex items-center gap-2.5 rounded-xl border border-night-700 bg-night-800 px-2.5 py-2">
+              <span className="grid h-9 min-w-10 shrink-0 place-items-center rounded-lg bg-night-700 px-1.5 font-display text-sm font-bold text-volt-300 tnum">{r.last.weight}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <p className="truncate text-sm font-bold text-mist-100">{r.name}</p>
+                  <p className="truncate text-[13px] font-bold text-mist-100">{r.name}</p>
                   {r.category && (
                     <Badge className={CAT_META[r.category].chip}>
                       <span className={`h-1.5 w-1.5 rounded-full ${CAT_META[r.category].dot}`} />
@@ -682,11 +688,11 @@ export function CoachStrengthView({ clientId }: { clientId: string }) {
                     </Badge>
                   )}
                 </div>
-                <p className="mt-0.5 text-[11px] font-semibold text-mist-500 tnum">
+                <p className="mt-0.5 truncate text-[11px] font-semibold text-mist-500 tnum">
                   last {r.last.weight}kg × {r.last.reps} · best {r.max}kg · {r.count} log{r.count === 1 ? "" : "s"}
                 </p>
               </div>
-              {r.last.isPR && <Trophy className="h-4 w-4 shrink-0 text-volt-300" aria-label="Personal record" />}
+              {r.last.isPR && <Trophy className="h-3.5 w-3.5 shrink-0 text-volt-300" aria-label="Personal record" />}
             </li>
           ))}
         </ul>

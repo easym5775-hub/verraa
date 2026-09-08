@@ -2,6 +2,15 @@
 
 :root {
   color-scheme: dark;
+
+  /* inline SVG charts read these (see Chart.tsx + Dashboard sparkline)
+     so grid/tick/line colors flip with the theme automatically */
+  --chart-grid: #1a251d;
+  --chart-tick: #7c9486;
+  --chart-line: #cdf14b;
+  --chart-dot: #0f1611;
+  --chart-guide: #31443a;
+  --chart-label: #dcf770;
 }
 
 @theme {
@@ -565,6 +574,141 @@ button {
 .client-search-field:focus-visible {
   outline: none;
   box-shadow: none;
+}
+
+/* ---------- landing mind-map hub ---------- */
+
+@keyframes spin-slower {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin-slower {
+  animation: spin-slower 36s linear infinite;
+}
+
+/* ---------- light theme (html[data-theme="light"]) ----------
+   The whole UI is built on the night/mist CSS vars, so flipping the
+   palette re-skins every view at once. Pale accent text (lime / green /
+   amber / red / sky) gets darker twins for contrast on white, and
+   white-alpha hairlines become ink-alpha hairlines. The dark default
+   above is untouched. */
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --color-night-950: #edf1ec;
+  --color-night-900: #ffffff;
+  --color-night-850: #f4f7f3;
+  --color-night-800: #e8ede7;
+  --color-night-700: #d7ded6;
+  --color-night-600: #b6c3b8;
+  --color-night-500: #66786d;
+  --color-night-400: #44564b;
+
+  --color-mist-100: #15211a;
+  --color-mist-200: #2d3d33;
+  --color-mist-300: #4c6054;
+  --color-mist-400: #687d71;
+  --color-mist-500: #75897d;
+
+  --shadow-sm: 0 1px 2px rgba(21, 33, 26, 0.08);
+  --shadow-md: 0 2px 8px -2px rgba(21, 33, 26, 0.1), 0 8px 24px -12px rgba(21, 33, 26, 0.12);
+  --shadow-lg: 0 4px 16px -4px rgba(21, 33, 26, 0.1), 0 20px 44px -20px rgba(21, 33, 26, 0.16);
+  --shadow-xl: 0 8px 28px -8px rgba(21, 33, 26, 0.14), 0 32px 72px -24px rgba(21, 33, 26, 0.2);
+  --shadow-glow-volt: 0 6px 20px -8px rgba(101, 163, 13, 0.35);
+
+  --chart-grid: #dbe2da;
+  --chart-tick: #5d7266;
+  --chart-line: #65a30d;
+  --chart-dot: #ffffff;
+  --chart-guide: #9db2a4;
+  --chart-label: #4d7c0f;
+}
+
+[data-theme="light"] body {
+  background-color: var(--color-night-950);
+  background-image:
+    radial-gradient(1100px 520px at 85% -10%, rgba(65, 163, 113, 0.1), transparent 65%),
+    radial-gradient(800px 480px at -10% 110%, rgba(101, 163, 13, 0.07), transparent 60%);
+  color: var(--color-mist-100);
+}
+
+[data-theme="light"] ::selection {
+  background: var(--color-volt-400);
+  color: #0c1210;
+}
+
+/* pale accent text → darker twins that read on white */
+[data-theme="light"] [class*="text-volt-400"] { color: #4d6f0b; }
+[data-theme="light"] [class*="text-volt-300"] { color: #5d7d0e; }
+[data-theme="light"] [class*="text-volt-200"] { color: #4d6f0b; }
+[data-theme="light"] [class*="text-moss-300"] { color: #2f855b; }
+[data-theme="light"] [class*="text-warn-300"] { color: #8a5f14; }
+[data-theme="light"] [class*="text-danger-300"] { color: #bf453a; }
+[data-theme="light"] [class*="text-sky-300"] { color: #0369a1; }
+/* dark-on-lime text (volt buttons, active pills, mine chat bubbles) must stay dark */
+[data-theme="light"] [class*="text-night-950"] { color: #0c1210; }
+
+/* white-alpha hairlines/fills → ink-alpha */
+[data-theme="light"] [class*="border-white/"] { border-color: rgba(21, 33, 26, 0.13); }
+[data-theme="light"] [class*="divide-white/"] > :not([hidden]) ~ :not([hidden]) { border-color: rgba(21, 33, 26, 0.09); }
+[data-theme="light"] [class*="bg-white/"] { background-color: rgba(21, 33, 26, 0.05); }
+[data-theme="light"] [class*="bg-white/15"] { background-color: rgba(21, 33, 26, 0.18); }
+[data-theme="light"] [class*="ring-white/"] { --tw-ring-color: rgba(21, 33, 26, 0.18); }
+[data-theme="light"] [class*="text-white/"] { color: rgba(21, 33, 26, 0.38); }
+
+/* surfaces + small primitives */
+[data-theme="light"] .surface {
+  border-color: rgba(21, 33, 26, 0.09);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(244, 247, 243, 0.92));
+}
+[data-theme="light"] .surface-solid {
+  border-color: rgba(21, 33, 26, 0.09);
+  background: #ffffff;
+}
+[data-theme="light"] .surface-elevated {
+  border-color: rgba(21, 33, 26, 0.1);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(244, 247, 243, 0.97));
+}
+[data-theme="light"] .hairline,
+[data-theme="light"] .divider-soft {
+  border-color: rgba(21, 33, 26, 0.09);
+}
+[data-theme="light"] .icon-tile {
+  border-color: rgba(21, 33, 26, 0.1);
+  background: rgba(21, 33, 26, 0.05);
+}
+[data-theme="light"] .kbd {
+  border-color: rgba(21, 33, 26, 0.14);
+  background: rgba(21, 33, 26, 0.05);
+  color: var(--color-mist-400);
+}
+[data-theme="light"] .dot-grid {
+  background-image: radial-gradient(rgba(21, 33, 26, 0.08) 1px, transparent 1px);
+}
+[data-theme="light"] .app-glow {
+  opacity: 0.55;
+}
+
+/* keyboard focus must stay visible on white */
+[data-theme="light"] :where(a, button, input, select, textarea, [tabindex]):focus-visible,
+[data-theme="light"] .control-focus:focus-visible {
+  outline-color: #4d6f0b;
+}
+
+/* light autofill + native pickers */
+[data-theme="light"] input:-webkit-autofill,
+[data-theme="light"] textarea:-webkit-autofill,
+[data-theme="light"] select:-webkit-autofill {
+  -webkit-text-fill-color: #15211a;
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
+  caret-color: #15211a;
+}
+[data-theme="light"] input[type="date"],
+[data-theme="light"] input[type="time"],
+[data-theme="light"] input[type="datetime-local"] {
+  color-scheme: light;
 }
 
 /* ---------- reduced motion ---------- */

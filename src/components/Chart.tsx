@@ -73,8 +73,8 @@ export function WeightLine({ entries }: { entries: CheckIn[] }) {
     >
       <defs>
         <linearGradient id="wgArea" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#cdf14b" stopOpacity="0.18" />
-          <stop offset="100%" stopColor="#cdf14b" stopOpacity="0" />
+          <stop offset="0%" stopOpacity="0.18" style={{ stopColor: "var(--chart-line)" }} />
+          <stop offset="100%" stopOpacity="0" style={{ stopColor: "var(--chart-line)" }} />
         </linearGradient>
       </defs>
       {[0, 1 / 3, 2 / 3, 1].map((f) => {
@@ -82,31 +82,31 @@ export function WeightLine({ entries }: { entries: CheckIn[] }) {
         const gy = y(v);
         return (
           <g key={f}>
-            <line x1={padL} x2={W - padR + 6} y1={gy} y2={gy} stroke="#1a251d" strokeWidth="1" />
-            <text x={W - padR + 12} y={gy + 4} fontSize="11" fill="#7c9486" fontFamily="var(--font-display)">
+            <line x1={padL} x2={W - padR + 6} y1={gy} y2={gy} strokeWidth="1" style={{ stroke: "var(--chart-grid)" }} />
+            <text x={W - padR + 12} y={gy + 4} fontSize="11" fontFamily="var(--font-display)" style={{ fill: "var(--chart-tick)" }}>
               {v.toFixed(1)}
             </text>
           </g>
         );
       })}
       <path d={area} fill="url(#wgArea)" />
-      <path d={line} fill="none" stroke="#cdf14b" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={line} fill="none" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ stroke: "var(--chart-line)" }} />
       {sorted.map((e, i) =>
-        hover === i ? null : <circle key={e.id} cx={x(i)} cy={y(e.weight)} r="3" fill="#0f1611" stroke="#cdf14b" strokeWidth="2" />,
+        hover === i ? null : <circle key={e.id} cx={x(i)} cy={y(e.weight)} r="3" strokeWidth="2" style={{ fill: "var(--chart-dot)", stroke: "var(--chart-line)" }} />,
       )}
       {hover !== null && sorted[hover] && (
         <g>
-          <line x1={x(hover)} x2={x(hover)} y1={padT} y2={H - padB} stroke="#31443a" strokeWidth="1" strokeDasharray="3 3" />
-          <circle cx={x(hover)} cy={y(sorted[hover].weight)} r="10" fill="#cdf14b" opacity="0.18" className="ring-pulse" />
-          <circle cx={x(hover)} cy={y(sorted[hover].weight)} r="4.5" fill="#cdf14b" stroke="#0f1611" strokeWidth="2" />
+          <line x1={x(hover)} x2={x(hover)} y1={padT} y2={H - padB} strokeWidth="1" strokeDasharray="3 3" style={{ stroke: "var(--chart-guide)" }} />
+          <circle cx={x(hover)} cy={y(sorted[hover].weight)} r="10" opacity="0.18" className="ring-pulse" style={{ fill: "var(--chart-line)" }} />
+          <circle cx={x(hover)} cy={y(sorted[hover].weight)} r="4.5" strokeWidth="2" style={{ fill: "var(--chart-line)", stroke: "var(--chart-dot)" }} />
           <text
             x={Math.min(Math.max(x(hover), 40), W - 60)}
             y={Math.max(y(sorted[hover].weight) - 14, 14)}
             textAnchor="middle"
             fontSize="14"
             fontWeight="700"
-            fill="#dcf770"
             fontFamily="var(--font-display)"
+            style={{ fill: "var(--chart-label)" }}
           >
             {sorted[hover].weight} kg
           </text>
@@ -119,16 +119,16 @@ export function WeightLine({ entries }: { entries: CheckIn[] }) {
           textAnchor="middle"
           fontSize="14"
           fontWeight="700"
-          fill="#dcf770"
           fontFamily="var(--font-display)"
+          style={{ fill: "var(--chart-label)" }}
         >
           {last.weight}
         </text>
       )}
-      <text x={x(0)} y={H - 8} textAnchor="middle" fontSize="11" fill="#7c9486">
+      <text x={x(0)} y={H - 8} textAnchor="middle" fontSize="11" style={{ fill: "var(--chart-tick)" }}>
         {fmtShort(sorted[0].date)}
       </text>
-      <text x={x(n - 1)} y={H - 8} textAnchor="middle" fontSize="11" fill="#7c9486">
+      <text x={x(n - 1)} y={H - 8} textAnchor="middle" fontSize="11" style={{ fill: "var(--chart-tick)" }}>
         {fmtShort(last.date)}
       </text>
     </svg>

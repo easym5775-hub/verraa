@@ -5,7 +5,7 @@
    Everything is computed from real store data; nothing is invented.
    ================================================================ */
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -19,6 +19,7 @@ import {
   Clock,
   Plus,
   Scale,
+  TrendingUp,
   UserPlus,
   Users,
   Wallet,
@@ -41,10 +42,12 @@ import {
   attendance,
   currentSubscription,
   followUpInfo,
+  forecastRevenue,
   latestCheckIn,
   outstandingAmount,
   remainingLabel,
   subscriptionState,
+  type RevenueForecast,
 } from "../logic";
 import { useApp } from "../store";
 import {
@@ -52,44 +55,18 @@ import {
   formatEGP,
   planRenewalLabel,
 } from "../coachPricing";
-import { Avatar, Badge, Skeleton, btnPrimary, btnSecondary, btnSm, useCountUp } from "./ui";
+import { Avatar, Badge, btnPrimary, btnSecondary, btnSm } from "./ui";
 import { ClientFormModal, PaymentFormModal, SessionFormModal } from "./modals";
-
-type Severity = "high" | "med" | "low";
-
-interface AttentionItem {
-  key: string;
-  client: Client;
-  severity: Severity;
-  title: string;
-  detail: string;
-  meta: string;
-  actionLabel: string;
-  run: () => void;
-  sort: number;
-}
-
-interface ReviewRow {
-  client: Client;
-  reason: string;
-  reasonTone: Severity;
-  status: string;
-  lastActivity: string;
-  actionLabel: string;
-  run: () => void;
-  sort: number;
-}
-
-const SEV_DOT: Record<Severity, string> = {
-  high: "bg-danger-400",
-  med: "bg-warn-400",
-  low: "bg-mist-400",
-};
-const SEV_TEXT: Record<Severity, string> = {
-  high: "text-danger-300",
-  med: "text-warn-300",
-  low: "text-mist-300",
-};
+import {
+  CardShell,
+  DashboardSkeleton,
+  KpiRow,
+  SEV_DOT,
+  SEV_TEXT,
+  type AttentionItem,
+  type ReviewRow,
+  type Severity,
+} from "./dashboard/index";
 
 export function Dashboard({
   go,
@@ -115,7 +92,13 @@ export function Dashboard({
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
-  const lists = useMemo(() => actionLists(state), [state]);
+  /* Narrow slice deps (not the whole state): the store updates slices
+     immutably, so untouched slices keep stable refs and this memo survives
+     unrelated writes (meals, plans, messages…). */
+  const lists = useMemo(
+    () => actionLists(state),
+    [state.clients, state.sessions, state.checkIns, state.subscriptions],
+  );
   const clientById = useMemo(() => new Map(state.clients.map((c) => [c.id, c])), [state.clients]);
 
   const activeClients = useMemo(() => state.clients.filter((c) => c.status === "Active"), [state.clients]);
@@ -187,6 +170,10 @@ export function Dashboard({
     state.payments.filter((p) => p.status === "Paid" && p.date.slice(0, 7) === key).reduce((s, p) => s + p.amount, 0);
   const revenueMonth = paidIn(monthKey);
   const revenuePrev = paidIn(prevKey);
+  const forecast = useMemo(
+    () => forecastRevenue(state),
+    [state.clients, state.subscriptions, state.payments],
+  );
 
   const openRecordPayment = (clientId: string | null) => {
     setPaymentClientId(clientId);
@@ -527,7 +514,7 @@ export function Dashboard({
       });
     }
     return evs.sort((a, b) => b.ts - a.ts).slice(0, 5);
-  }, [state, clientById]);
+  }, [state.checkIns, state.subscriptions, state.payments, state.clients, state.sessions, clientById]);
 
   const upcoming = useMemo(() => {
     const days = Array.from({ length: 7 }, (_, i) => addDays(today, i + 1));
@@ -649,6 +636,7 @@ export function Dashboard({
           revenueMonth={revenueMonth}
           revenuePrev={revenuePrev}
           outstanding={outstanding}
+          forecast={forecast}
           openClients={openClientsWithFilter}
         />
         <RecentActivityCard activity={activity} onOpen={(id) => go("client", id)} />
@@ -681,51 +669,7 @@ export function Dashboard({
   );
 }
 
-/* ---------------- header-adjacent pieces ---------------- */
-
-function CardShell({
-  label,
-  icon,
-  count,
-  countTone,
-  action,
-  children,
-  delay = 0,
-  className = "",
-}: {
-  label: string;
-  icon?: ReactNode;
-  count?: ReactNode;
-  countTone?: string;
-  action?: ReactNode;
-  children: ReactNode;
-  delay?: number;
-  className?: string;
-}) {
-  return (
-    <section
-      aria-label={label}
-      className={`rise flex h-full flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-night-900/60 shadow-sm backdrop-blur-xl ${className}`}
-      style={{ animationDelay: `${delay}ms` }}
-    >
-      <header className="flex min-h-[60px] items-center gap-2 border-b border-white/[0.06] px-5 py-3.5">
-        {icon && (
-          <span className="icon-tile h-8 w-8 shrink-0" aria-hidden="true">
-            {icon}
-          </span>
-        )}
-        <h2 className="truncate text-sm font-bold tracking-tight text-mist-100">{label}</h2>
-        {count !== undefined && (
-          <span className={`rounded-full px-2 py-0.5 text-xs font-bold leading-5 tnum ring-1 ${countTone ?? "bg-white/[0.05] text-mist-400 ring-white/10"}`}>
-            {count}
-          </span>
-        )}
-        {action && <div className="ms-auto flex shrink-0 items-center gap-2">{action}</div>}
-      </header>
-      {children}
-    </section>
-  );
-}
+/* ---------------- header-adjacent pieces (CardShell lives in ./dashboard) ---------------- */
 
 function NeedsAttentionCard({
   alerts,
@@ -939,152 +883,7 @@ function ScheduleRow({ s, name, onOpen, onComplete }: { s: Session; name: string
   );
 }
 
-/* ---------------- KPI ---------------- */
-
-function KpiCard({
-  label,
-  value,
-  unit,
-  sub,
-  icon,
-  tone,
-  onClick,
-  actionLabel,
-}: {
-  label: string;
-  value: string;
-  unit?: string;
-  sub: string;
-  icon: ReactNode;
-  tone?: "warn" | "danger";
-  onClick?: () => void;
-  actionLabel?: string;
-}) {
-  const valueTone = tone === "danger" ? "text-danger-300" : tone === "warn" ? "text-warn-300" : "text-mist-100";
-  const inner = (
-    <>
-      <span className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-mist-500">{label}</span>
-        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-white/[0.07] bg-white/[0.03] ${tone ? valueTone : "text-mist-400"}`}>
-          {icon}
-        </span>
-      </span>
-      <span className={`mt-2.5 block text-[30px] font-extrabold leading-8 tracking-tight tnum sm:text-[32px] ${valueTone}`}>
-        {value}
-        {unit && <span className="ms-1.5 text-[13px] font-bold text-mist-500">{unit}</span>}
-      </span>
-      <span className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-mist-500">
-        <span className="truncate">{sub}</span>
-        {onClick && actionLabel && (
-          <span className="ms-auto inline-flex shrink-0 items-center gap-0.5 font-bold text-volt-300">
-            {actionLabel} <ArrowRight className="h-3 w-3 rtl:rotate-180" />
-          </span>
-        )}
-      </span>
-    </>
-  );
-  const cls = "rise card-lift group relative min-h-[104px] rounded-2xl border border-white/[0.07] bg-night-900/60 p-5 text-start shadow-sm backdrop-blur-xl";
-  if (onClick) {
-    return (
-      <button
-        onClick={onClick}
-        role="listitem"
-        aria-label={`${label}: ${value}${unit ? ` ${unit}` : ""}. ${sub}`}
-        className={`${cls} cursor-pointer hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50`}
-      >
-        {inner}
-      </button>
-    );
-  }
-  return (
-    <div role="listitem" aria-label={`${label}: ${value}. ${sub}`} className={cls}>
-      {inner}
-    </div>
-  );
-}
-
-/* Isolated KPI row: the four count-up animations re-render only this grid,
-   never the dashboard above it (charts, lists). Visual output identical. */
-function KpiRow({
-  pendingCount,
-  overdueCount,
-  sessionsCount,
-  nextSessionLabel,
-  activeCount,
-  totalCount,
-  attentionCount,
-  outstandingTotal,
-  outstandingCount,
-  onReviewCheckins,
-  onAddSession,
-  onViewRoster,
-  onCollect,
-}: {
-  pendingCount: number;
-  overdueCount: number;
-  sessionsCount: number;
-  nextSessionLabel: string | null;
-  activeCount: number;
-  totalCount: number;
-  attentionCount: number;
-  outstandingTotal: number;
-  outstandingCount: number;
-  onReviewCheckins: () => void;
-  onAddSession: () => void;
-  onViewRoster: () => void;
-  onCollect: () => void;
-}) {
-  const animPending = useCountUp(pendingCount);
-  const animSessions = useCountUp(sessionsCount);
-  const animActive = useCountUp(activeCount);
-  const animOutstanding = useCountUp(outstandingTotal);
-
-  return (
-    <div className="rise grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" style={{ animationDelay: "60ms" }} role="list" aria-label="Today's key numbers">
-      <KpiCard
-        label="Pending Check-ins"
-        value={String(Math.round(animPending))}
-        sub={pendingCount ? (overdueCount > 0 ? `${overdueCount} overdue · Review now` : "Review now") : "Inbox zero — nice"}
-        icon={<Camera className="h-4 w-4" />}
-        tone={pendingCount > 0 ? (overdueCount > 0 ? "danger" : "warn") : undefined}
-        onClick={pendingCount ? onReviewCheckins : undefined}
-        actionLabel="Review"
-      />
-      <KpiCard
-        label="Sessions Today"
-        value={String(Math.round(animSessions))}
-        sub={sessionsCount ? (nextSessionLabel ? `Next at ${nextSessionLabel}` : `${sessionsCount} on the books`) : "Schedule is clear"}
-        icon={<CalendarDays className="h-4 w-4" />}
-        onClick={sessionsCount ? undefined : onAddSession}
-        actionLabel={sessionsCount ? undefined : "Add session"}
-      />
-      <KpiCard
-        label="Active Clients"
-        value={String(Math.round(animActive))}
-        sub={
-          attentionCount > 0
-            ? `${Math.min(attentionCount, activeCount)} need${Math.min(attentionCount, activeCount) === 1 ? "s" : ""} attention`
-            : totalCount - activeCount > 0
-              ? `${totalCount - activeCount} inactive`
-              : "Roster healthy"
-        }
-        icon={<Users className="h-4 w-4" />}
-        onClick={onViewRoster}
-        actionLabel="View roster"
-      />
-      <KpiCard
-        label="Outstanding Payments"
-        value={fmtMoney(Math.round(animOutstanding))}
-        unit="EGP"
-        sub={outstandingCount ? `${outstandingCount} overdue payment${outstandingCount === 1 ? "" : "s"}` : "All settled"}
-        icon={<Wallet className="h-4 w-4" />}
-        tone={outstandingCount > 0 ? "danger" : undefined}
-        onClick={outstandingCount ? onCollect : undefined}
-        actionLabel={outstandingCount ? "Collect" : undefined}
-      />
-    </div>
-  );
-}
+/* ---------------- KPI (KpiCard + KpiRow live in ./dashboard) ---------------- */
 
 /* ---------------- clients to review ---------------- */
 
@@ -1296,30 +1095,30 @@ function SecondaryProgress({ checkIns, clients, go }: { checkIns: CheckIn[]; cli
               >
                 <defs>
                   <linearGradient id="dashAreaCompact" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#cdf14b" stopOpacity="0.16" />
-                    <stop offset="100%" stopColor="#cdf14b" stopOpacity="0" />
+                    <stop offset="0%" stopOpacity="0.16" style={{ stopColor: "var(--chart-line)" }} />
+                    <stop offset="100%" stopOpacity="0" style={{ stopColor: "var(--chart-line)" }} />
                   </linearGradient>
                 </defs>
                 {[0.25, 0.5, 0.75].map((f) => (
-                  <line key={f} x1={padL} x2={W - padR} y1={padT + (H - padT - padB) * f} y2={padT + (H - padT - padB) * f} stroke="#1a251d" strokeWidth="1" />
+                  <line key={f} x1={padL} x2={W - padR} y1={padT + (H - padT - padB) * f} y2={padT + (H - padT - padB) * f} strokeWidth="1" style={{ stroke: "var(--chart-grid)" }} />
                 ))}
                 {points.length > 1 && (
                   <>
                     <path d={`M${line} L${x(points.length - 1).toFixed(1)},${H - padB} L${x(0).toFixed(1)},${H - padB} Z`} fill="url(#dashAreaCompact)" />
-                    <path d={`M${line}`} fill="none" stroke="#cdf14b" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d={`M${line}`} fill="none" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ stroke: "var(--chart-line)" }} />
                   </>
                 )}
-                {points.map((p, i) => (hover === i ? null : <circle key={p.id} cx={x(i)} cy={y(p.weight)} r="2.6" fill="#0f1611" stroke="#cdf14b" strokeWidth="1.8" />))}
+                {points.map((p, i) => (hover === i ? null : <circle key={p.id} cx={x(i)} cy={y(p.weight)} r="2.6" strokeWidth="1.8" style={{ fill: "var(--chart-dot)", stroke: "var(--chart-line)" }} />))}
                 {hover !== null && points[hover] && (
                   <>
-                    <line x1={x(hover)} x2={x(hover)} y1={padT} y2={H - padB} stroke="#31443a" strokeWidth="1" strokeDasharray="3 3" />
-                    <circle cx={x(hover)} cy={y(points[hover].weight)} r="4.5" fill="#cdf14b" stroke="#0f1611" strokeWidth="2" />
+                    <line x1={x(hover)} x2={x(hover)} y1={padT} y2={H - padB} strokeWidth="1" strokeDasharray="3 3" style={{ stroke: "var(--chart-guide)" }} />
+                    <circle cx={x(hover)} cy={y(points[hover].weight)} r="4.5" strokeWidth="2" style={{ fill: "var(--chart-line)", stroke: "var(--chart-dot)" }} />
                   </>
                 )}
                 {points.length > 0 && (
                   <>
-                    <text x={x(0)} y={H - 6} textAnchor="middle" fontSize="10" fill="#7c9486">{fmtShort(points[0].date)}</text>
-                    <text x={x(points.length - 1)} y={H - 6} textAnchor="middle" fontSize="10" fill="#7c9486">{fmtShort(points[points.length - 1].date)}</text>
+                    <text x={x(0)} y={H - 6} textAnchor="middle" fontSize="10" style={{ fill: "var(--chart-tick)" }}>{fmtShort(points[0].date)}</text>
+                    <text x={x(points.length - 1)} y={H - 6} textAnchor="middle" fontSize="10" style={{ fill: "var(--chart-tick)" }}>{fmtShort(points[points.length - 1].date)}</text>
                   </>
                 )}
               </svg>
@@ -1347,12 +1146,14 @@ function BusinessHealthCard({
   revenueMonth,
   revenuePrev,
   outstanding,
+  forecast,
   openClients,
 }: {
   clients: Client[];
   revenueMonth: number;
   revenuePrev: number;
   outstanding: { total: number; count: number };
+  forecast: RevenueForecast;
   openClients: (f: "Active" | "Expiring Soon" | "Expired") => void;
 }) {
   const { state } = useApp();
@@ -1443,6 +1244,47 @@ function BusinessHealthCard({
         <SubCount label="Active" value={counts.Active} tone="text-moss-300" filter="Active" openClients={openClients} />
         <SubCount label="Expiring" value={counts["Expiring Soon"]} tone="text-warn-300" filter="Expiring Soon" openClients={openClients} />
         <SubCount label="Expired" value={counts.Expired} tone="text-danger-300" filter="Expired" openClients={openClients} />
+      </div>
+      <div className="mx-5 border-t border-white/[0.06]" />
+      <div className="px-5 py-4">
+        <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
+          <div className="flex items-center gap-2.5">
+            <span className="icon-tile h-9 w-9 shrink-0" aria-hidden="true">
+              <TrendingUp className="h-4 w-4" />
+            </span>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">Forecast · {forecast.nextMonthLabel}</p>
+              <p className="mt-0.5 text-xs font-semibold text-mist-400">
+                {forecast.renewalsDue > 0 ? (
+                  <>{forecast.renewalsDue} renewal{forecast.renewalsDue === 1 ? "" : "s"} · {fmtMoney(forecast.renewalValue)} EGP expected</>
+                ) : (
+                  <>No renewals due</>
+                )}
+                {forecast.prepaid > 0 && <> · {fmtMoney(forecast.prepaid)} EGP prepaid</>}
+              </p>
+            </div>
+          </div>
+          <p className="text-[26px] font-extrabold leading-8 tracking-tight text-mist-100 tnum">
+            {fmtMoney(forecast.projected)} <span className="text-sm font-bold text-mist-500">EGP</span>
+          </p>
+        </div>
+        {forecast.endingSoon > 0 ? (
+          <button
+            onClick={() => openClients("Expiring Soon")}
+            className="mt-2.5 flex w-full cursor-pointer items-center gap-1.5 rounded-xl border border-warn-400/20 bg-warn-400/[0.05] px-3.5 py-2 text-start text-xs font-semibold text-mist-400 transition hover:border-warn-400/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50"
+          >
+            <CalendarDays className="h-3.5 w-3.5 shrink-0 text-warn-300" aria-hidden="true" />
+            <span>
+              <span className="font-extrabold text-warn-300 tnum">{forecast.endingSoon} ending in 30 days</span>
+              {" · "}{fmtMoney(forecast.endingSoonValue)} EGP renewal pipeline — renew now to lock it in
+            </span>
+          </button>
+        ) : (
+          <p className="mt-2.5 rounded-xl border border-dashed border-white/10 bg-white/[0.015] px-3 py-2.5 text-center text-xs text-mist-500">
+            No subscriptions ending in the next 30 days — nothing urgent in the pipeline.
+          </p>
+        )}
+        <p className="mt-2 text-[10.5px] font-medium text-mist-500/80">Estimate — assumes renewals at the same price, plus prepayments.</p>
       </div>
       <div className="border-t border-white/[0.06] bg-white/[0.015] px-5 py-3">
         {outstanding.count > 0 ? (
@@ -1639,112 +1481,6 @@ function CompactPlanUsage({
   );
 }
 
-/* ---------------- skeleton ---------------- */
-
-function DashboardSkeleton() {
-  return (
-    <div aria-busy="true" aria-label="Loading dashboard" className="mx-auto flex w-full max-w-[1440px] flex-col gap-4 sm:gap-5">
-      <div className="rise">
-        <Skeleton className="h-3 w-40" />
-        <Skeleton className="mt-2 h-[42px] w-80 max-w-full" />
-        <Skeleton className="mt-2 h-4 w-64 max-w-full" />
-      </div>
-      <div className="grid items-start gap-4 lg:gap-5 xl:grid-cols-3">
-        <div className="rounded-2xl border border-white/[0.07] bg-night-900/60 xl:col-span-2">
-          <div className="flex min-h-[60px] items-center gap-2 border-b border-white/[0.06] px-5 py-3.5">
-            <Skeleton className="h-8 w-8 !rounded-xl" />
-            <Skeleton className="h-4 w-36" />
-          </div>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 border-b border-white/[0.06] px-5 py-3 last:border-0">
-              <Skeleton className="h-10 w-10 shrink-0 !rounded-xl" />
-              <div className="min-w-0 flex-1">
-                <Skeleton className="h-3.5 w-32" />
-                <Skeleton className="mt-2 h-3 w-48 max-w-full" />
-              </div>
-              <Skeleton className="h-9 w-20 shrink-0" />
-            </div>
-          ))}
-        </div>
-        <div className="rounded-2xl border border-white/[0.07] bg-night-900/60">
-          <div className="flex min-h-[60px] items-center gap-2 border-b border-white/[0.06] px-5 py-3.5">
-            <Skeleton className="h-8 w-8 !rounded-xl" />
-            <Skeleton className="h-4 w-32" />
-          </div>
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 px-5 py-2">
-              <Skeleton className="h-5 w-5 shrink-0 rounded-full" />
-              <Skeleton className="h-[18px] w-[70px] shrink-0" />
-              <Skeleton className="h-3.5 min-w-0 flex-1" />
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="min-h-[104px] rounded-2xl border border-white/[0.07] bg-night-900/60 p-5">
-            <div className="flex items-center justify-between gap-2">
-              <Skeleton className="h-3 w-24" />
-              <Skeleton className="h-8 w-8 !rounded-xl" />
-            </div>
-            <Skeleton className="mt-2.5 h-8 w-16" />
-            <Skeleton className="mt-2 h-3 w-28" />
-          </div>
-        ))}
-      </div>
-      <div className="rounded-2xl border border-white/[0.07] bg-night-900/60">
-        <div className="flex min-h-[60px] items-center gap-2 border-b border-white/[0.06] px-5 py-3.5">
-          <Skeleton className="h-8 w-8 !rounded-xl" />
-          <Skeleton className="h-4 w-36" />
-        </div>
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-3 border-b border-white/[0.06] px-5 py-3 last:border-0">
-            <Skeleton className="h-9 w-9 shrink-0 !rounded-xl" />
-            <div className="min-w-0 flex-1">
-              <Skeleton className="h-3.5 w-32" />
-              <Skeleton className="mt-2 h-3 w-48 max-w-full" />
-            </div>
-            <Skeleton className="h-9 w-16 shrink-0" />
-          </div>
-        ))}
-      </div>
-      <div className="grid items-start gap-4 lg:gap-5 xl:grid-cols-5">
-        <div className="rounded-2xl border border-white/[0.07] bg-night-900/60 p-5 xl:col-span-3">
-          <Skeleton className="h-3 w-32" />
-          <Skeleton className="mt-2 h-8 w-48" />
-          <Skeleton className="mt-3 h-14 w-full" />
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-[64px]" />
-            ))}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-white/[0.07] bg-night-900/60 p-2 py-1.5 xl:col-span-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 rounded-xl px-3 py-2.5">
-              <Skeleton className="h-9 w-9 shrink-0 !rounded-xl" />
-              <div className="min-w-0 flex-1">
-                <Skeleton className="h-3.5 w-3/4" />
-                <Skeleton className="mt-1.5 h-3 w-1/2" />
-              </div>
-              <Skeleton className="h-3 w-10 shrink-0" />
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-2xl border border-white/[0.07] bg-night-900/60 px-5 py-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <Skeleton className="h-9 w-9 shrink-0 !rounded-xl" />
-          <div>
-            <Skeleton className="h-3.5 w-40" />
-            <Skeleton className="mt-1.5 h-3 w-56 max-w-full" />
-          </div>
-        </div>
-        <Skeleton className="h-1.5 min-w-[160px] flex-1 sm:max-w-[280px]" />
-        <Skeleton className="ms-auto h-8 w-28" />
-      </div>
-    </div>
-  );
-}
+/* ---------------- skeleton (lives in ./dashboard/DashboardSkeleton) ---------------- */
 
 

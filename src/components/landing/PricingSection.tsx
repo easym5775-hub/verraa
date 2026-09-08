@@ -32,7 +32,7 @@ export function PricingSection() {
   return (
     <SectionShell
       id="pricing"
-      step="05"
+      step="07"
       eyebrow="Pricing"
       title="Plans That Scale With Your Coaching Business."
       labelledBy="pricing-title"

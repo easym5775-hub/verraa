@@ -1,5 +1,8 @@
 /* ================================================================
-   VERRAA — Plans, Meals, Exercise Library and Check-ins views.
+   VERRAA — Plans, Exercise Library and Check-ins views.
+   NOTE: Nutrition/Meals has a single source of truth in
+   NutritionPlan.tsx (NutritionPlanView). Do not re-add a
+   MealsView here — it was removed as duplicated dead code.
    ================================================================ */
 
 import { useEffect, useMemo, useState } from "react";
@@ -7,19 +10,16 @@ import {
   Camera,
   Check,
   ClipboardList,
-  Flame,
   Library as LibraryIcon,
   Pencil,
   Play,
   Plus,
   Search,
-  Target,
   Trash2,
-  UtensilsCrossed,
   X,
 } from "lucide-react";
-import type { CheckIn, CoachView, Exercise, Meal, MealType, PlanItem } from "../types";
-import { CAT_META, CATEGORIES, MEAL_META, MEAL_TYPES, WEEK_DAYS, WEEK_SHORT } from "../types";
+import type { CheckIn, CoachView, Exercise, PlanItem } from "../types";
+import { CAT_META, CATEGORIES, WEEK_DAYS, WEEK_SHORT } from "../types";
 import { dayNum, fmtDate, relDay, signed } from "../lib";
 import { useApp } from "../store";
 import {
@@ -36,9 +36,9 @@ import {
   inputCls,
   labelCls,
 } from "./ui";
-import { MacroSplit } from "./Chart";
-import { ExerciseFormModal, MealFormModal, NutritionTargetsModal, PhotoModal, PlanItemFormModal } from "./modals";
+import { ExerciseFormModal, PhotoModal, PlanItemFormModal } from "./modals";
 import { PageHeader } from "./Shell";
+import { CheckInsSkeleton, LibrarySkeleton, PlansSkeleton, useViewReady } from "./skeletons";
 
 /* ================================================================
    Workout Plans
@@ -51,6 +51,7 @@ export function PlansView({ presetClientId }: { presetClientId: string | null })
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<PlanItem | null>(null);
   const [deleting, setDeleting] = useState<PlanItem | null>(null);
+  const ready = useViewReady(clientId);
 
   useEffect(() => {
     if (presetClientId) setClientId(presetClientId);
@@ -65,6 +66,8 @@ export function PlansView({ presetClientId }: { presetClientId: string | null })
   const items = state.plans.filter((p) => p.clientId === clientId && p.day === day);
   const countFor = (d: number) => state.plans.filter((p) => p.clientId === clientId && p.day === d).length;
   const exOf = (id: string) => state.exercises.find((e) => e.id === id);
+
+  if (!ready) return <PlansSkeleton />;
 
   return (
     <div>
@@ -200,196 +203,6 @@ export function PlansView({ presetClientId }: { presetClientId: string | null })
 }
 
 /* ================================================================
-   Meals / Nutrition
-   ================================================================ */
-
-export function MealsView({ presetClientId }: { presetClientId: string | null }) {
-  const { state, deleteMeal } = useApp();
-  const [clientId, setClientId] = useState(presetClientId ?? state.clients[0]?.id ?? "");
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<Meal | null>(null);
-  const [defaultType, setDefaultType] = useState<MealType>("Breakfast");
-  const [deleting, setDeleting] = useState<Meal | null>(null);
-  const [targetsOpen, setTargetsOpen] = useState(false);
-
-  useEffect(() => {
-    if (presetClientId) setClientId(presetClientId);
-  }, [presetClientId]);
-  useEffect(() => {
-    if (clientId && !state.clients.some((c) => c.id === clientId)) setClientId(state.clients[0]?.id ?? "");
-    else if (!clientId && state.clients.length) setClientId(state.clients[0].id);
-  }, [clientId, state.clients]);
-
-  const client = state.clients.find((c) => c.id === clientId);
-  const meals = state.meals.filter((m) => m.clientId === clientId);
-  const totals = meals.reduce((a, m) => ({ calories: a.calories + m.calories, protein: a.protein + m.protein, carbs: a.carbs + m.carbs, fats: a.fats + m.fats }), { calories: 0, protein: 0, carbs: 0, fats: 0 });
-  const t = client?.nutritionTargets;
-
-  return (
-    <div>
-      <PageHeader
-        title="Nutrition"
-        accent="& meals"
-        sub="Daily targets and meals assigned per client"
-        action={
-          <div className="w-full sm:w-64">
-            <label className={labelCls}>Client</label>
-            <select className={inputCls} value={clientId} onChange={(e) => setClientId(e.target.value)}>
-              {state.clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} — {c.goal}
-                </option>
-              ))}
-            </select>
-          </div>
-        }
-      />
-
-      {!client ? (
-        <div className="mt-6">
-          <EmptyState icon={<UtensilsCrossed className="h-6 w-6" />} title="No clients yet" sub="Add a client first, then assign meals and targets." />
-        </div>
-      ) : (
-        <>
-          {/* targets */}
-          <div className="rise mt-6 rounded-2xl border border-night-700 bg-night-850 p-5" style={{ animationDelay: "80ms" }}>
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <span className="grid h-12 w-12 place-items-center rounded-xl bg-warn-400/10 text-warn-300">
-                  <Target className="h-6 w-6" />
-                </span>
-                <div>
-                  <p className="font-display text-[28px] font-bold leading-7 text-mist-100 tnum">
-                    {t ? t.calories.toLocaleString("en-US") : "—"}
-                    <span className="ms-1.5 text-sm font-semibold text-mist-500">kcal / day</span>
-                  </p>
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-mist-500">{client.name}'s nutrition targets</p>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-5">
-                {t ? (
-                  <>
-                    {[
-                      ["Protein", t.protein, "text-volt-300", "g"],
-                      ["Carbs", t.carbs, "text-sky-300", "g"],
-                      ["Fats", t.fats, "text-warn-300", "g"],
-                      ["Water", t.water, "text-moss-300", "L"],
-                    ].map(([label, v, tone, unit]) => (
-                      <div key={label as string} className="text-center">
-                        <p className={`font-display text-2xl font-bold tnum ${tone}`}>
-                          {v as number}
-                          <span className="text-xs">{unit as string}</span>
-                        </p>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-mist-500">{label as string}</p>
-                      </div>
-                    ))}
-                  </>
-                ) : (
-                  <p className="text-xs text-mist-500">No targets set yet.</p>
-                )}
-                <button className={`${btnSecondary} ${btnSm}`} onClick={() => setTargetsOpen(true)}>
-                  <Pencil className="h-3.5 w-3.5" /> {t ? "Edit" : "Set targets"}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 grid gap-4 lg:grid-cols-3">
-            <SectionCard title="Assigned meals" icon={<Flame className="h-4.5 w-4.5" />} bodyCls="p-5" className="lg:col-span-1">
-              <p className="font-display text-[40px] font-bold leading-9 text-warn-300 tnum">
-                {totals.calories.toLocaleString("en-US")}
-                <span className="ms-1 text-sm font-semibold text-mist-500">kcal</span>
-              </p>
-              <p className="mt-1 text-xs font-semibold text-mist-500">
-                {meals.length} meals · P {totals.protein}g · C {totals.carbs}g · F {totals.fats}g
-              </p>
-              <div className="mt-4">
-                <MacroSplit protein={totals.protein} carbs={totals.carbs} fats={totals.fats} />
-              </div>
-              {t && totals.calories > 0 && (
-                <p className={`mt-3 text-xs font-bold ${totals.calories > t.calories ? "text-warn-300" : "text-moss-300"}`}>
-                  {totals.calories > t.calories
-                    ? `${(totals.calories - t.calories).toLocaleString("en-US")} kcal over target`
-                    : `${(t.calories - totals.calories).toLocaleString("en-US")} kcal under target`}
-                </p>
-              )}
-            </SectionCard>
-
-            <div className="grid gap-4 sm:grid-cols-2 lg:col-span-2">
-              {MEAL_TYPES.map((mt, ti) => {
-                const list = meals.filter((m) => m.type === mt);
-                return (
-                  <SectionCard
-                    key={mt}
-                    title={mt}
-                    icon={<UtensilsCrossed className="h-4.5 w-4.5" />}
-                    delay={160 + ti * 50}
-                    bodyCls="p-3"
-                    action={
-                      <button
-                        className="grid h-8 w-8 cursor-pointer place-items-center rounded-xl border border-night-600 text-mist-400 transition hover:border-volt-400 hover:text-volt-300"
-                        title={`Add ${mt.toLowerCase()}`}
-                        onClick={() => { setEditing(null); setDefaultType(mt); setModalOpen(true); }}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </button>
-                    }
-                  >
-                    {list.length === 0 ? (
-                      <p className="rounded-xl border border-dashed border-night-600 px-4 py-5 text-center text-xs text-mist-500">No {mt.toLowerCase()} assigned</p>
-                    ) : (
-                      <ul className="grid gap-2">
-                        {list.map((m) => (
-                          <li key={m.id} className="group rounded-xl border border-night-700 bg-night-800 p-3 transition-all duration-200 hover:border-night-500">
-                            <div className="flex items-start gap-2">
-                              <Badge className={MEAL_META[m.type].chip}>{m.type}</Badge>
-                              <div className="ms-auto flex gap-1 opacity-60 transition group-hover:opacity-100">
-                                <button className="grid h-7 w-7 cursor-pointer place-items-center rounded-md text-mist-400 transition-all duration-200 hover:bg-night-700 hover:text-mist-100" title="Edit" onClick={() => { setEditing(m); setModalOpen(true); }}>
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </button>
-                                <button className="grid h-7 w-7 cursor-pointer place-items-center rounded-md text-mist-400 transition hover:bg-danger-500/15 hover:text-danger-300" title="Delete" onClick={() => setDeleting(m)}>
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                            <p className="mt-2 text-sm font-semibold leading-5 text-mist-100">{m.description}</p>
-                            <p className="mt-1.5 flex items-center gap-3 text-[11px] font-bold text-mist-400 tnum">
-                              <span className="font-display text-base text-warn-300">{m.calories} kcal</span>
-                              <span className="text-volt-300">P {m.protein}g</span>
-                              <span className="text-sky-300">C {m.carbs}g</span>
-                              <span className="text-warn-300">F {m.fats}g</span>
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </SectionCard>
-                );
-              })}
-            </div>
-          </div>
-        </>
-      )}
-
-      {client && (
-        <>
-          <MealFormModal open={modalOpen} clientId={client.id} initial={editing} defaultType={defaultType} onClose={() => setModalOpen(false)} />
-          <NutritionTargetsModal open={targetsOpen} clientId={client.id} onClose={() => setTargetsOpen(false)} />
-        </>
-      )}
-      <ConfirmModal
-        open={!!deleting}
-        onClose={() => setDeleting(null)}
-        title="Remove meal?"
-        message={<>"{deleting?.description}" will be removed from the plan.</>}
-        confirmLabel="Remove"
-        onConfirm={() => deleting && deleteMeal(deleting.id)}
-      />
-    </div>
-  );
-}
-
-/* ================================================================
    Exercise Library
    ================================================================ */
 
@@ -400,6 +213,7 @@ export function LibraryView() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Exercise | null>(null);
   const [deleting, setDeleting] = useState<Exercise | null>(null);
+  const ready = useViewReady("library");
 
   const filtered = useMemo(
     () =>
@@ -411,6 +225,8 @@ export function LibraryView() {
   );
 
   const usedIn = (id: string) => state.plans.filter((p) => p.exerciseId === id).length;
+
+  if (!ready) return <LibrarySkeleton />;
 
   return (
     <div>
@@ -513,6 +329,7 @@ export function CheckInsView({ go }: { go?: (v: CoachView, id?: string) => void 
   const [photo, setPhoto] = useState<string | null>(null);
   const [detail, setDetail] = useState<CheckIn | null>(null);
   const [deleting, setDeleting] = useState<CheckIn | null>(null);
+  const ready = useViewReady("checkins");
 
   const nameOf = (id: string) => state.clients.find((c) => c.id === id);
 
@@ -529,6 +346,8 @@ export function CheckInsView({ go }: { go?: (v: CoachView, id?: string) => void 
     const idx = mine.findIndex((x) => x.id === id);
     return idx > 0 ? weight - mine[idx - 1].weight : null;
   };
+
+  if (!ready) return <CheckInsSkeleton />;
 
   return (
     <div>

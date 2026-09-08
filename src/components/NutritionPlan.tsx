@@ -9,6 +9,7 @@ import { getDayLabelMode, setDayLabelMode, relTime } from "../lib";
 import { useApp } from "../store";
 import { Avatar, EmptyState, SectionCard, labelCls, btnPrimary, btnSecondary, textareaCls } from "./ui";
 import { MealFormModal, CopyDayModal, NutritionTargetsModal } from "./modals";
+import { MealsSkeleton, useViewReady } from "./skeletons";
 import { IconFlame, IconPlus, IconTrash, IconPencil, IconUtensils, IconCopy, IconCalendar, IconWhatsapp, IconSearch, IconCheck } from "../icons";
 import { Printer, Share2, Target, AlertTriangle, Droplets, Copy, Check, X, MessageCircle } from "lucide-react";
 
@@ -222,6 +223,7 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
   const [defaultType, setDefaultType] = useState<MealType>("Breakfast");
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [rejectNote, setRejectNote] = useState("");
+  const ready = useViewReady(clientId);
 
   // Pending edit requests for the viewed client — newest first.
   const pendingReqs = useMemo(
@@ -488,6 +490,8 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
       </div>
     );
   }
+
+  if (!ready) return <MealsSkeleton />;
 
   return (
     <div>

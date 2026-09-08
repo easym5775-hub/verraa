@@ -26,6 +26,8 @@ export const TWITTER_HANDLE = "@verraa";
 
 export type SeoPageKey =
   | "home"
+  | "coach-mode"
+  | "client-mode"
   | "login"
   | "signup"
   | "privacy"
@@ -53,6 +55,20 @@ export const SEO_PAGES: Record<SeoPageKey, SeoPage> = {
       "Sign in to your VERRAA coaching workspace to manage clients, plans, check-ins and subscriptions.",
     path: "/login",
     index: false,
+  },
+  "coach-mode": {
+    title: "Coach Mode — VERRAA: Dashboard, Clients, Plans & Payments",
+    description:
+      "Explore VERRAA Coach Mode: a command-center dashboard, client roster, check-in inbox, workout plans, nutrition, sessions, payments and direct client chat.",
+    path: "/coach-mode",
+    index: true,
+  },
+  "client-mode": {
+    title: "Client Mode — The VERRAA App Your Clients Get",
+    description:
+      "See what your clients experience in VERRAA Client Mode: today's training, meals, 60-second check-ins, strength tracking, progress charts and direct coach chat.",
+    path: "/client-mode",
+    index: true,
   },
   signup: {
     title: "Get Started — Create Your VERRAA Coach Account",

@@ -12,11 +12,11 @@ import {
   ChevronDown,
   ClipboardList,
   CreditCard,
+  Dumbbell,
   KeyRound,
-  Mail,
+  LayoutGrid,
   MessageCircle,
   Pencil,
-  Phone,
   Pin,
   Plus,
   RotateCw,
@@ -68,12 +68,24 @@ import { WeightLine } from "./Chart";
 import { CoachStrengthView } from "./StrengthTracker";
 import {
   ClientFormModal,
+  NutritionTargetsModal,
   PaymentFormModal,
   PhotoModal,
   ResetPasswordModal,
   SessionFormModal,
   SubscriptionFormModal,
 } from "./modals";
+import { HeaderFact, Kpi, KV, MiniEmpty } from "./clients/index";
+import {
+  RosterCard,
+  RosterRow,
+  RosterTableHead,
+  VIRTUALIZE_AFTER,
+  VirtualMobileList,
+  VirtualRosterBody,
+  useIsDesktop,
+} from "./clients/index";
+import { ProfileSkeleton, RosterSkeleton, useViewReady } from "./skeletons";
 
 export type ClientsFilter = "All" | "Active" | "Inactive" | SubState;
 
@@ -96,7 +108,11 @@ export function ClientsView({
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
   const [deleting, setDeleting] = useState<Client | null>(null);
+  const ready = useViewReady("roster");
+  const isDesktop = useIsDesktop();
 
+  /* Narrow slice deps (not the whole state): the store updates slices
+     immutably, so writing a meal/plan/message never recomputes the roster. */
   const enriched = useMemo(
     () =>
       state.clients.map((client) => ({
@@ -104,7 +120,7 @@ export function ClientsView({
         subInfo: subscriptionState(currentSubscription(state.subscriptions.filter((s) => s.clientId === client.id))),
         last: latestCheckIn(state.checkIns.filter((c) => c.clientId === client.id)),
       })),
-    [state],
+    [state.clients, state.subscriptions, state.checkIns],
   );
 
   const filtered = useMemo(() => {
@@ -127,6 +143,20 @@ export function ClientsView({
       })
       .sort((a, b) => a.client.name.localeCompare(b.client.name));
   }, [enriched, q, filter]);
+
+  if (!ready) return <RosterSkeleton />;
+
+  // Past VIRTUALIZE_AFTER rows only the visible slice is mounted
+  // (window scroller — page scroll UX is unchanged).
+  const virtualize = filtered.length > VIRTUALIZE_AFTER;
+  const rowActions = {
+    go,
+    onEdit: (c: Client) => {
+      setEditing(c);
+      setFormOpen(true);
+    },
+    onDelete: (c: Client) => setDeleting(c),
+  };
 
   return (
     <div>
@@ -201,162 +231,34 @@ export function ClientsView({
               )}
             </EmptyState>
           </div>
+        ) : virtualize ? (
+          // Large roster: mount ONLY the visible layout + the visible row
+          // window (window scroller — page scroll UX is unchanged).
+          isDesktop ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[860px] text-sm" aria-rowcount={filtered.length + 1}>
+              <RosterTableHead />
+              <VirtualRosterBody items={filtered} {...rowActions} />
+            </table>
+          </div>
+          ) : (
+            <VirtualMobileList items={filtered} {...rowActions} />
+          )
         ) : (
           <>
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[860px] text-sm">
-              <thead>
-                <tr className="border-b border-night-700 bg-night-800/50 text-[11px] font-bold uppercase tracking-wider text-mist-500">
-                  <th className="px-5 py-3 text-start">Client</th>
-                  <th className="px-4 py-3 text-start">Goal</th>
-                  <th className="px-4 py-3 text-start">Status</th>
-                  <th className="px-4 py-3 text-start">Subscription</th>
-                  <th className="px-4 py-3 text-start">Last check-in</th>
-                  <th className="px-4 py-3 text-end">Actions</th>
-                </tr>
-              </thead>
+              <RosterTableHead />
               <tbody>
-                {filtered.map(({ client: c, subInfo, last }) => (
-                  <tr key={c.id} className="group cursor-pointer border-b border-night-700/60 transition last:border-0 hover:bg-night-800/60" onClick={() => go("client", c.id)}>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar name={c.name} photo={c.photo} className="h-10 w-10 text-xs" />
-                        <div className="min-w-0">
-                          <p className="truncate font-bold text-mist-100 transition group-hover:text-volt-300">{c.name}</p>
-                          <p className="truncate text-[11px] text-mist-500">@{c.username} · {c.phone || c.email || "—"}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge className={GOAL_META[c.goal].chip}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${GOAL_META[c.goal].dot}`} />
-                        {c.goal}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge className={STATUS_META[c.status].chip}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${STATUS_META[c.status].dot} ${c.status === "Active" ? "tick-pulse" : ""}`} />
-                        {c.status}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      {subInfo.sub ? (
-                        <span className="block">
-                          <Badge className={SUB_STATE_META[subInfo.state].chip}>{subInfo.state}</Badge>
-                          <span className={`mt-1 block text-[11px] font-semibold ${subInfo.state === "Expired" ? "text-danger-300" : subInfo.state === "Expiring Soon" ? "text-warn-300" : "text-mist-500"}`}>
-                            {remainingLabel(subInfo.daysLeft)}
-                          </span>
-                        </span>
-                      ) : (
-                        <span className="text-xs font-semibold text-mist-500">No subscription</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-mist-300">
-                      {last ? (
-                        <span>
-                          {last.weight} kg
-                          <span className="ms-2 text-[11px] text-mist-500">{relDay(last.date)}</span>
-                        </span>
-                      ) : (
-                        <span className="text-mist-500">none yet</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1 opacity-100 transition lg:opacity-60 lg:group-hover:opacity-100">
-                        <button className="grid h-8 w-8 cursor-pointer place-items-center rounded-xl text-mist-400 transition-all duration-200 hover:bg-night-700 hover:text-volt-300" title="Open profile" onClick={() => go("client", c.id)}>
-                          <User className="h-4 w-4" />
-                        </button>
-                        <button className="grid h-8 w-8 cursor-pointer place-items-center rounded-xl text-mist-400 transition-all duration-200 hover:bg-night-700 hover:text-volt-300" title="Workout plan" onClick={() => go("plans", c.id)}>
-                          <ClipboardList className="h-4 w-4" />
-                        </button>
-                        <button className="grid h-8 w-8 cursor-pointer place-items-center rounded-xl text-mist-400 transition-all duration-200 hover:bg-night-700 hover:text-volt-300" title="Meals" onClick={() => go("meals", c.id)}>
-                          <UtensilsCrossed className="h-4 w-4" />
-                        </button>
-                        <button
-                          className="grid h-8 w-8 cursor-pointer place-items-center rounded-xl text-mist-400 transition-all duration-200 hover:bg-night-700 hover:text-mist-100"
-                          title="Edit"
-                          onClick={() => {
-                            setEditing(c);
-                            setFormOpen(true);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button className="grid h-8 w-8 cursor-pointer place-items-center rounded-xl text-mist-400 transition hover:bg-danger-500/15 hover:text-danger-300" title="Delete" onClick={() => setDeleting(c)}>
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                {filtered.map((entry) => (
+                  <RosterRow key={entry.client.id} entry={entry} {...rowActions} />
                 ))}
               </tbody>
             </table>
           </div>
           <ul className="grid gap-2 p-3 md:hidden">
-            {filtered.map(({ client: c, subInfo, last }) => (
-              <li key={c.id}>
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => go("client", c.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") go("client", c.id);
-                  }}
-                  className="cursor-pointer rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3.5 transition hover:border-white/[0.13] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50"
-                  aria-label={`Open ${c.name}'s profile`}
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <Avatar name={c.name} photo={c.photo} className="h-11 w-11 shrink-0 text-xs" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-mist-100">{c.name}</p>
-                      <p className="truncate text-[11px] text-mist-500">@{c.username} · {c.phone || c.email || "—"}</p>
-                    </div>
-                    <Badge className={`${STATUS_META[c.status].chip} shrink-0`}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${STATUS_META[c.status].dot}`} />
-                      {c.status}
-                    </Badge>
-                  </div>
-                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                    <Badge className={GOAL_META[c.goal].chip}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${GOAL_META[c.goal].dot}`} />
-                      {c.goal}
-                    </Badge>
-                    {subInfo.sub ? (
-                      <Badge className={SUB_STATE_META[subInfo.state].chip}>{subInfo.state} · {remainingLabel(subInfo.daysLeft)}</Badge>
-                    ) : (
-                      <Badge className={SUB_STATE_META["No Subscription"].chip}>No subscription</Badge>
-                    )}
-                    <span className="ms-auto text-[11px] font-semibold text-mist-500">
-                      {last ? `${last.weight} kg · ${relDay(last.date)}` : "no check-ins"}
-                    </span>
-                  </div>
-                  <div className="mt-2.5 flex items-center gap-1 border-t border-white/[0.06] pt-2.5" onClick={(e) => e.stopPropagation()}>
-                    <button className="grid h-10 min-w-[44px] flex-1 cursor-pointer place-items-center rounded-xl text-xs font-bold text-mist-300 transition hover:bg-white/[0.06] hover:text-volt-300" title="Open profile" aria-label={`Open ${c.name}'s profile`} onClick={() => go("client", c.id)}>
-                      Profile
-                    </button>
-                    <button className="grid h-10 w-10 cursor-pointer place-items-center rounded-xl text-mist-400 transition hover:bg-white/[0.06] hover:text-volt-300" title="Workout plan" aria-label={`Open ${c.name}'s workout plan`} onClick={() => go("plans", c.id)}>
-                      <ClipboardList className="h-4 w-4" />
-                    </button>
-                    <button className="grid h-10 w-10 cursor-pointer place-items-center rounded-xl text-mist-400 transition hover:bg-white/[0.06] hover:text-volt-300" title="Meals" aria-label={`Open ${c.name}'s meals`} onClick={() => go("meals", c.id)}>
-                      <UtensilsCrossed className="h-4 w-4" />
-                    </button>
-                    <button
-                      className="grid h-10 w-10 cursor-pointer place-items-center rounded-xl text-mist-400 transition hover:bg-white/[0.06] hover:text-mist-100"
-                      title="Edit"
-                      aria-label={`Edit ${c.name}`}
-                      onClick={() => {
-                        setEditing(c);
-                        setFormOpen(true);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button className="grid h-10 w-10 cursor-pointer place-items-center rounded-xl text-mist-400 transition hover:bg-danger-500/15 hover:text-danger-300" title="Delete" aria-label={`Delete ${c.name}`} onClick={() => setDeleting(c)}>
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </li>
+            {filtered.map((entry) => (
+              <RosterCard key={entry.client.id} entry={entry} {...rowActions} />
             ))}
           </ul>
           </>
@@ -385,11 +287,15 @@ export function ClientsView({
    Client profile
    ================================================================ */
 
+type ProfileTab = "overview" | "checkins" | "training" | "sessions" | "nutrition" | "billing" | "connect";
+
 export function ClientProfile({ clientId, go }: { clientId: string; go: (v: CoachView, id?: string) => void }) {
   const app = useApp();
   const [editOpen, setEditOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);
+  const [tab, setTab] = useState<ProfileTab>("overview");
+  const [nutritionOpen, setNutritionOpen] = useState(false);
 
   const client = app.state.clients.find((c) => c.id === clientId);
   const subs = useMemo(() => app.state.subscriptions.filter((s) => s.clientId === clientId), [app.state.subscriptions, clientId]);
@@ -400,6 +306,7 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
   const meals = useMemo(() => app.state.meals.filter((m) => m.clientId === clientId), [app.state.meals, clientId]);
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const ready = useViewReady(clientId);
 
   if (!client) {
     return (
@@ -411,11 +318,19 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
     );
   }
 
+  if (!ready) return <ProfileSkeleton />;
+
   const subInfo = subscriptionState(currentSubscription(subs));
   const wa = waHref(client.phone);
   const fu = followUpInfo(client, checkIns);
   const latest = latestCheckIn(checkIns);
   const outstanding = outstandingAmount(subInfo.sub, payments);
+  const att = attendance(sessions);
+  const paid = totalPaid(payments);
+
+  const scrollToBilling = () => {
+    document.getElementById("client-billing")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const attention: { tone: string; dot: string; text: string }[] = [];
   if (fu.overdue) attention.push({ tone: "text-danger-300", dot: "bg-danger-400", text: `Follow-up ${fu.label.toLowerCase()}` });
@@ -427,9 +342,24 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
   if (!subInfo.sub) attention.push({ tone: "text-mist-400", dot: "bg-mist-500", text: "No subscription yet" });
 
   const focusChat = () => {
-    document.getElementById("coach-chat")?.scrollIntoView({ behavior: "smooth", block: "center" });
-    window.setTimeout(() => document.getElementById("coach-chat-input")?.focus({ preventScroll: true }), 400);
+    setTab("connect");
+    window.setTimeout(() => document.getElementById("coach-chat-input")?.focus({ preventScroll: true }), 200);
   };
+
+  const today = todayISO();
+  const upcomingCount = sessions.filter((s) => s.date >= today && (s.status === "Scheduled" || s.status === "Confirmed")).length;
+  const msgCount = app.state.messages.filter((m) => m.clientId === clientId).length;
+  const targets = client.nutritionTargets;
+
+  const tabs: { id: ProfileTab; label: string; icon: React.ReactNode; count?: number; dot?: boolean }[] = [
+    { id: "overview", label: "Overview", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
+    { id: "checkins", label: "Check-ins", icon: <Camera className="h-3.5 w-3.5" />, count: checkIns.length },
+    { id: "training", label: "Training", icon: <Dumbbell className="h-3.5 w-3.5" /> },
+    { id: "sessions", label: "Sessions", icon: <CalendarDays className="h-3.5 w-3.5" />, count: upcomingCount || undefined },
+    { id: "nutrition", label: "Nutrition", icon: <UtensilsCrossed className="h-3.5 w-3.5" />, count: meals.length || undefined },
+    { id: "billing", label: "Billing", icon: <Wallet className="h-3.5 w-3.5" />, dot: outstanding > 0 },
+    { id: "connect", label: "Connect", icon: <MessageCircle className="h-3.5 w-3.5" />, count: msgCount || undefined },
+  ];
 
   const statusTone = client.status === "Active" ? "text-moss-300" : client.status === "Paused" ? "text-warn-300" : "text-mist-400";
 
@@ -441,12 +371,12 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
           <ArrowLeft className="h-3.5 w-3.5 rtl:rotate-180" /> Back to clients
         </button>
         <div className="rounded-2xl border border-night-700 bg-night-850 p-4 sm:p-5">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
             <span className="relative shrink-0">
               <Avatar name={client.name} photo={client.photo} className="h-12 w-12 rounded-xl text-lg" />
               <span className={`absolute -bottom-0.5 -end-0.5 h-3 w-3 rounded-full ring-2 ring-night-850 ${STATUS_META[client.status].dot} ${client.status === "Active" ? "tick-pulse" : ""}`} />
             </span>
-            <div className="min-w-0 flex-1 basis-48">
+            <div className="min-w-0 flex-1 basis-52">
               <h1 className="font-display text-3xl font-bold uppercase leading-none tracking-tight text-mist-100">{client.name}</h1>
               <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                 <span className="font-bold text-mist-400">@{client.username}</span>
@@ -466,6 +396,32 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
                 </span>
               </p>
             </div>
+            {/* basic info — fills the header's empty middle instead of its own card */}
+            <dl className="grid min-w-0 flex-1 basis-64 grid-cols-2 gap-x-6 gap-y-1.5 lg:border-s lg:border-white/[0.06] lg:ps-6">
+              <HeaderFact label="Phone" value={client.phone || "—"} title={client.phone || undefined} />
+              <HeaderFact label="Age · Gender" value={`${client.age !== undefined ? client.age : "—"} · ${client.gender ?? "—"}`} />
+              <div className="min-w-0">
+                <dt className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-mist-500">Email</dt>
+                {client.email ? (
+                  <dd className="mt-0.5 truncate text-xs font-bold text-mist-200">
+                    <a href={`mailto:${client.email}`} title={client.email} className="transition hover:text-volt-300 hover:underline">
+                      {client.email}
+                    </a>
+                  </dd>
+                ) : (
+                  <dd className="mt-0.5 text-xs font-bold text-mist-500">—</dd>
+                )}
+              </div>
+              <HeaderFact label="Joined" value={fmtDate(client.startDate)} />
+              {client.notes && (
+                <div className="col-span-2 min-w-0">
+                  <dt className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-mist-500">Notes</dt>
+                  <dd title={client.notes} className="mt-0.5 line-clamp-2 text-xs font-semibold leading-5 text-mist-300">
+                    {client.notes}
+                  </dd>
+                </div>
+              )}
+            </dl>
             <div className="flex flex-wrap items-center gap-2">
               <button className={`${btnSecondary} ${btnSm}`} onClick={focusChat}>
                 <MessageCircle className="h-3.5 w-3.5" /> Message
@@ -511,30 +467,162 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
         )}
       </div>
 
-      {/* body — daily workflow first, billing last */}
-      <div className="mt-4 grid gap-4 lg:grid-cols-3">
-        <div className="grid content-start gap-4 lg:col-span-2">
-          <CheckInsCard checkIns={checkIns} clientId={client.id} />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <PlanCard plans={plans} go={go} clientId={client.id} />
-            <MealsCard mealsCount={meals.length} go={go} clientId={client.id} targets={client.nutritionTargets} />
-          </div>
-          <SessionsCard sessions={sessions} clientId={client.id} />
-          <PaymentsCard payments={payments} subs={subs} clientId={client.id} sub={subInfo.sub} />
-          <SubscriptionCard subs={subs} payments={payments} clientId={client.id} />
-        </div>
-        <div className="grid content-start gap-4">
-          <FollowUpCard client={client} checkIns={checkIns} />
-          <ProgressCard checkIns={checkIns} sessionsCount={attendance(sessions)} />
-          <CoachStrengthView clientId={client.id} />
-          <ChatThreadCard clientId={client.id} clientName={client.name} />
-          <CoachNotesCard client={client} />
-          <BasicInfoCard client={client} />
-        </div>
+      {/* priority KPIs — money & adherence at a glance (TrueCoach-style compliance strip) */}
+      <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-4">
+        <Kpi
+          label="Plan"
+          value={subInfo.sub ? remainingLabel(subInfo.daysLeft) : "No plan"}
+          sub={subInfo.sub ? `${subInfo.sub.planName} · ends ${fmtDate(subInfo.sub.endDate)}` : "Add one from Billing"}
+          tone={subInfo.state === "Active" ? "good" : subInfo.state === "Expiring Soon" ? "warn" : subInfo.state === "Expired" ? "bad" : undefined}
+          onClick={scrollToBilling}
+        />
+        <Kpi
+          label="Outstanding"
+          value={outstanding > 0 ? `${fmtMoney(outstanding)} EGP` : "Clear"}
+          sub={subInfo.sub ? `${fmtMoney(paid)} paid of ${fmtMoney(subInfo.sub.price)}` : `${fmtMoney(paid)} paid total`}
+          tone={outstanding > 0 ? "warn" : "good"}
+          onClick={scrollToBilling}
+        />
+        <Kpi
+          label="Follow-up"
+          value={fu.label}
+          sub={`every ${fu.frequency}d · from ${fu.basis ? relDay(fu.basis) : "start"}`}
+          tone={fu.overdue ? "bad" : fu.daysToNext !== null && fu.daysToNext <= 1 ? "warn" : "good"}
+        />
+        <Kpi
+          label="Attendance"
+          value={`${att.pct}%`}
+          sub={`${att.completed}/${att.countable} sessions`}
+          tone={att.pct >= 70 ? "good" : att.pct >= 40 ? "warn" : undefined}
+        />
       </div>
+
+      {/* tab bar — one workflow at a time instead of one long scroll */}
+      <div
+        role="tablist"
+        aria-label="Client sections"
+        className="rise no-scrollbar mt-3 flex gap-1 overflow-x-auto rounded-2xl border border-white/[0.07] bg-night-900/60 p-1.5 backdrop-blur-xl"
+      >
+        {tabs.map((t) => {
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(t.id)}
+              className={`flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition ${
+                active ? "bg-volt-400 text-night-950" : "text-mist-400 hover:bg-white/[0.05] hover:text-mist-100"
+              }`}
+            >
+              {t.icon}
+              <span>{t.label}</span>
+              {t.count !== undefined && (
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-extrabold tnum ${active ? "bg-night-950/15 text-night-950" : "bg-white/[0.06] text-mist-300"}`}>
+                  {t.count}
+                </span>
+              )}
+              {t.dot && <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-night-950" : "bg-warn-400"}`} />}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Overview — status at a glance */}
+      {tab === "overview" && (
+        <div className="mt-3 grid items-start gap-3 lg:grid-cols-3">
+          <div className="grid content-start gap-3 lg:col-span-2">
+            <ProgressCard checkIns={checkIns} sessionsCount={att} />
+          </div>
+          <div className="grid content-start gap-3">
+            <FollowUpCard client={client} checkIns={checkIns} />
+            <CoachNotesCard client={client} />
+          </div>
+        </div>
+      )}
+
+      {/* Check-ins — full width, room to breathe */}
+      {tab === "checkins" && (
+        <div className="mx-auto mt-3 w-full max-w-4xl">
+          <CheckInsCard checkIns={checkIns} clientId={client.id} />
+        </div>
+      )}
+
+      {/* Training — programming + strength outcomes */}
+      {tab === "training" && (
+        <div className="mx-auto mt-3 grid w-full max-w-4xl content-start gap-3">
+          <PlanCard plans={plans} go={go} clientId={client.id} />
+          <CoachStrengthView clientId={client.id} />
+        </div>
+      )}
+
+      {/* Sessions — booking follow-up meetings with the client */}
+      {tab === "sessions" && (
+        <div className="mx-auto mt-3 w-full max-w-4xl">
+          <SessionsCard sessions={sessions} clientId={client.id} />
+        </div>
+      )}
+
+      {/* Nutrition — targets + meals side by side */}
+      {tab === "nutrition" && (
+        <div className="mx-auto mt-3 grid w-full max-w-4xl content-start gap-3 sm:grid-cols-2">
+          <SectionCard
+            title="Daily targets"
+            icon={<UtensilsCrossed className="h-4.5 w-4.5" />}
+            bodyCls="p-4"
+            action={
+              <button className={`${btnSecondary} ${btnSm}`} onClick={() => setNutritionOpen(true)}>
+                {targets ? "Edit" : "Set targets"}
+              </button>
+            }
+          >
+            {targets ? (
+              <div className="grid grid-cols-2 gap-2">
+                <KV k="Calories" v={`${targets.calories} kcal`} />
+                <KV k="Protein" v={`${targets.protein}g`} />
+                <KV k="Carbs" v={`${targets.carbs}g`} />
+                <KV k="Fats" v={`${targets.fats}g`} />
+                <KV k="Water" v={`${targets.water}L`} />
+              </div>
+            ) : (
+              <MiniEmpty
+                icon={<UtensilsCrossed className="h-4 w-4" />}
+                title="No targets set"
+                sub="Daily calories, macros and water for this client."
+                action={
+                  <button className={`${btnPrimary} ${btnSm}`} onClick={() => setNutritionOpen(true)}>
+                    Set targets
+                  </button>
+                }
+              />
+            )}
+          </SectionCard>
+          <MealsCard mealsCount={meals.length} go={go} clientId={client.id} targets={targets ? { calories: targets.calories } : undefined} />
+        </div>
+      )}
+
+      {/* Billing — money in one focused view */}
+      {tab === "billing" && (
+        <div className="mx-auto mt-3 w-full max-w-4xl">
+          <BillingCard payments={payments} subs={subs} clientId={client.id} />
+        </div>
+      )}
+
+      {/* Connect — chat gets real height, notes beside it */}
+      {tab === "connect" && (
+        <div className="mt-3 grid items-start gap-3 lg:grid-cols-5">
+          <div className="lg:col-span-3">
+            <ChatThreadCard clientId={client.id} clientName={client.name} tall />
+          </div>
+          <div className="lg:col-span-2">
+            <CoachNotesCard client={client} />
+          </div>
+        </div>
+      )}
 
       <AddCheckInModal open={checkInOpen} clientId={client.id} clientName={client.name} onClose={() => setCheckInOpen(false)} />
       <ClientFormModal open={editOpen} initial={client} onClose={() => setEditOpen(false)} />
+      <NutritionTargetsModal open={nutritionOpen} clientId={client.id} onClose={() => setNutritionOpen(false)} />
       <ResetPasswordModal open={pwOpen} clientId={client.id} onClose={() => setPwOpen(false)} />
       <ConfirmModal
         open={delOpen}
@@ -556,44 +644,46 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
   );
 }
 
-/* ---------------- subscription (compact — billing comes last) ---------------- */
+/* ---------------- billing (subscription + payments merged — money in one place) ---------------- */
 
-function SubscriptionCard({ subs, payments, clientId }: { subs: Subscription[]; payments: Payment[]; clientId: string }) {
-  const { renewSubscription } = useApp();
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<Subscription | null>(null);
+function BillingCard({ subs, payments, clientId }: { subs: Subscription[]; payments: Payment[]; clientId: string }) {
+  const { renewSubscription, deletePayment } = useApp();
+  const [subFormOpen, setSubFormOpen] = useState(false);
+  const [subEditing, setSubEditing] = useState<Subscription | null>(null);
+  const [payFormOpen, setPayFormOpen] = useState(false);
+  const [payDeleting, setPayDeleting] = useState<Payment | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [showAllPayments, setShowAllPayments] = useState(false);
   const info = subscriptionState(currentSubscription(subs));
   const sub = info.sub;
   const meta = SUB_STATE_META[info.state];
   const history = subHistory(subs).filter((s) => s.id !== sub?.id);
   const outstanding = outstandingAmount(sub, payments);
+  const sortedPayments = [...payments].sort((a, b) => b.date.localeCompare(a.date));
 
   return (
     <SectionCard
-      title="Subscription"
-      icon={<CreditCard className="h-4.5 w-4.5" />}
+      id="client-billing"
+      title="Billing"
+      icon={<Wallet className="h-4.5 w-4.5" />}
       bodyCls="p-4"
       action={
         <div className="flex gap-1.5">
-          {sub && (
-            <>
-              <button className={`${btnSecondary} ${btnSm}`} title="Renew" onClick={() => renewSubscription(sub)}>
-                <RotateCw className="h-3.5 w-3.5" />
-              </button>
-              <button className={`${btnSecondary} ${btnSm}`} title="Edit" onClick={() => { setEditing(sub); setFormOpen(true); }}>
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-            </>
-          )}
-          <button className={`${btnPrimary} ${btnSm}`} onClick={() => { setEditing(null); setFormOpen(true); }}>
-            <Plus className="h-3.5 w-3.5" strokeWidth={2.6} /> {sub ? "New" : "Add"}
+          <button className={`${btnPrimary} ${btnSm}`} onClick={() => setPayFormOpen(true)}>
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.6} /> Record
+          </button>
+          <button className={`${btnSecondary} ${btnSm}`} onClick={() => { setSubEditing(null); setSubFormOpen(true); }}>
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.6} /> Plan
           </button>
         </div>
       }
     >
       {!sub ? (
-        <p className="text-xs font-semibold text-mist-500">No subscription yet — add a plan to track renewals and payments.</p>
+        <MiniEmpty
+          icon={<CreditCard className="h-4 w-4" />}
+          title="No subscription yet"
+          sub="Add a plan to track renewals and payments."
+        />
       ) : (
         <div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -614,9 +704,19 @@ function SubscriptionCard({ subs, payments, clientId }: { subs: Subscription[]; 
               </span>
             </p>
           </div>
-          {outstanding > 0 && (
-            <p className="mt-2 text-xs font-bold text-warn-300">{fmtMoney(outstanding)} EGP outstanding</p>
-          )}
+          <div className="mt-2.5 grid grid-cols-3 gap-2">
+            <KV k="Total paid" v={`${fmtMoney(totalPaid(payments))} EGP`} tone="text-moss-300" />
+            <KV k="Plan price" v={`${fmtMoney(sub.price)} EGP`} />
+            <KV k="Outstanding" v={outstanding > 0 ? `${fmtMoney(outstanding)} EGP` : "—"} tone={outstanding > 0 ? "text-warn-300" : undefined} />
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <button className={`${btnSecondary} ${btnSm}`} title="Renew" onClick={() => renewSubscription(sub)}>
+              <RotateCw className="h-3.5 w-3.5" /> Renew
+            </button>
+            <button className={`${btnSecondary} ${btnSm}`} title="Edit plan" onClick={() => { setSubEditing(sub); setSubFormOpen(true); }}>
+              <Pencil className="h-3.5 w-3.5" /> Edit plan
+            </button>
+          </div>
           {history.length > 0 && (
             <div className="mt-2 border-t border-night-700/70 pt-2">
               <button className="cursor-pointer text-[11px] font-bold text-mist-500 transition hover:text-volt-300" onClick={() => setShowHistory((v) => !v)} aria-expanded={showHistory}>
@@ -637,7 +737,47 @@ function SubscriptionCard({ subs, payments, clientId }: { subs: Subscription[]; 
           )}
         </div>
       )}
-      <SubscriptionFormModal open={formOpen} clientId={clientId} initial={editing} onClose={() => setFormOpen(false)} />
+
+      <div className="mt-3 border-t border-night-700/70 pt-2.5">
+        <div className="flex items-center justify-between pb-1.5">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">Payments ({sortedPayments.length})</p>
+          {sortedPayments.length > 5 && (
+            <button className="cursor-pointer text-[11px] font-bold text-volt-300 hover:underline" onClick={() => setShowAllPayments((v) => !v)}>
+              {showAllPayments ? "Show less" : `Show all (${sortedPayments.length})`}
+            </button>
+          )}
+        </div>
+        {sortedPayments.length === 0 ? (
+          <p className="text-xs font-semibold text-mist-500">No payments recorded.</p>
+        ) : (
+          <ul className="grid gap-1.5">
+            {(showAllPayments ? sortedPayments : sortedPayments.slice(0, 5)).map((p) => {
+              const linked = subs.find((s) => s.id === p.subscriptionId);
+              return (
+                <li key={p.id} className="group flex items-center gap-3 rounded-xl border border-night-700 bg-night-800 px-3 py-2 transition-all duration-200 hover:border-night-500">
+                  <span className="w-20 shrink-0 text-xs font-bold text-mist-300">{relDay(p.date)}</span>
+                  <span className="font-display text-base font-bold text-mist-100 tnum">{fmtMoney(p.amount)} <span className="text-[11px] font-semibold text-mist-500">EGP</span></span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-mist-400">{p.method}{linked ? ` · ${linked.planName}` : ""}</span>
+                  <Badge className={PAYMENT_STATUS_META[p.status].chip}>{p.status}</Badge>
+                  <button className="grid h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-md text-mist-400 opacity-0 transition hover:bg-danger-500/15 hover:text-danger-300 focus-visible:opacity-100 group-hover:opacity-100" title="Delete" onClick={() => setPayDeleting(p)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      <SubscriptionFormModal open={subFormOpen} clientId={clientId} initial={subEditing} onClose={() => setSubFormOpen(false)} />
+      <PaymentFormModal open={payFormOpen} clientId={clientId} initial={null} subscriptions={subs} onClose={() => setPayFormOpen(false)} />
+      <ConfirmModal
+        open={!!payDeleting}
+        onClose={() => setPayDeleting(null)}
+        title="Delete payment?"
+        message={<>{payDeleting ? fmtMoney(payDeleting.amount) : 0} EGP from {payDeleting ? relDay(payDeleting.date) : ""} will be removed.</>}
+        onConfirm={() => payDeleting && deletePayment(payDeleting.id)}
+      />
     </SectionCard>
   );
 }
@@ -649,53 +789,66 @@ function CheckInsCard({ checkIns, clientId }: { checkIns: CheckIn[]; clientId: s
   const [detail, setDetail] = useState<CheckIn | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<CheckIn | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const sorted = sortCheckIns(checkIns);
   const latest = sorted[0] ?? null;
+  const rest = sorted.slice(1);
 
   return (
-    <SectionCard title={`Check-ins (${checkIns.length})`} icon={<Camera className="h-4.5 w-4.5" />} bodyCls="p-5">
+    <SectionCard title={`Check-ins (${checkIns.length})`} icon={<Camera className="h-4.5 w-4.5" />} bodyCls="p-4">
       {checkIns.length === 0 ? (
-        <EmptyState icon={<Camera className="h-6 w-6" />} title="No check-ins submitted yet" sub="They'll appear here the moment the client logs their first day." />
+        <MiniEmpty
+          icon={<Camera className="h-4 w-4" />}
+          title="No check-ins yet"
+          sub="They'll appear here the moment the client logs their first day."
+        />
       ) : (
         <>
           {latest && (
-            <div className="rounded-xl border border-volt-400/20 bg-volt-400/5 p-4">
+            <div className="rounded-xl border border-volt-400/20 bg-volt-400/5 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-volt-300">Latest · {relDay(latest.date)}</p>
                 <Badge className={latest.workoutDone ? "border-moss-400/25 bg-moss-400/10 text-moss-300" : "border-danger-500/25 bg-danger-500/10 text-danger-300"}>
                   {latest.workoutDone ? "Workout done" : "Skipped"}
                 </Badge>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className={`mt-2.5 grid grid-cols-2 gap-2 ${latest.waist === undefined ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
                 <KV k="Weight" v={`${latest.weight} kg`} />
-                <KV k="Waist" v={latest.waist !== undefined ? `${latest.waist} cm` : "—"} />
+                {latest.waist !== undefined && <KV k="Waist" v={`${latest.waist} cm`} />}
                 <KV k="Water" v={`${latest.water} L`} />
-                <div className="rounded-xl border border-night-700 bg-night-800 p-3">
+                <div className="rounded-xl border border-night-700 bg-night-800 p-2.5">
                   <p className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-mist-500">Mood</p>
-                  <div className="mt-2"><MoodDots mood={latest.mood} /></div>
+                  <div className="mt-1.5"><MoodDots mood={latest.mood} /></div>
                 </div>
               </div>
-              {latest.notes && <p className="mt-3 text-xs italic text-mist-400">"{latest.notes}"</p>}
+              {latest.notes && <p className="mt-2 truncate text-xs italic text-mist-400">"{latest.notes}"</p>}
               {latest.photo && (
-                <button className="mt-3 cursor-zoom-in" onClick={() => setPhoto(latest.photo ?? null)}>
-                  <img src={latest.photo} alt="Latest client check-in progress photo" loading="lazy" className="h-20 rounded-xl object-cover ring-1 ring-night-600 transition-all duration-200 hover:ring-volt-400" />
+                <button className="mt-2 cursor-zoom-in" onClick={() => setPhoto(latest.photo ?? null)}>
+                  <img src={latest.photo} alt="Latest client check-in progress photo" loading="lazy" className="h-16 rounded-xl object-cover ring-1 ring-night-600 transition-all duration-200 hover:ring-volt-400" />
                 </button>
               )}
             </div>
           )}
-          {sorted.length > 1 && (
-            <ul className="mt-4 grid gap-1.5">
-              {sorted.slice(1, 6).map((ci) => (
-                <li key={ci.id}>
-                  <button className="group flex w-full cursor-pointer items-center gap-3 rounded-xl border border-night-700 bg-night-800 px-3.5 py-2.5 text-start transition-all duration-200 hover:border-night-500" onClick={() => setDetail(ci)}>
-                    <span className="w-24 shrink-0 text-xs font-bold text-mist-300">{relDay(ci.date)}</span>
-                    <span className="text-xs text-mist-400 tnum">{ci.weight} kg{ci.waist !== undefined ? ` · ${ci.waist} cm` : ""}</span>
-                    <MoodDots mood={ci.mood} />
-                    <span className="ms-auto text-[11px] font-bold text-mist-500 transition group-hover:text-volt-300">View →</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+          {rest.length > 0 && (
+            <>
+              <ul className="mt-2.5 grid gap-1.5">
+                {(showAll ? rest : rest.slice(0, 5)).map((ci) => (
+                  <li key={ci.id}>
+                    <button className="group flex w-full cursor-pointer items-center gap-3 rounded-xl border border-night-700 bg-night-800 px-3 py-2 text-start transition-all duration-200 hover:border-night-500" onClick={() => setDetail(ci)}>
+                      <span className="w-22 shrink-0 text-xs font-bold text-mist-300">{relDay(ci.date)}</span>
+                      <span className="text-xs text-mist-400 tnum">{ci.weight} kg{ci.waist !== undefined ? ` · ${ci.waist} cm` : ""}</span>
+                      <MoodDots mood={ci.mood} />
+                      <span className="ms-auto text-[11px] font-bold text-mist-500 transition group-hover:text-volt-300">View →</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {rest.length > 5 && (
+                <button className="mt-1.5 cursor-pointer text-[11px] font-bold text-volt-300 hover:underline" onClick={() => setShowAll((v) => !v)}>
+                  {showAll ? "Show less" : `Show all (${rest.length})`}
+                </button>
+              )}
+            </>
           )}
         </>
       )}
@@ -867,61 +1020,72 @@ function SessionsCard({ sessions, clientId }: { sessions: Session[]; clientId: s
   const { setSessionStatus, deleteSession } = useApp();
   const [formOpen, setFormOpen] = useState(false);
   const [deleting, setDeleting] = useState<Session | null>(null);
+  const [showAllPast, setShowAllPast] = useState(false);
   const sorted = sortSessions(sessions);
   const att = attendance(sessions);
+  const today = todayISO();
+  const upcoming = sorted.filter((s) => s.date >= today && (s.status === "Scheduled" || s.status === "Confirmed"));
+  const past = sorted.filter((s) => !upcoming.includes(s)).reverse();
 
   return (
     <SectionCard
-      title="Sessions"
+      title={`Sessions (${sessions.length})`}
       icon={<CalendarDays className="h-4.5 w-4.5" />}
-      bodyCls="p-5"
+      bodyCls="p-4"
       action={
         <button className={`${btnPrimary} ${btnSm}`} onClick={() => setFormOpen(true)}>
           <Plus className="h-3.5 w-3.5" strokeWidth={2.6} /> Book
         </button>
       }
     >
-      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-night-700 bg-night-800/60 px-4 py-3">
+      <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-night-700 bg-night-800/60 px-3.5 py-2.5">
         <p className="text-xs font-bold text-mist-300">
-          Attendance: <span className="font-display text-lg text-volt-300 tnum">{att.completed}/{att.countable}</span>
+          Attendance: <span className="font-display text-base text-volt-300 tnum">{att.completed}/{att.countable}</span>
         </p>
         <div className="h-2 min-w-24 flex-1 overflow-hidden rounded-full bg-night-700">
           <div className="grow-x h-full rounded-full bg-volt-400" style={{ width: `${att.pct}%` }} />
         </div>
-        <p className="font-display text-lg font-bold text-mist-100 tnum">{att.pct}%</p>
+        <p className="font-display text-base font-bold text-mist-100 tnum">{att.pct}%</p>
       </div>
 
       {sorted.length === 0 ? (
-        <EmptyState icon={<CalendarDays className="h-6 w-6" />} title="No sessions" sub="Book the first session for this client." />
+        <MiniEmpty
+          icon={<CalendarDays className="h-4 w-4" />}
+          title="No sessions yet"
+          sub="Book the first session for this client."
+        />
       ) : (
-        <ul className="grid gap-1.5">
-          {sorted.map((s) => {
-            const meta = SESSION_STATUS_META[s.status];
-            return (
-              <li key={s.id} className="group flex items-center gap-3 rounded-xl border border-night-700 bg-night-800 px-3.5 py-2.5 transition-all duration-200 hover:border-night-500">
-                <span className="w-24 shrink-0 text-xs font-bold text-mist-300">{relDay(s.date)}</span>
-                <span className="w-20 shrink-0 font-display text-base font-bold text-mist-100 tnum">{fmtTime(s.time)}</span>
-                <span className="min-w-0 flex-1 truncate text-xs text-mist-400">{s.type}</span>
-                <Badge className={meta.chip}>{s.status}</Badge>
-                <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
-                  {s.status !== "Completed" && (
-                    <button className="grid h-7 w-7 cursor-pointer place-items-center rounded-md text-moss-300 transition hover:bg-moss-400/15" title="Mark completed" onClick={() => setSessionStatus(s.id, "Completed")}>
-                      <Check className="h-3.5 w-3.5" strokeWidth={2.6} />
-                    </button>
-                  )}
-                  {s.status !== "Missed" && s.status !== "Cancelled" && (
-                    <button className="grid h-7 w-7 cursor-pointer place-items-center rounded-md text-warn-300 transition hover:bg-warn-400/15" title="Mark missed" onClick={() => setSessionStatus(s.id, "Missed")}>
-                      <X className="h-3.5 w-3.5" strokeWidth={2.6} />
-                    </button>
-                  )}
-                  <button className="grid h-7 w-7 cursor-pointer place-items-center rounded-md text-mist-400 transition hover:bg-danger-500/15 hover:text-danger-300" title="Delete" onClick={() => setDeleting(s)}>
-                    <Trash2 className="h-3.5 w-3.5" />
+        <div className="grid gap-2.5">
+          <div>
+            <p className="px-0.5 pb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">Upcoming ({upcoming.length})</p>
+            {upcoming.length === 0 ? (
+              <p className="px-0.5 text-xs font-semibold text-mist-500">Nothing scheduled ahead.</p>
+            ) : (
+              <ul className="grid gap-1.5">
+                {upcoming.map((s) => (
+                  <SessionRow key={s.id} s={s} setSessionStatus={setSessionStatus} setDeleting={setDeleting} />
+                ))}
+              </ul>
+            )}
+          </div>
+          {past.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between px-0.5 pb-1">
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">History ({past.length})</p>
+                {past.length > 4 && (
+                  <button className="cursor-pointer text-[11px] font-bold text-volt-300 hover:underline" onClick={() => setShowAllPast((v) => !v)}>
+                    {showAllPast ? "Show less" : `Show all (${past.length})`}
                   </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                )}
+              </div>
+              <ul className="grid gap-1.5">
+                {(showAllPast ? past : past.slice(0, 4)).map((s) => (
+                  <SessionRow key={s.id} s={s} setSessionStatus={setSessionStatus} setDeleting={setDeleting} />
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       )}
 
       <SessionFormModal open={formOpen} clientId={clientId} initial={null} onClose={() => setFormOpen(false)} />
@@ -936,60 +1100,38 @@ function SessionsCard({ sessions, clientId }: { sessions: Session[]; clientId: s
   );
 }
 
-/* ---------------- payments ---------------- */
-
-function PaymentsCard({ payments, subs, clientId, sub }: { payments: Payment[]; subs: Subscription[]; clientId: string; sub: Subscription | null }) {
-  const { deletePayment } = useApp();
-  const [formOpen, setFormOpen] = useState(false);
-  const [deleting, setDeleting] = useState<Payment | null>(null);
-  const sorted = [...payments].sort((a, b) => b.date.localeCompare(a.date));
-  const outstanding = outstandingAmount(sub, payments);
-
+function SessionRow({
+  s,
+  setSessionStatus,
+  setDeleting,
+}: {
+  s: Session;
+  setSessionStatus: (id: string, status: Session["status"]) => void;
+  setDeleting: (s: Session) => void;
+}) {
+  const meta = SESSION_STATUS_META[s.status];
   return (
-    <SectionCard
-      title="Payments"
-      icon={<Wallet className="h-4.5 w-4.5" />}
-      bodyCls="p-5"
-      action={
-        <button className={`${btnPrimary} ${btnSm}`} onClick={() => setFormOpen(true)}>
-          <Plus className="h-3.5 w-3.5" strokeWidth={2.6} /> Record
+    <li className="group flex items-center gap-2.5 rounded-xl border border-night-700 bg-night-800 px-3 py-2 transition-all duration-200 hover:border-night-500">
+      <span className="w-20 shrink-0 text-xs font-bold text-mist-300">{relDay(s.date)}</span>
+      <span className="w-16 shrink-0 font-display text-sm font-bold text-mist-100 tnum">{fmtTime(s.time)}</span>
+      <span className="min-w-0 flex-1 truncate text-xs text-mist-400">{s.type}</span>
+      <Badge className={meta.chip}>{s.status}</Badge>
+      <div className="flex shrink-0 gap-0.5 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+        {s.status !== "Completed" && (
+          <button className="grid h-7 w-7 cursor-pointer place-items-center rounded-md text-moss-300 transition hover:bg-moss-400/15" title="Mark completed" onClick={() => setSessionStatus(s.id, "Completed")}>
+            <Check className="h-3.5 w-3.5" strokeWidth={2.6} />
+          </button>
+        )}
+        {s.status !== "Missed" && s.status !== "Cancelled" && (
+          <button className="grid h-7 w-7 cursor-pointer place-items-center rounded-md text-warn-300 transition hover:bg-warn-400/15" title="Mark missed" onClick={() => setSessionStatus(s.id, "Missed")}>
+            <X className="h-3.5 w-3.5" strokeWidth={2.6} />
+          </button>
+        )}
+        <button className="grid h-7 w-7 cursor-pointer place-items-center rounded-md text-mist-400 transition hover:bg-danger-500/15 hover:text-danger-300" title="Delete" onClick={() => setDeleting(s)}>
+          <Trash2 className="h-3.5 w-3.5" />
         </button>
-      }
-    >
-      <div className="mb-4 grid grid-cols-3 gap-3">
-        <KV k="Total paid" v={`${fmtMoney(totalPaid(payments))} EGP`} tone="text-moss-300" />
-        <KV k="Current plan" v={sub ? `${fmtMoney(sub.price)} EGP` : "—"} />
-        <KV k="Outstanding" v={outstanding > 0 ? `${fmtMoney(outstanding)} EGP` : "—"} tone={outstanding > 0 ? "text-warn-300" : undefined} />
       </div>
-      {sorted.length === 0 ? (
-        <EmptyState icon={<Wallet className="h-6 w-6" />} title="No payments" sub="Record the first payment for this client." />
-      ) : (
-        <ul className="grid gap-1.5">
-          {sorted.map((p) => {
-            const linked = subs.find((s) => s.id === p.subscriptionId);
-            return (
-              <li key={p.id} className="group flex items-center gap-3 rounded-xl border border-night-700 bg-night-800 px-3.5 py-2.5 transition-all duration-200 hover:border-night-500">
-                <span className="w-24 shrink-0 text-xs font-bold text-mist-300">{relDay(p.date)}</span>
-                <span className="font-display text-lg font-bold text-mist-100 tnum">{fmtMoney(p.amount)} <span className="text-xs font-semibold text-mist-500">EGP</span></span>
-                <span className="min-w-0 flex-1 truncate text-xs text-mist-400">{p.method}{linked ? ` · ${linked.planName}` : ""}</span>
-                <Badge className={PAYMENT_STATUS_META[p.status].chip}>{p.status}</Badge>
-                <button className="grid h-7 w-7 cursor-pointer place-items-center rounded-md text-mist-400 opacity-0 transition hover:bg-danger-500/15 hover:text-danger-300 group-hover:opacity-100" title="Delete" onClick={() => setDeleting(p)}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      <PaymentFormModal open={formOpen} clientId={clientId} initial={null} subscriptions={subs} onClose={() => setFormOpen(false)} />
-      <ConfirmModal
-        open={!!deleting}
-        onClose={() => setDeleting(null)}
-        title="Delete payment?"
-        message={<>{deleting ? fmtMoney(deleting.amount) : 0} EGP from {deleting ? relDay(deleting.date) : ""} will be removed.</>}
-        onConfirm={() => deleting && deletePayment(deleting.id)}
-      />
-    </SectionCard>
+    </li>
   );
 }
 
@@ -998,18 +1140,22 @@ function PaymentsCard({ payments, subs, clientId, sub }: { payments: Payment[]; 
 function PlanCard({ plans, go, clientId }: { plans: { id: string; day: number }[]; go: (v: CoachView, id?: string) => void; clientId: string }) {
   const days = [...new Set(plans.map((p) => p.day))].sort((a, b) => a - b);
   return (
-    <SectionCard title="Workout plan" icon={<ClipboardList className="h-4.5 w-4.5" />} bodyCls="p-5">
+    <SectionCard title="Workout plan" icon={<ClipboardList className="h-4.5 w-4.5" />} bodyCls="p-4">
       {plans.length === 0 ? (
-        <EmptyState icon={<ClipboardList className="h-6 w-6" />} title="No plan yet" sub="Build their weekly split." />
+        <MiniEmpty
+          icon={<ClipboardList className="h-4 w-4" />}
+          title="No plan yet"
+          sub="Build their weekly split."
+        />
       ) : (
         <>
-          <p className="font-display text-3xl font-bold text-mist-100 tnum">
-            {plans.length} <span className="text-sm font-semibold text-mist-500">exercises</span>
+          <p className="font-display text-2xl font-bold text-mist-100 tnum">
+            {plans.length} <span className="text-[13px] font-semibold text-mist-500">exercises</span>
           </p>
-          <p className="mt-1 text-xs font-semibold text-mist-400">across {days.length} training day{days.length === 1 ? "" : "s"}</p>
+          <p className="mt-0.5 text-xs font-semibold text-mist-400">across {days.length} training day{days.length === 1 ? "" : "s"}</p>
         </>
       )}
-      <button className={`${btnSecondary} ${btnSm} mt-4 w-full`} onClick={() => go("plans", clientId)}>
+      <button className={`${btnSecondary} ${btnSm} mt-3 w-full`} onClick={() => go("plans", clientId)}>
         Open plan editor <ArrowRight className="h-3.5 w-3.5 rtl:rotate-180" />
       </button>
     </SectionCard>
@@ -1018,20 +1164,24 @@ function PlanCard({ plans, go, clientId }: { plans: { id: string; day: number }[
 
 function MealsCard({ mealsCount, go, clientId, targets }: { mealsCount: number; go: (v: CoachView, id?: string) => void; clientId: string; targets?: { calories: number } }) {
   return (
-    <SectionCard title="Nutrition" icon={<UtensilsCrossed className="h-4.5 w-4.5" />} bodyCls="p-5">
+    <SectionCard title="Nutrition" icon={<UtensilsCrossed className="h-4.5 w-4.5" />} bodyCls="p-4">
       {mealsCount === 0 ? (
-        <EmptyState icon={<UtensilsCrossed className="h-6 w-6" />} title="No meals assigned" sub="Set targets and assign meals." />
+        <MiniEmpty
+          icon={<UtensilsCrossed className="h-4 w-4" />}
+          title="No meals assigned"
+          sub={targets ? `target ${fmtMoney(targets.calories)} kcal/day — add meals.` : "Set targets and assign meals."}
+        />
       ) : (
         <>
-          <p className="font-display text-3xl font-bold text-mist-100 tnum">
-            {mealsCount} <span className="text-sm font-semibold text-mist-500">meals</span>
+          <p className="font-display text-2xl font-bold text-mist-100 tnum">
+            {mealsCount} <span className="text-[13px] font-semibold text-mist-500">meals</span>
           </p>
-          <p className="mt-1 text-xs font-semibold text-mist-400">
+          <p className="mt-0.5 text-xs font-semibold text-mist-400">
             {targets ? `target ${fmtMoney(targets.calories)} kcal/day` : "no daily target set"}
           </p>
         </>
       )}
-      <button className={`${btnSecondary} ${btnSm} mt-4 w-full`} onClick={() => go("meals", clientId)}>
+      <button className={`${btnSecondary} ${btnSm} mt-3 w-full`} onClick={() => go("meals", clientId)}>
         Open meal planner <ArrowRight className="h-3.5 w-3.5 rtl:rotate-180" />
       </button>
     </SectionCard>
@@ -1044,24 +1194,24 @@ function ProgressCard({ checkIns, sessionsCount }: { checkIns: CheckIn[]; sessio
   const prog = progressOf(checkIns);
   const sorted = useMemo(() => [...checkIns].sort((a, b) => a.date.localeCompare(a.date) || a.ts - b.ts), [checkIns]);
   return (
-    <SectionCard title="Progress" icon={<Scale className="h-4.5 w-4.5" />} bodyCls="p-5">
+    <SectionCard title="Progress" icon={<Scale className="h-4.5 w-4.5" />} bodyCls="p-4">
       <div className="grid grid-cols-3 gap-2">
         <KV k="Start" v={prog.startWeight !== null ? `${prog.startWeight} kg` : "—"} />
         <KV k="Current" v={prog.currentWeight !== null ? `${prog.currentWeight} kg` : "—"} />
         <KV k="Change" v={prog.weightChange !== null ? `${signed(prog.weightChange)} kg` : "—"} tone={prog.weightChange !== null && prog.weightChange <= 0 ? "text-moss-300" : "text-warn-300"} />
       </div>
       {prog.waistChange !== null && (
-        <p className="mt-2 text-[11px] font-semibold text-mist-500">
+        <p className="mt-1.5 text-[11px] font-semibold text-mist-500">
           Waist: {prog.startWaist} → {prog.currentWaist} cm ({signed(prog.waistChange)})
         </p>
       )}
-      <div className="mt-4">
+      <div className="mt-2.5 overflow-hidden rounded-xl border border-night-700 bg-night-800/50 p-1.5">
         <WeightLine entries={sorted} />
       </div>
-      <div className="mt-4 border-t border-night-700 pt-3">
+      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-night-700 pt-2.5">
         <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">Attendance</p>
-        <p className="mt-1 text-xs font-bold text-mist-300">
-          {sessionsCount.completed}/{sessionsCount.countable} sessions · <span className="font-display text-base text-volt-300 tnum">{sessionsCount.pct}%</span>
+        <p className="text-xs font-bold text-mist-300">
+          {sessionsCount.completed}/{sessionsCount.countable} · <span className="font-display text-sm text-volt-300 tnum">{sessionsCount.pct}%</span>
         </p>
       </div>
     </SectionCard>
@@ -1074,19 +1224,19 @@ function FollowUpCard({ client, checkIns }: { client: Client; checkIns: CheckIn[
   const { setFollowUpDays, markFollowUpDone } = useApp();
   const info = followUpInfo(client, checkIns);
   return (
-    <SectionCard title="Follow-up" icon={<RotateCw className="h-4.5 w-4.5" />} bodyCls="p-5">
-      <p className={`font-display text-2xl font-bold ${info.overdue ? "text-danger-300" : info.daysToNext !== null && info.daysToNext <= 1 ? "text-warn-300" : "text-mist-100"}`}>
+    <SectionCard title="Follow-up" icon={<RotateCw className="h-4.5 w-4.5" />} bodyCls="p-4">
+      <p className={`font-display text-xl font-bold ${info.overdue ? "text-danger-300" : info.daysToNext !== null && info.daysToNext <= 1 ? "text-warn-300" : "text-mist-100"}`}>
         {info.label}
       </p>
-      <p className="mt-1 text-[11px] font-semibold text-mist-500">
+      <p className="mt-0.5 text-[11px] font-semibold text-mist-500">
         every {info.frequency} day{info.frequency === 1 ? "" : "s"} · from {info.basis ? relDay(info.basis) : "first check-in"}
       </p>
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-2.5 flex flex-wrap gap-1">
         {[...FOLLOW_UP_PRESETS, 30].map((d) => (
           <button
             key={d}
             onClick={() => setFollowUpDays(client.id, d)}
-            className={`cursor-pointer rounded-md border px-2.5 py-1 text-[11px] font-bold transition ${
+            className={`cursor-pointer rounded-md border px-2 py-1 text-[11px] font-bold transition ${
               info.frequency === d ? "border-volt-400 bg-volt-400/15 text-volt-300" : "border-night-600 bg-night-800 text-mist-400 hover:border-night-500"
             }`}
           >
@@ -1094,7 +1244,7 @@ function FollowUpCard({ client, checkIns }: { client: Client; checkIns: CheckIn[
           </button>
         ))}
       </div>
-      <button className={`${btnSecondary} ${btnSm} mt-4 w-full`} onClick={() => markFollowUpDone(client.id)}>
+      <button className={`${btnSecondary} ${btnSm} mt-3 w-full`} onClick={() => markFollowUpDone(client.id)}>
         <Check className="h-3.5 w-3.5" strokeWidth={2.6} /> Mark follow-up done today
       </button>
     </SectionCard>
@@ -1103,7 +1253,7 @@ function FollowUpCard({ client, checkIns }: { client: Client; checkIns: CheckIn[
 
 /* ---------------- chat thread (coach side) ---------------- */
 
-function ChatThreadCard({ clientId, clientName }: { clientId: string; clientName: string }) {
+function ChatThreadCard({ clientId, clientName, tall }: { clientId: string; clientName: string; tall?: boolean }) {
   const { state, sendMessage, markNotificationRead } = useApp();
   const [draft, setDraft] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
@@ -1133,7 +1283,7 @@ function ChatThreadCard({ clientId, clientName }: { clientId: string; clientName
   return (
     <SectionCard title={`Chat · ${clientName.split(" ")[0]}`} icon={<MessageCircle className="h-4.5 w-4.5" />} bodyCls="p-0">
       {/* bounded height with internal scroll — never stretches the page */}
-      <div id="coach-chat" className="flex h-72 scroll-mt-24 flex-col">
+      <div id="coach-chat" className={`flex scroll-mt-24 flex-col ${tall ? "h-[min(62vh,600px)]" : "h-72"}`}>
         <div className="flex-1 space-y-2.5 overflow-y-auto overscroll-contain p-4">
           {thread.length === 0 && (
             <p className="grid h-full place-items-center text-center text-xs text-mist-500">No messages yet.<br />Say hi — it lands on their Chat tab.</p>
@@ -1192,7 +1342,7 @@ function CoachNotesCard({ client }: { client: Client }) {
     <SectionCard
       title="Coach notes"
       icon={<StickyNote className="h-4.5 w-4.5" />}
-      bodyCls="p-5"
+      bodyCls="p-4"
       action={
         <span className="rounded-full bg-white/[0.05] px-2.5 py-1 text-[11px] font-bold text-mist-400 tnum">
           {notes.length}
@@ -1261,51 +1411,4 @@ function CoachNotesCard({ client }: { client: Client }) {
   );
 }
 
-/* ---------------- basic info ---------------- */
-
-function BasicInfoCard({ client }: { client: Client }) {
-  const wa = waHref(client.phone);
-  return (
-    <SectionCard title="Basic info" icon={<User className="h-4.5 w-4.5" />} bodyCls="p-5">
-      <dl className="grid gap-2.5 text-sm">
-        <InfoRow k="Username" v={`@${client.username}`} />
-        <InfoRow k="Phone" v={client.phone || "—"} />
-        <InfoRow k="Email" v={client.email || "—"} />
-        <InfoRow k="Age" v={client.age !== undefined ? String(client.age) : "—"} />
-        <InfoRow k="Gender" v={client.gender ?? "—"} />
-        <InfoRow k="Joined" v={fmtDate(client.startDate)} />
-        {client.notes && <InfoRow k="Notes" v={client.notes} />}
-      </dl>
-      <div className="mt-4 flex gap-2">
-        {client.email && (
-          <a href={`mailto:${client.email}`} className={`${btnSecondary} ${btnSm} flex-1`}>
-            <Mail className="h-3.5 w-3.5" /> Email
-          </a>
-        )}
-        {wa && (
-          <a href={wa} target="_blank" rel="noreferrer" className={`${btnSecondary} ${btnSm} flex-1`}>
-            <Phone className="h-3.5 w-3.5" /> Call / WhatsApp
-          </a>
-        )}
-      </div>
-    </SectionCard>
-  );
-}
-
-function InfoRow({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-night-700/60 pb-2 last:border-0 last:pb-0">
-      <dt className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-mist-500">{k}</dt>
-      <dd className="min-w-0 truncate text-end font-semibold text-mist-200">{v}</dd>
-    </div>
-  );
-}
-
-function KV({ k, v, tone }: { k: string; v: string; tone?: string }) {
-  return (
-    <div className="rounded-xl border border-night-700 bg-night-800 p-3">
-      <p className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-mist-500">{k}</p>
-      <p className={`mt-1 font-display text-lg font-bold tnum ${tone ?? "text-mist-100"}`}>{v}</p>
-    </div>
-  );
-}
+/* ---------------- shared profile primitives (live in ./clients) ---------------- */
