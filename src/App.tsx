@@ -10,7 +10,6 @@ import type { ClientsFilter } from "./components/Clients";
 import { StoreProvider, useApp } from "./store";
 import { Toasts } from "./components/ui";
 import { Auth } from "./components/Auth";
-import { VerifyOtp } from "./components/VerifyOtp";
 import { AdminAuth } from "./components/AdminAuth";
 import { LandingPage } from "./components/landing/LandingPage";
 import { CoachModePage } from "./components/landing/CoachModePage";
@@ -185,8 +184,6 @@ function Root() {
         {/* Existing authentication flows (coach email+password, client username). */}
         <Route path="/login" element={<Auth initialMode="signin" onShowAdmin={() => setShowAdminAuth(true)} />} />
         <Route path="/signup" element={<Auth initialMode="signup" onShowAdmin={() => setShowAdminAuth(true)} />} />
-        {/* Email OTP verification after coach signup (6-digit code). */}
-        <Route path="/verify-email" element={<VerifyOtp />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />
         {/* App areas stay protected: unauthenticated visitors go to sign-in.

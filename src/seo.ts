@@ -30,7 +30,6 @@ export type SeoPageKey =
   | "client-mode"
   | "login"
   | "signup"
-  | "verify"
   | "privacy"
   | "terms"
   | "app";
@@ -76,13 +75,6 @@ export const SEO_PAGES: Record<SeoPageKey, SeoPage> = {
     description:
       "Create your VERRAA coach account and run your coaching business from one calm workspace. Start with the Free plan.",
     path: "/signup",
-    index: false,
-  },
-  verify: {
-    title: "Verify Your Email — VERRAA Coaching OS",
-    description:
-      "Enter the 6-digit verification code we emailed you to activate your VERRAA coach account.",
-    path: "/verify-email",
     index: false,
   },
   privacy: {

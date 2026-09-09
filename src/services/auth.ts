@@ -10,14 +10,6 @@ export const coachSignUp = (email: string, password: string, name: string, remem
 export const coachSignIn = (email: string, password: string, remember: boolean): Promise<void> =>
   backend.coachSignIn(email, password, remember);
 
-/** Verify the 6-digit signup code emailed after coachSignUp. */
-export const verifyCoachOtp = (email: string, token: string): Promise<void> =>
-  backend.verifyCoachOtp(email, token);
-
-/** Resend the 6-digit signup code. */
-export const resendCoachOtp = (email: string): Promise<void> =>
-  backend.resendCoachOtp(email);
-
 /** Username + password — the backend resolves the synthetic email internally. */
 export const clientSignIn = (username: string, password: string, remember: boolean): Promise<void> =>
   backend.clientSignIn(username, password, remember);
