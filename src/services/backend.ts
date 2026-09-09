@@ -588,6 +588,10 @@ export interface Backend {
   onAuthChange(cb: (userId: string | null) => void): () => void;
   coachSignUp(email: string, password: string, name: string, remember: boolean): Promise<void>;
   coachSignIn(email: string, password: string, remember: boolean): Promise<void>;
+  /** Verify a coach's 6-digit signup OTP (type=signup). Creates a session on success. */
+  verifyCoachOtp(email: string, token: string): Promise<void>;
+  /** Resend the 6-digit signup OTP to a coach's email. */
+  resendCoachOtp(email: string): Promise<void>;
   clientSignIn(username: string, password: string, remember: boolean): Promise<void>;
   ownerSignIn(email: string, password: string, remember: boolean): Promise<void>;
   signOut(): Promise<void>;
@@ -711,7 +715,7 @@ class SupabaseBackend implements Backend {
       return new Error("Invalid email or password. Double-check and try again.");
     }
     if (low.includes("email not confirmed") || low.includes("email not verified") || low.includes("confirmation")) {
-      return new Error("Please confirm your email first — check your inbox for the verification link, then sign in.");
+      return new Error("EMAIL_NOT_CONFIRMED: please verify your email first — enter the 6-digit code we sent you.");
     }
     if (low.includes("password should be at least") || low.includes("password is too short") || low.includes("weak password")) {
       return new Error("Password must be at least 6 characters.");
@@ -816,6 +820,69 @@ class SupabaseBackend implements Backend {
       if ((e as { code?: string })?.code === "ACCOUNT_SUSPENDED") throw e;
       /* non-fatal — resolveRole re-checks on boot */
     }
+  }
+
+  /**
+   * Translate raw OTP verification errors into short, user-facing messages.
+   * Supabase messages are technical ("Token has expired or is invalid") —
+   * normalise the ones coaches hit most often.
+   */
+  private friendlyOtpError(err: { message?: string } | null): Error {
+    const raw = (err?.message ?? "").trim();
+    const low = raw.toLowerCase();
+    if (!raw) return new Error("Couldn't verify the code. Try again.");
+    if (low.includes("expired")) {
+      return new Error("This code expired — tap Resend to get a new one.");
+    }
+    if (low.includes("invalid") || low.includes("token") || low.includes("otp") || low.includes("incorrect") || low.includes("wrong")) {
+      return new Error("Invalid code — double-check the 6 digits and try again.");
+    }
+    if (low.includes("rate limit") || low.includes("too many requests")) {
+      return new Error("Too many attempts — wait a minute and try again.");
+    }
+    if (low.includes("already confirmed") || low.includes("already verified")) {
+      return new Error("ALREADY_VERIFIED: this email is already verified. Sign in instead.");
+    }
+    if (low.includes("not found") || low.includes("user not found")) {
+      return new Error("No pending verification for this email — try creating your account again.");
+    }
+    if (low.includes("network") || low.includes("fetch failed") || low.includes("failed to fetch")) {
+      return new Error("Can't reach the server. Check your connection and try again.");
+    }
+    return new Error(raw);
+  }
+
+  /**
+   * Verify the 6-digit signup OTP Supabase emailed after coachSignUp.
+   * On success Supabase creates a session; the coach row + FREE trial
+   * subscription are self-healed here (same as first sign-in).
+   */
+  async verifyCoachOtp(email: string, token: string): Promise<void> {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanToken = token.trim().replace(/[\s-]/g, "");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) throw new Error("Enter a valid email address.");
+    if (!/^\d{6}$/.test(cleanToken)) throw new Error("Enter the 6-digit code from your email.");
+    const { error } = await supabase.auth.verifyOtp({ email: cleanEmail, token: cleanToken, type: "signup" });
+    if (error) throw this.friendlyOtpError(error);
+    // Session now exists: heal the coach profile row + trial subscription
+    // (the 0008/0014 DB trigger usually did this already — idempotent either way).
+    try {
+      const userId = await this.getSessionUserId();
+      if (userId) {
+        await this.ensureCoachRow(userId);
+        await this.ensureCoachSubscription(userId);
+      }
+    } catch {
+      /* non-fatal — resolveRole retries on boot */
+    }
+  }
+
+  /** Resend the 6-digit signup OTP (rate-limited server-side). */
+  async resendCoachOtp(email: string): Promise<void> {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) throw new Error("Enter a valid email address.");
+    const { error } = await supabase.auth.resend({ type: "signup", email: cleanEmail });
+    if (error) throw this.friendlyAuthError(error, "Couldn't resend the code.");
   }
 
   async clientSignIn(username: string, password: string, remember: boolean): Promise<void> {
