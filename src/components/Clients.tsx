@@ -541,31 +541,33 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
         </div>
       )}
 
-      {/* Check-ins — full width, room to breathe */}
+      {/* Check-ins — latest + history side by side on wide screens, no dead margins */}
       {tab === "checkins" && (
-        <div className="mx-auto mt-3 w-full max-w-4xl">
+        <div className="mt-3 w-full">
           <CheckInsCard checkIns={checkIns} clientId={client.id} />
         </div>
       )}
 
-      {/* Training — programming + strength outcomes */}
+      {/* Training — plan summary beside strength outcomes */}
       {tab === "training" && (
-        <div className="mx-auto mt-3 grid w-full max-w-4xl content-start gap-3">
+        <div className="mt-3 grid w-full content-start items-start gap-3 xl:grid-cols-3">
           <PlanCard plans={plans} go={go} clientId={client.id} />
-          <CoachStrengthView clientId={client.id} />
+          <div className="xl:col-span-2">
+            <CoachStrengthView clientId={client.id} />
+          </div>
         </div>
       )}
 
       {/* Sessions — booking follow-up meetings with the client */}
       {tab === "sessions" && (
-        <div className="mx-auto mt-3 w-full max-w-4xl">
+        <div className="mt-3 w-full">
           <SessionsCard sessions={sessions} clientId={client.id} />
         </div>
       )}
 
-      {/* Nutrition — targets + meals side by side */}
+      {/* Nutrition — targets + meals side by side, full width */}
       {tab === "nutrition" && (
-        <div className="mx-auto mt-3 grid w-full max-w-4xl content-start gap-3 sm:grid-cols-2">
+        <div className="mt-3 grid w-full content-start items-start gap-3 sm:grid-cols-2">
           <SectionCard
             title="Daily targets"
             icon={<UtensilsCrossed className="h-4.5 w-4.5" />}
@@ -603,7 +605,7 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
 
       {/* Billing — money in one focused view */}
       {tab === "billing" && (
-        <div className="mx-auto mt-3 w-full max-w-4xl">
+        <div className="mt-3 w-full">
           <BillingCard payments={payments} subs={subs} clientId={client.id} />
         </div>
       )}
@@ -678,6 +680,8 @@ function BillingCard({ subs, payments, clientId }: { subs: Subscription[]; payme
         </div>
       }
     >
+      <div className="grid items-start gap-4 xl:grid-cols-2">
+      <div className="min-w-0">
       {!sub ? (
         <MiniEmpty
           icon={<CreditCard className="h-4 w-4" />}
@@ -737,8 +741,9 @@ function BillingCard({ subs, payments, clientId }: { subs: Subscription[]; payme
           )}
         </div>
       )}
+      </div>
 
-      <div className="mt-3 border-t border-night-700/70 pt-2.5">
+      <div className="min-w-0 border-t border-night-700/70 pt-2.5 xl:border-t-0 xl:pt-0">
         <div className="flex items-center justify-between pb-1.5">
           <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">Payments ({sortedPayments.length})</p>
           {sortedPayments.length > 5 && (
@@ -754,9 +759,9 @@ function BillingCard({ subs, payments, clientId }: { subs: Subscription[]; payme
             {(showAllPayments ? sortedPayments : sortedPayments.slice(0, 5)).map((p) => {
               const linked = subs.find((s) => s.id === p.subscriptionId);
               return (
-                <li key={p.id} className="group flex items-center gap-3 rounded-xl border border-night-700 bg-night-800 px-3 py-2 transition-all duration-200 hover:border-night-500">
-                  <span className="w-20 shrink-0 text-xs font-bold text-mist-300">{relDay(p.date)}</span>
-                  <span className="font-display text-base font-bold text-mist-100 tnum">{fmtMoney(p.amount)} <span className="text-[11px] font-semibold text-mist-500">EGP</span></span>
+                <li key={p.id} className="group flex items-center gap-2.5 rounded-xl border border-night-700 bg-night-800 px-3 py-2 transition-all duration-200 hover:border-night-500">
+                  <span className="w-20 shrink-0 truncate text-xs font-bold text-mist-300">{relDay(p.date)}</span>
+                  <span className="shrink-0 font-display text-base font-bold text-mist-100 tnum">{fmtMoney(p.amount)} <span className="text-[11px] font-semibold text-mist-500">EGP</span></span>
                   <span className="min-w-0 flex-1 truncate text-xs text-mist-400">{p.method}{linked ? ` · ${linked.planName}` : ""}</span>
                   <Badge className={PAYMENT_STATUS_META[p.status].chip}>{p.status}</Badge>
                   <button className="grid h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-md text-mist-400 opacity-0 transition hover:bg-danger-500/15 hover:text-danger-300 focus-visible:opacity-100 group-hover:opacity-100" title="Delete" onClick={() => setPayDeleting(p)}>
@@ -767,6 +772,7 @@ function BillingCard({ subs, payments, clientId }: { subs: Subscription[]; payme
             })}
           </ul>
         )}
+      </div>
       </div>
 
       <SubscriptionFormModal open={subFormOpen} clientId={clientId} initial={subEditing} onClose={() => setSubFormOpen(false)} />
@@ -803,9 +809,9 @@ function CheckInsCard({ checkIns, clientId }: { checkIns: CheckIn[]; clientId: s
           sub="They'll appear here the moment the client logs their first day."
         />
       ) : (
-        <>
+        <div className="grid items-start gap-2.5 xl:grid-cols-5">
           {latest && (
-            <div className="rounded-xl border border-volt-400/20 bg-volt-400/5 p-3">
+            <div className="rounded-xl border border-volt-400/20 bg-volt-400/5 p-3 xl:col-span-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-volt-300">Latest · {relDay(latest.date)}</p>
                 <Badge className={latest.workoutDone ? "border-moss-400/25 bg-moss-400/10 text-moss-300" : "border-danger-500/25 bg-danger-500/10 text-danger-300"}>
@@ -830,27 +836,30 @@ function CheckInsCard({ checkIns, clientId }: { checkIns: CheckIn[]; clientId: s
             </div>
           )}
           {rest.length > 0 && (
-            <>
-              <ul className="mt-2.5 grid gap-1.5">
-                {(showAll ? rest : rest.slice(0, 5)).map((ci) => (
+            <div className="min-w-0 xl:col-span-2">
+              <p className="px-0.5 pb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">
+                History ({rest.length})
+              </p>
+              <ul className="grid gap-1.5">
+                {(showAll ? rest : rest.slice(0, 6)).map((ci) => (
                   <li key={ci.id}>
-                    <button className="group flex w-full cursor-pointer items-center gap-3 rounded-xl border border-night-700 bg-night-800 px-3 py-2 text-start transition-all duration-200 hover:border-night-500" onClick={() => setDetail(ci)}>
-                      <span className="w-22 shrink-0 text-xs font-bold text-mist-300">{relDay(ci.date)}</span>
-                      <span className="text-xs text-mist-400 tnum">{ci.weight} kg{ci.waist !== undefined ? ` · ${ci.waist} cm` : ""}</span>
-                      <MoodDots mood={ci.mood} />
-                      <span className="ms-auto text-[11px] font-bold text-mist-500 transition group-hover:text-volt-300">View →</span>
+                    <button className="group flex w-full cursor-pointer items-center gap-2.5 rounded-xl border border-night-700 bg-night-800 px-3 py-2 text-start transition-all duration-200 hover:border-night-500" onClick={() => setDetail(ci)}>
+                      <span className="w-20 shrink-0 truncate text-xs font-bold text-mist-300">{relDay(ci.date)}</span>
+                      <span className="truncate text-xs text-mist-400 tnum">{ci.weight} kg{ci.waist !== undefined ? ` · ${ci.waist} cm` : ""}</span>
+                      <span className="shrink-0"><MoodDots mood={ci.mood} /></span>
+                      <span className="ms-auto shrink-0 text-[11px] font-bold text-mist-500 transition group-hover:text-volt-300">View →</span>
                     </button>
                   </li>
                 ))}
               </ul>
-              {rest.length > 5 && (
+              {rest.length > 6 && (
                 <button className="mt-1.5 cursor-pointer text-[11px] font-bold text-volt-300 hover:underline" onClick={() => setShowAll((v) => !v)}>
                   {showAll ? "Show less" : `Show all (${rest.length})`}
                 </button>
               )}
-            </>
+            </div>
           )}
-        </>
+        </div>
       )}
 
       {detail && (
@@ -1055,8 +1064,8 @@ function SessionsCard({ sessions, clientId }: { sessions: Session[]; clientId: s
           sub="Book the first session for this client."
         />
       ) : (
-        <div className="grid gap-2.5">
-          <div>
+        <div className={`grid items-start gap-2.5 ${upcoming.length > 0 && past.length > 0 ? "xl:grid-cols-2" : ""}`}>
+          <div className="min-w-0">
             <p className="px-0.5 pb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">Upcoming ({upcoming.length})</p>
             {upcoming.length === 0 ? (
               <p className="px-0.5 text-xs font-semibold text-mist-500">Nothing scheduled ahead.</p>
@@ -1069,7 +1078,7 @@ function SessionsCard({ sessions, clientId }: { sessions: Session[]; clientId: s
             )}
           </div>
           {past.length > 0 && (
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center justify-between px-0.5 pb-1">
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">History ({past.length})</p>
                 {past.length > 4 && (

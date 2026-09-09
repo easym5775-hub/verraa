@@ -3,8 +3,8 @@
    Premium-minimal: calmer type scale, glass card, a11y-first forms.
    ================================================================ */
 
-import { useId, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useId, useState, type FormEvent } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRight,
@@ -20,7 +20,7 @@ import {
   AlertTriangle,
   Loader2,
 } from "lucide-react";
-import { coachSignIn, coachSignUp, clientSignIn } from "../services/auth";
+import { coachSignIn, coachSignUp, clientSignIn, resendCoachOtp } from "../services/auth";
 import { errorMessage } from "../lib";
 import { btnPrimary, inputCls, labelCls } from "./ui";
 import { Seo } from "./Seo";
@@ -57,6 +57,19 @@ export function Auth({
   const nameId = useId();
   const userId = useId();
   const clientPassId = useId();
+  const [params] = useSearchParams();
+
+  // Coming back from /verify-email after a successful verification:
+  // prefill the email and confirm it — the coach just signs in.
+  useEffect(() => {
+    if (params.get("verified") === "1") {
+      const qEmail = params.get("email") ?? "";
+      if (qEmail) setEmail(qEmail);
+      setNotice("Email verified — sign in with your password.");
+    }
+    // Run once on mount: query params are the entry contract.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 
@@ -88,11 +101,25 @@ export function Auth({
       // store's onAuthChange listener boots the session.
     } catch (err) {
       const msg = errorMessage(err);
-      // Email-confirmation ON: the account exists, the coach just needs to
-      // click the link first. Show guidance, not a scary red error.
+      // Signup created the account but email confirmation is ON: Supabase
+      // already emailed the 6-digit code — move to the OTP page.
       if (msg.includes("EMAIL_CONFIRMATION_REQUIRED")) {
-        setMode("signin");
-        setNotice("Account created — check your inbox for the verification link, then sign in.");
+        const cleanEmail = email.trim().toLowerCase();
+        navigate(`/verify-email?email=${encodeURIComponent(cleanEmail)}`, {
+          state: { email: cleanEmail },
+        });
+      } else if (msg.includes("EMAIL_NOT_CONFIRMED")) {
+        // Sign-in attempt before verification: refresh the code (the
+        // signup one may have expired), then move to the OTP page.
+        const cleanEmail = email.trim().toLowerCase();
+        try {
+          await resendCoachOtp(cleanEmail);
+        } catch {
+          /* the verify page has its own resend button */
+        }
+        navigate(`/verify-email?email=${encodeURIComponent(cleanEmail)}`, {
+          state: { email: cleanEmail },
+        });
       } else {
         setError(msg);
       }
