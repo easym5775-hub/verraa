@@ -427,11 +427,18 @@ export function Modal({
   const titleId = useId();
   const descId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
+  // onClose is intentionally NOT an effect dep (callers pass inline
+  // closures): depending on it re-ran this effect on every parent render
+  // and yanked focus out of inputs mid-typing. A ref always calls the latest.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     if (!open) return;
     const h = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     window.addEventListener("keydown", h);
     const prev = document.body.style.overflow;
@@ -443,7 +450,7 @@ export function Modal({
       document.body.style.overflow = prev;
       window.clearTimeout(t);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

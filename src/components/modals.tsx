@@ -39,7 +39,7 @@ import {
 import { buildClientUsername, coachUsernameSuffix, fileToDataUrl, isValidUsername, maxClientPartLength, randomPassword, stripCoachSuffix, todayISO } from "../lib";
 import { useApp } from "../store";
 import { isPlanLimitError, type PlanLimitError } from "../coachPricing";
-import { Modal, btnPrimary, btnSecondary, inputCls, labelCls, textareaCls } from "./ui";
+import { Modal, Toggle, btnPrimary, btnSecondary, inputCls, labelCls, textareaCls } from "./ui";
 
 /* ---------------- shared photo field ---------------- */
 
@@ -110,6 +110,9 @@ export function ClientFormModal({
   const { createClient, updateClient, me } = useApp();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  // True = the client gets a Client-mode login; false = coach-managed only
+  // (no username/password, the coach logs everything on their behalf).
+  const [createLogin, setCreateLogin] = useState(true);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -136,6 +139,7 @@ export function ClientFormModal({
     if (!open) return;
     setUsername("");
     setPassword("");
+    setCreateLogin(true);
     setName(initial?.name ?? "");
     setEmail(initial?.email ?? "");
     setPhone(initial?.phone ?? "");
@@ -154,7 +158,7 @@ export function ClientFormModal({
   const save = async () => {
     if (!name.trim()) return setError("Client name is required.");
     let fullUsername = "";
-    if (!initial) {
+    if (!initial && createLogin) {
       const part = stripCoachSuffix(username, coachSuffix).replace(/^\.+|\.+$/g, "");
       if (!/^[a-z0-9_.-]+$/.test(part))
         return setError("Username must use letters, numbers, dots, dashes only.");
@@ -188,7 +192,8 @@ export function ClientFormModal({
       } else {
         const c = await createClient({
           username: fullUsername,
-          password,
+          password: createLogin ? password : "",
+          createLogin,
           name: name.trim(),
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
@@ -223,7 +228,9 @@ export function ClientFormModal({
       description={
         initial
           ? undefined
-          : `Pick the username & password they'll sign in with — login ends with .${coachSuffix} (your name).`
+          : createLogin
+            ? `Pick the username & password they'll sign in with — login ends with .${coachSuffix} (your name).`
+            : "Coach-managed only — no app login, you'll log everything yourself."
       }
       wide
     >
@@ -235,6 +242,20 @@ export function ClientFormModal({
         </div>
         {!initial && (
           <>
+            <div className="sm:col-span-2">
+              <Toggle
+                checked={createLogin}
+                onChange={setCreateLogin}
+                label="Client login access"
+                hint={
+                  createLogin
+                    ? "They'll sign in to their own app with a username + password."
+                    : "Off — client lives in coach mode only, you log everything yourself."
+                }
+              />
+            </div>
+            {createLogin && (
+            <>
             <div>
               <label className={labelCls}>Login username *</label>
               <div className="flex items-center overflow-hidden rounded-xl border border-night-600 bg-night-800 transition focus-within:border-volt-400">
@@ -268,6 +289,8 @@ export function ClientFormModal({
                 </button>
               </div>
             </div>
+            </>
+            )}
           </>
         )}
         <div>
@@ -519,6 +542,7 @@ export function MealFormModal({
   defaultType,
   defaultDay,
   labelMode,
+  planId,
   onClose,
 }: {
   open: boolean;
@@ -527,6 +551,8 @@ export function MealFormModal({
   defaultType?: MealType;
   defaultDay?: number;
   labelMode?: DayLabelMode;
+  /** Version the new meal belongs to (edits keep the meal's own planId). */
+  planId?: string;
   onClose: () => void;
 }) {
   const { addMeal, updateMeal } = useApp();
@@ -569,7 +595,7 @@ export function MealFormModal({
       notes: notes.trim() || undefined,
     };
     if (initial) updateMeal({ ...initial, ...data });
-    else addMeal({ clientId, ...data });
+    else addMeal({ clientId, planId, ...data });
     onClose();
   };
 
@@ -1082,6 +1108,108 @@ export function ResetPasswordModal({ open, clientId, onClose }: { open: boolean;
   );
 }
 
+/* ---------------- create login for a coach-managed client ---------------- */
+
+export function CreateLoginModal({ open, client, onClose }: { open: boolean; client: Client; onClose: () => void }) {
+  const { createClientLogin, me } = useApp();
+  const [username, setUsername] = useState("");
+  const [pw, setPw] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const coachSuffix = useMemo(
+    () => coachUsernameSuffix(me?.role === "coach" ? me.name : "", me?.role === "coach" ? me.email : ""),
+    [me],
+  );
+  const maxPart = maxClientPartLength(coachSuffix);
+  const preview = username.trim() ? buildClientUsername(username, coachSuffix) : `—.${coachSuffix}`;
+
+  useEffect(() => {
+    if (open) {
+      // Suggest the client's first name as the login, coach suffix is appended.
+      setUsername(client.name.trim().split(/\s+/)[0] ?? "");
+      setPw("");
+      setErr("");
+      setBusy(false);
+    }
+  }, [open, client]);
+
+  const save = async () => {
+    const part = stripCoachSuffix(username, coachSuffix).replace(/^\.+|\.+$/g, "");
+    if (!/^[a-z0-9_.-]+$/.test(part)) return setErr("Username must use letters, numbers, dots, dashes only.");
+    if (part.length < 2) return setErr("Username must be at least 2 characters (before the coach suffix).");
+    if (part.length > maxPart)
+      return setErr(`That name is too long — keep it under ${maxPart} characters.`);
+    const fullUsername = buildClientUsername(part, coachSuffix);
+    if (!isValidUsername(fullUsername)) return setErr("That username doesn't fit the 3–24 character login format.");
+    if (pw.length < 6) return setErr("Password must be at least 6 characters.");
+    setBusy(true);
+    setErr("");
+    try {
+      await createClientLogin(client.id, fullUsername, pw);
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Couldn't create the login.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Create login · ${client.name.split(" ")[0]}`}
+      description="They'll sign in to their own app with these credentials. All existing data stays untouched."
+    >
+      <div className="grid gap-4">
+        <div>
+          <label className={labelCls}>Login username *</label>
+          <div className="flex items-center overflow-hidden rounded-xl border border-night-600 bg-night-800 transition focus-within:border-volt-400">
+            <input
+              className="min-w-0 flex-1 bg-transparent px-3.5 py-2.5 text-sm font-semibold text-mist-100 outline-none placeholder:font-medium placeholder:text-mist-500"
+              value={username}
+              onChange={(e) => setUsername(stripCoachSuffix(e.target.value, coachSuffix))}
+              placeholder="ali"
+              autoComplete="off"
+              maxLength={maxPart}
+            />
+            <span className="shrink-0 select-none border-s border-night-600 bg-night-900/60 px-2.5 py-2.5 text-sm font-bold text-volt-300">
+              .{coachSuffix}
+            </span>
+          </div>
+          <p className="mt-1.5 text-[11px] font-semibold leading-4 text-mist-500">
+            Client signs in with <span className="font-bold text-volt-300">{preview}</span>
+          </p>
+        </div>
+        <div>
+          <label className={labelCls}>Login password *</label>
+          <div className="flex gap-2">
+            <input className={inputCls} value={pw} onChange={(e) => setPw(e.target.value)} placeholder="min 6 chars" autoComplete="new-password" />
+            <button
+              type="button"
+              className="shrink-0 cursor-pointer rounded-xl border border-night-600 bg-night-800 px-3 text-mist-400 transition-all duration-200 hover:border-volt-400 hover:text-volt-300"
+              onClick={() => setPw(randomPassword())}
+              title="Generate a random password"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+      {err && <p className="mt-3 text-xs font-bold text-danger-400">{err}</p>}
+      <div className="mt-5 flex gap-2">
+        <button className={`${btnPrimary} flex-1`} onClick={() => void save()} disabled={busy}>
+          {busy ? "Creating…" : "Create login"}
+        </button>
+        <button className={btnSecondary} onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 /* ---------------- photo lightbox ---------------- */
 
 export function PhotoModal({ src, onClose }: { src: string | null; onClose: () => void }) {
@@ -1128,6 +1256,7 @@ export function CopyDayModal({
   sourceDay,
   meals,
   labelMode,
+  planId,
   onClose,
 }: {
   open: boolean;
@@ -1135,6 +1264,8 @@ export function CopyDayModal({
   sourceDay: number;
   meals: Meal[];
   labelMode?: DayLabelMode;
+  /** Version the copies belong to (defaults to the source meals' version). */
+  planId?: string;
   onClose: () => void;
 }) {
   const { addMeal } = useApp();
@@ -1169,11 +1300,12 @@ export function CopyDayModal({
       // In a more complex system we'd show a proper confirmation dialog
     }
 
-    // Copy meals to each selected day
+    // Copy meals to each selected day (staying inside the same plan version)
     destDays.forEach((destDay) => {
       sourceMeals.forEach((meal) => {
         addMeal({
           clientId,
+          planId: planId ?? meal.planId,
           day: destDay,
           type: meal.type,
           time: meal.time,

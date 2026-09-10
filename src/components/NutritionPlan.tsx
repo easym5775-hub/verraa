@@ -5,13 +5,14 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import type { Meal, MealEditRequest, MealType, Client, DayLabelMode } from "../types";
 import { MEAL_TYPES, WEEK_DAYS, WEEK_SHORT, WEEK_ORDER_SAT_FIRST, formatDayName, formatDayShort } from "../types";
-import { getDayLabelMode, setDayLabelMode, relTime } from "../lib";
+import { getDayLabelMode, setDayLabelMode, relTime, clientPlans, activePlan, mealInPlan } from "../lib";
 import { useApp } from "../store";
-import { Avatar, EmptyState, SectionCard, labelCls, btnPrimary, btnSecondary, textareaCls } from "./ui";
+import { Avatar, ConfirmModal, Dropdown, EmptyState, Modal, SectionCard, inputCls, labelCls, btnPrimary, btnSecondary, textareaCls } from "./ui";
 import { MealFormModal, CopyDayModal, NutritionTargetsModal } from "./modals";
 import { MealsSkeleton, useViewReady } from "./skeletons";
 import { IconFlame, IconPlus, IconTrash, IconPencil, IconUtensils, IconCopy, IconCalendar, IconWhatsapp, IconSearch, IconCheck } from "../icons";
-import { Printer, Share2, Target, AlertTriangle, Droplets, Copy, Check, X, MessageCircle } from "lucide-react";
+import { Printer, Share2, Target, AlertTriangle, Droplets, Copy, Check, X, MessageCircle, Layers, FileDown, FileText, Image as ImageIcon } from "lucide-react";
+import { exportDayImage, exportWeekPdf } from "./nutritionExport";
 
 /* ---------- helpers ---------- */
 
@@ -211,18 +212,36 @@ function ClientSearchPicker({
 }
 
 export function NutritionPlanView({ presetClientId }: { presetClientId: string | null }) {
-  const { state, addMeal, updateMeal, deleteMeal, toast, reviewMealRequest } = useApp();
+  const {
+    state,
+    me,
+    addMeal,
+    updateMeal,
+    deleteMeal,
+    toast,
+    reviewMealRequest,
+    addNutritionPlan,
+    duplicateNutritionPlan,
+    renameNutritionPlan,
+    deleteNutritionPlan,
+    setActiveNutritionPlan,
+  } = useApp();
   const [clientId, setClientId] = useState(presetClientId ?? state.clients[0]?.id ?? "");
   const [selectedDay, setSelectedDay] = useState<number>(1); // 1 = Monday (stored numbering)
   const [labelMode, setLabelMode] = useState<DayLabelMode>(() => getDayLabelMode());
   const [modalOpen, setModalOpen] = useState(false);
   const [copyModalOpen, setCopyModalOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [targetsOpen, setTargetsOpen] = useState(false);
   const [editing, setEditing] = useState<Meal | null>(null);
   const [deleting, setDeleting] = useState<Meal | null>(null);
   const [defaultType, setDefaultType] = useState<MealType>("Breakfast");
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [rejectNote, setRejectNote] = useState("");
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [deletingVersion, setDeletingVersion] = useState(false);
   const ready = useViewReady(clientId);
 
   // Pending edit requests for the viewed client — newest first.
@@ -260,7 +279,45 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
   }, [clientId, state.clients]);
 
   const client = state.clients.find((c) => c.id === clientId);
-  const allClientMeals = state.meals.filter((m) => m.clientId === clientId);
+
+  /* ---------- diet-plan versions (one standing plan per client) ---------- */
+  const versions = useMemo(() => clientPlans(state.nutritionPlans, clientId), [state.nutritionPlans, clientId]);
+
+  // First open for a client: adopt existing meals into "Plan 1" (active).
+  // Guarded to a single attempt per client — if the insert fails (e.g. the
+  // migration isn't applied yet) we must NOT retry in a toast loop.
+  const ensuredRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!clientId || versions.length > 0 || ensuredRef.current.has(clientId)) return;
+    ensuredRef.current.add(clientId);
+    addNutritionPlan({ clientId, name: "Plan 1" });
+  }, [clientId, versions.length, addNutritionPlan]);
+
+  // Keep the selection valid: follow the active version unless the coach
+  // explicitly picked another one (and reset when switching clients).
+  useEffect(() => setSelectedVersionId(null), [clientId]);
+  const selectedVersion =
+    versions.find((v) => v.id === selectedVersionId) ?? activePlan(state.nutritionPlans, clientId) ?? versions[0];
+  const isLegacyOwner = selectedVersion != null && versions.length > 0 && versions[0].id === selectedVersion.id;
+
+  // Meals of the VIEWED version (edits, copy-day, share & print all follow this).
+  const allClientMeals = useMemo(
+    () =>
+      state.meals.filter(
+        (m) => m.clientId === clientId && (selectedVersion ? mealInPlan(m, selectedVersion.id, isLegacyOwner) : true),
+      ),
+    [state.meals, clientId, selectedVersion, isLegacyOwner],
+  );
+
+  // Meal counts per version (for the pills).
+  const versionCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    versions.forEach((v, i) => {
+      const legacy = i === 0;
+      counts[v.id] = state.meals.filter((m) => m.clientId === clientId && mealInPlan(m, v.id, legacy)).length;
+    });
+    return counts;
+  }, [state.meals, versions, clientId]);
   
   // Filter meals for selected day
   const dayMeals = useMemo(() => 
@@ -473,6 +530,50 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
     w.document.close();
   };
 
+  /* ---------- image / PDF export (plan rendered as pictures) ---------- */
+
+  const handleWeekPdf = async () => {
+    if (!client) return;
+    const days = WEEK_ORDER_SAT_FIRST.map((d) => {
+      const { list, totals } = buildDayText(d);
+      return { day: d, dayName: WEEK_DAYS[d - 1], meals: list, totals };
+    });
+    if (!days.some((d) => d.meals.length > 0)) {
+      toast("Add at least one meal before exporting", "warn");
+      return;
+    }
+    toast("Preparing PDF…");
+    try {
+      await exportWeekPdf(
+        { clientName: client.name, coachName: me?.name, planName: selectedVersion?.name, targets },
+        days,
+      );
+    } catch {
+      toast("Couldn't create the PDF", "warn");
+    }
+  };
+
+  const handleDayPng = async () => {
+    if (!client) return;
+    const { list, totals } = buildDayText(selectedDay);
+    if (list.length === 0) {
+      toast("No meals planned for this day", "warn");
+      return;
+    }
+    const dayName =
+      labelMode === "numbered"
+        ? `${formatDayName(selectedDay, labelMode)} ${WEEK_DAYS[selectedDay - 1]}`
+        : WEEK_DAYS[selectedDay - 1];
+    try {
+      await exportDayImage(
+        { clientName: client.name, coachName: me?.name, planName: selectedVersion?.name, targets },
+        { day: selectedDay, dayName, meals: list, totals },
+      );
+    } catch {
+      toast("Couldn't create the image", "warn");
+    }
+  };
+
   if (!client) {
     return (
       <div>
@@ -576,11 +677,106 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
                   </div>
                 )}
                 <p className="mt-2 text-[11px] font-semibold text-mist-600">Tip: edit the meal below first, then hit Approve — the client is notified instantly.</p>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+      {/* Diet-plan versions — one standing plan per client, old ones restorable */}
+      <div className="rise mt-6 rounded-xl border border-night-700 bg-night-850 p-4" style={{ animationDelay: "70ms" }}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-mist-400">
+            <Layers className="h-4 w-4 text-volt-300" />
+            Plan
+          </span>
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            {versions.map((v) => {
+              const isSel = selectedVersion?.id === v.id;
+              const isActive = v.status === "active";
+              return (
+                <button
+                  key={v.id}
+                  onClick={() => setSelectedVersionId(v.id)}
+                  title={`${v.name} · ${versionCounts[v.id] ?? 0} meals · ${new Date(v.createdAt).toLocaleDateString()}${isActive ? " · visible to client" : ""}`}
+                  className={`inline-flex max-w-[180px] cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition ${
+                    isSel
+                      ? "border-volt-400 bg-volt-400/15 text-volt-200"
+                      : "border-night-600 bg-night-800 text-mist-400 hover:border-night-500 hover:text-mist-200"
+                  }`}
+                >
+                  <span className="truncate">{v.name}</span>
+                  {isActive && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-moss-400" />}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => {
+                const p = addNutritionPlan({ clientId });
+                setSelectedVersionId(p.id);
+              }}
+              title="Start a new empty plan draft"
+              className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-night-600 bg-night-800 px-2.5 py-1.5 text-[11px] font-bold text-mist-200 transition hover:border-volt-400 hover:text-volt-300"
+            >
+              <IconPlus className="h-3.5 w-3.5" /> New
+            </button>
+            <button
+              onClick={() => {
+                if (!selectedVersion) return;
+                const p = duplicateNutritionPlan(selectedVersion.id);
+                if (p) setSelectedVersionId(p.id);
+              }}
+              disabled={!selectedVersion}
+              title="Duplicate the viewed plan into a new draft"
+              className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-night-600 bg-night-800 px-2.5 py-1.5 text-[11px] font-bold text-mist-200 transition hover:border-volt-400 hover:text-volt-300 disabled:opacity-40"
+            >
+              <Copy className="h-3.5 w-3.5" /> Duplicate
+            </button>
+            <button
+              onClick={() => {
+                if (!selectedVersion) return;
+                setRenameValue(selectedVersion.name);
+                setRenaming(true);
+              }}
+              disabled={!selectedVersion}
+              title="Rename the viewed plan"
+              className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-night-600 bg-night-800 px-2.5 py-1.5 text-[11px] font-bold text-mist-200 transition hover:border-volt-400 hover:text-volt-300 disabled:opacity-40"
+            >
+              <IconPencil className="h-3.5 w-3.5" /> Rename
+            </button>
+            {selectedVersion && selectedVersion.status !== "active" && (
+              <button
+                onClick={() => setActiveNutritionPlan(selectedVersion.id)}
+                title="Show this plan to the client (archives the current one)"
+                className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-moss-400 px-2.5 py-1.5 text-[11px] font-bold text-night-950 transition hover:bg-moss-300"
+              >
+                <Check className="h-3.5 w-3.5" strokeWidth={2.6} /> Set active
+              </button>
+            )}
+            <button
+              onClick={() => selectedVersion && setDeletingVersion(true)}
+              disabled={!selectedVersion || selectedVersion.status === "active"}
+              title={selectedVersion?.status === "active" ? "The active plan can't be deleted — activate another one first" : "Delete the viewed plan and its meals"}
+              className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-night-600 bg-night-800 px-2.5 py-1.5 text-[11px] font-bold text-mist-200 transition hover:border-danger-500/50 hover:text-danger-300 disabled:opacity-40"
+            >
+              <IconTrash className="h-3.5 w-3.5" /> Delete
+            </button>
+          </div>
         </div>
-      )}
+        <p className="mt-2 text-[11px] font-semibold text-mist-500">
+          {selectedVersion ? (
+            selectedVersion.status === "active" ? (
+              <>“{selectedVersion.name}” is the standing plan — the client follows it until you activate another one.</>
+            ) : (
+              <>Viewing archived “{selectedVersion.name}” — edits stay in this version until you Set active.</>
+            )
+          ) : (
+            "No plan yet."
+          )}
+        </p>
+      </div>
 
       {/* Week Navigation */}
       <div className="rise mt-6 rounded-xl border border-night-700 bg-night-850 p-4" style={{ animationDelay: "80ms" }}>
@@ -774,14 +970,30 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
               <Share2 className="h-3.5 w-3.5" />
               Week
             </button>
-            <button
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-night-600 bg-night-800 px-3 py-1.5 text-xs font-bold text-mist-300 transition hover:border-warn-400 hover:text-warn-300"
-              onClick={handlePrint}
-              title="Print full week plan"
-            >
-              <Printer className="h-3.5 w-3.5" />
-              Print
-            </button>
+            <Dropdown
+              open={exportOpen}
+              onOpenChange={setExportOpen}
+              align="end"
+              label="Export plan"
+              trigger={
+                <button
+                  onClick={() => setExportOpen((v) => !v)}
+                  aria-haspopup="menu"
+                  aria-expanded={exportOpen}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-night-600 bg-night-800 px-3 py-1.5 text-xs font-bold text-mist-300 transition hover:border-warn-400 hover:text-warn-300"
+                  title="Export the plan as PDF / image / print"
+                >
+                  <FileDown className="h-3.5 w-3.5" />
+                  Export
+                </button>
+              }
+              items={[
+                { type: "item", label: "Week PDF (plan images)", hint: "7 pages", icon: FileText, onClick: () => void handleWeekPdf() },
+                { type: "item", label: `Day JPG image`, hint: WEEK_SHORT[selectedDay - 1], icon: ImageIcon, onClick: () => void handleDayPng() },
+                { type: "divider" },
+                { type: "item", label: "Print week", icon: Printer, onClick: handlePrint },
+              ]}
+            />
             <button
               className={`${btnPrimary} inline-flex items-center gap-1.5 !min-h-[32px] !py-1.5`}
               onClick={() => handleAddMeal()}
@@ -926,6 +1138,7 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
         defaultType={defaultType}
         defaultDay={editing?.day ?? selectedDay}
         labelMode={labelMode}
+        planId={editing?.planId ?? selectedVersion?.id}
         onClose={() => setModalOpen(false)}
       />
 
@@ -937,7 +1150,60 @@ export function NutritionPlanView({ presetClientId }: { presetClientId: string |
         sourceDay={selectedDay}
         meals={allClientMeals}
         labelMode={labelMode}
+        planId={selectedVersion?.id}
         onClose={() => setCopyModalOpen(false)}
+      />
+
+      {/* Rename plan */}
+      <Modal open={renaming} onClose={() => setRenaming(false)} title="Rename plan" size="sm">
+        <label className={labelCls}>Plan name</label>
+        <input
+          className={inputCls}
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          placeholder="e.g. Cutting — March"
+          maxLength={60}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && selectedVersion && renameValue.trim()) {
+              renameNutritionPlan(selectedVersion.id, renameValue);
+              setRenaming(false);
+            }
+          }}
+        />
+        <div className="mt-5 flex gap-2">
+          <button
+            className={`${btnPrimary} flex-1`}
+            onClick={() => {
+              if (selectedVersion && renameValue.trim()) renameNutritionPlan(selectedVersion.id, renameValue);
+              setRenaming(false);
+            }}
+          >
+            Save name
+          </button>
+          <button className={btnSecondary} onClick={() => setRenaming(false)}>
+            Cancel
+          </button>
+        </div>
+      </Modal>
+
+      {/* Delete plan */}
+      <ConfirmModal
+        open={deletingVersion && !!selectedVersion}
+        onClose={() => setDeletingVersion(false)}
+        title="Delete plan?"
+        message={
+          <>
+            “{selectedVersion?.name}” and its {selectedVersion ? (versionCounts[selectedVersion.id] ?? 0) : 0} meal(s)
+            will be permanently removed. This can't be undone.
+          </>
+        }
+        confirmLabel="Delete"
+        onConfirm={() => {
+          if (selectedVersion) {
+            deleteNutritionPlan(selectedVersion.id);
+            setSelectedVersionId(null);
+          }
+        }}
       />
 
       {/* Delete Confirmation */}

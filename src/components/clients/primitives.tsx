@@ -1,4 +1,7 @@
 import type { ReactNode } from "react";
+import { useApp } from "../../store";
+import { PRIORITIES, PRIORITY_META, normalizePriority, type Client, type ClientPriority } from "../../types";
+import type { DropdownItem } from "../ui";
 
 export function KV({ k, v, tone }: { k: string; v: string; tone?: string }) {
   return (
@@ -54,6 +57,32 @@ export function HeaderFact({ label, value, title }: { label: string; value: stri
       </dd>
     </div>
   );
+}
+
+/* Priority badge — hidden for Normal (and unknown) to reduce noise. */
+export function PriorityBadge({ priority, className = "" }: { priority: Client["priority"]; className?: string }) {
+  const normalized = normalizePriority(priority);
+  if (normalized === "Normal") return null;
+  const meta = PRIORITY_META[normalized];
+  return (
+    <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px text-[9.5px] font-extrabold uppercase tracking-wide ${meta.chip} ${className}`}>
+      <span className={`h-1 w-1 rounded-full ${meta.dot}`} />
+      {normalized}
+    </span>
+  );
+}
+
+/* Priority picker items for any client "More" menu — Critical / Medium / Normal. */
+export function usePriorityItems(client: Client): DropdownItem[] {
+  const { updateClient } = useApp();
+  return PRIORITIES.map((p: ClientPriority) => ({
+    type: "item" as const,
+    label: `${p} priority`,
+    hint: client.priority === p ? "✓" : undefined,
+    onClick: () => {
+      if (client.priority !== p) updateClient({ ...client, priority: p });
+    },
+  }));
 }
 
 /* Compact empty state for small cards — replaces the tall hero EmptyState

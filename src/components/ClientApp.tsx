@@ -3,7 +3,7 @@
    Subscription + the notification bell.
    ================================================================ */
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight,
   Bell,
@@ -13,8 +13,11 @@ import {
   CreditCard,
   Dumbbell,
   Droplets,
+  FileDown,
+  FileText,
   Flame,
   Home,
+  ImagePlus,
   Image as ImageIcon,
   LogOut,
   MessageCircle,
@@ -26,15 +29,17 @@ import {
   UtensilsCrossed,
   X,
 } from "lucide-react";
-import type { AppNotification, Client, Meal, MealRequestStatus, MealType, DayLabelMode } from "../types";
+import type { AppNotification, Client, Meal, MealLogStatus, MealRequestStatus, MealType, DayLabelMode } from "../types";
 import { CAT_META, GOAL_META, MEAL_META, MEAL_TYPES, NOTIFICATION_META, SUB_PAYMENT_META, SUB_STATE_META, WEEK_DAYS,
 WEEK_SHORT, WEEK_ORDER_SAT_FIRST, formatDayName, formatDayShort } from "../types";
-import { dayNum, fileToDataUrl, fmtDate, fmtMoney, fmtTime, getDayLabelMode, relTime, round1, signed, todayISO } from "../lib";
+import { dayNum, fmtDate, fmtMoney, fmtTime, getDayLabelMode, activePlan, clientPlans, mealInPlan, relTime, round1, signed, todayISO } from "../lib";
 import { attendance, currentSubscription, progressOf, remainingLabel, subscriptionState } from "../logic";
 import { useApp } from "../store";
-import { Avatar, Badge, EmptyState, Modal, MoodPicker, SectionCard, Toggle, btnPrimary, btnSecondary, btnVolt, chip, inputCls, labelCls, textareaCls, useCountUp } from "./ui";
+import { Avatar, Badge, ConfirmModal, Dropdown, EmptyState, Modal, MoodPicker, SectionCard, Toggle, btnPrimary, btnSecondary, btnVolt, chip, inputCls, labelCls, textareaCls, useCountUp } from "./ui";
+import { exportDayImage, exportWeekPdf } from "./nutritionExport";
 import { WeightLine } from "./Chart";
 import { StrengthTracker } from "./StrengthTracker";
+import { PhotoGallery } from "./Photos";
 
 const MEAL_REQ_META: Record<MealRequestStatus, { chip: string; label: string }> = {
   PENDING: { chip: "border-warn-400/25 bg-warn-400/10 text-warn-300", label: "Pending review" },
@@ -42,7 +47,53 @@ const MEAL_REQ_META: Record<MealRequestStatus, { chip: string; label: string }> 
   REJECTED: { chip: "border-danger-500/25 bg-danger-500/10 text-danger-300", label: "Rejected" },
 };
 
-type Tab = "today" | "training" | "nutrition" | "checkin" | "progress" | "chat" | "subscription";
+/* ---------------- meal compliance buttons (✓ ate it / ✕ skipped) ---------------- */
+
+function MealLogButtons({ meal, date, clientId }: { meal: Meal; date: string; clientId: string }) {
+  const { state, setMealLog } = useApp();
+  const status = (state.mealLogs ?? []).find((l) => l.clientId === clientId && l.mealId === meal.id && l.date === date)?.status ?? null;
+  // Tapping the active mark clears it; tapping the other one switches.
+  const tap = (s: MealLogStatus) => setMealLog({ meal, date, clientId, status: status === s ? null : s });
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <button
+        onClick={() => tap("EATEN")}
+        title="I ate this meal"
+        aria-label={`Mark ${meal.description} as eaten`}
+        aria-pressed={status === "EATEN"}
+        className={`grid h-8 w-8 cursor-pointer place-items-center rounded-lg border transition active:scale-95 ${status === "EATEN" ? "border-moss-400 bg-moss-400 text-night-950" : "border-night-600 text-mist-500 hover:border-moss-400/60 hover:text-moss-300"}`}
+      >
+        <Check className="h-4 w-4" strokeWidth={2.8} />
+      </button>
+      <button
+        onClick={() => tap("SKIPPED")}
+        title="I skipped it / cheated"
+        aria-label={`Mark ${meal.description} as skipped`}
+        aria-pressed={status === "SKIPPED"}
+        className={`grid h-8 w-8 cursor-pointer place-items-center rounded-lg border transition active:scale-95 ${status === "SKIPPED" ? "border-danger-500 bg-danger-500 text-white" : "border-night-600 text-mist-500 hover:border-danger-500/60 hover:text-danger-300"}`}
+      >
+        <X className="h-4 w-4" strokeWidth={2.8} />
+      </button>
+    </span>
+  );
+}
+
+/** Today adherence chip: "3/5 on track". */
+function DayAdherence({ clientId, date, total }: { clientId: string; date: string; total: number }) {
+  const { state } = useApp();
+  if (total === 0) return null;
+  const logs = (state.mealLogs ?? []).filter((l) => l.clientId === clientId && l.date === date);
+  const eaten = logs.filter((l) => l.status === "EATEN").length;
+  const done = logs.length >= total;
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${done && eaten === total ? "border-moss-400/30 bg-moss-400/10 text-moss-300" : "border-white/[0.08] bg-white/[0.03] text-mist-200"}`}>
+      <Check className={`h-3.5 w-3.5 ${eaten === total && done ? "text-moss-300" : "text-mist-400"}`} />
+      {eaten}/{total} on track
+    </span>
+  );
+}
+
+type Tab = "today" | "training" | "nutrition" | "checkin" | "progress" | "photos" | "chat" | "subscription";
 
 export function ClientApp({ onLogout }: { onLogout: () => void }) {
   const { state, me, markAllNotificationsRead } = useApp();
@@ -52,7 +103,17 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
   const clientId = me?.userId ?? "";
   const client = state.clients.find((c) => c.id === clientId);
   const plans = useMemo(() => state.plans.filter((p) => p.clientId === clientId), [state.plans, clientId]);
-  const meals = useMemo(() => state.meals.filter((m) => m.clientId === clientId), [state.meals, clientId]);
+  // The client follows ONE standing plan: only the active version's meals
+  // are visible (pre-versioning meals belong to the oldest version; with no
+  // versions yet everything shows — legacy behavior).
+  const meals = useMemo(() => {
+    const mine = state.meals.filter((m) => m.clientId === clientId);
+    const versions = clientPlans(state.nutritionPlans, clientId);
+    if (versions.length === 0) return mine;
+    const active = activePlan(state.nutritionPlans, clientId) ?? versions[0];
+    const legacy = versions[0].id === active.id;
+    return mine.filter((m) => mealInPlan(m, active.id, legacy));
+  }, [state.meals, state.nutritionPlans, clientId]);
   const checkIns = useMemo(() => state.checkIns.filter((c) => c.clientId === clientId), [state.checkIns, clientId]);
   const sessions = useMemo(() => state.sessions.filter((s) => s.clientId === clientId), [state.sessions, clientId]);
   const notifications = useMemo(
@@ -60,6 +121,10 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
     [state.notifications, clientId],
   );
   const unread = notifications.filter((n) => !n.read).length;
+  const todayPickDay = useMemo(
+    () => (state.mealDayPicks ?? []).find((p) => p.clientId === clientId && p.date === todayISO())?.day ?? null,
+    [state.mealDayPicks, clientId],
+  );
 
   if (!client) {
     return (
@@ -80,6 +145,7 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
     { id: "nutrition", label: "Nutrition" },
     { id: "checkin", label: "Check-in" },
     { id: "progress", label: "Progress" },
+    { id: "photos", label: "Photos" },
     { id: "chat", label: "Chat" },
     { id: "subscription", label: "Subscription" },
   ];
@@ -138,6 +204,15 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
             className={`grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-xl border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50 lg:hidden ${tab === "training" ? "border-volt-400/50 bg-volt-400/15 text-volt-300" : "border-white/[0.08] bg-white/[0.02] text-mist-400 hover:border-white/[0.14] hover:text-mist-100"}`}
           >
             <Dumbbell className="h-[18px] w-[18px]" />
+          </button>
+          {/* photos shortcut — visible on mobile/tablet where bottom nav hides it */}
+          <button
+            onClick={() => goTab("photos")}
+            aria-label="Progress photos"
+            aria-current={tab === "photos" ? "page" : undefined}
+            className={`grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-xl border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50 lg:hidden ${tab === "photos" ? "border-volt-400/50 bg-volt-400/15 text-volt-300" : "border-white/[0.08] bg-white/[0.02] text-mist-400 hover:border-white/[0.14] hover:text-mist-100"}`}
+          >
+            <ImagePlus className="h-[18px] w-[18px]" />
           </button>
           {/* subscription shortcut — visible on mobile/tablet where bottom nav hides it */}
           <button
@@ -208,11 +283,23 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
       <main id="main-content" className="relative z-10 mx-auto w-full max-w-4xl px-4 pb-32 pt-4 sm:px-6 sm:pt-6 lg:pb-12 lg:py-8">
         {/* Single cheap opacity fade per tab — replaces staggered rise animations (see .client-app CSS). */}
         <div key={tab} className="animate-fade">
-          {tab === "today" && <TodayTab plans={plans} meals={meals} exercises={state.exercises} onCheckIn={() => goTab("checkin")} onOpenTraining={() => goTab("training")} sessionsToday={sessions.filter((s) => s.date === todayISO())} />}
+          {tab === "today" && <TodayTab clientId={clientId} todayPickDay={todayPickDay} plans={plans} meals={meals} exercises={state.exercises} onCheckIn={() => goTab("checkin")} onOpenTraining={() => goTab("training")} onOpenNutrition={() => goTab("nutrition")} sessionsToday={sessions.filter((s) => s.date === todayISO())} />}
           {tab === "training" && <StrengthTracker clientId={clientId} />}
-          {tab === "nutrition" && <NutritionTab clientId={clientId} client={client} allMeals={state.meals} />}
+          {tab === "nutrition" && (
+            <NutritionTab
+              clientId={clientId}
+              client={client}
+              allMeals={meals}
+              planName={(() => {
+                const versions = clientPlans(state.nutritionPlans, clientId);
+                if (versions.length === 0) return undefined;
+                return (activePlan(state.nutritionPlans, clientId) ?? versions[0]).name;
+              })()}
+            />
+          )}
           {tab === "checkin" && <CheckInTab clientId={clientId} onDone={() => goTab("progress")} alreadyToday={checkIns.some((c) => c.date === todayISO())} />}
           {tab === "progress" && <ProgressTab checkIns={checkIns} sessionsCount={attendance(sessions)} />}
+          {tab === "photos" && <PhotoGallery clientId={clientId} role="client" />}
           {tab === "chat" && <ChatTab clientId={clientId} />}
           {tab === "subscription" && <SubscriptionTab clientId={clientId} onLogout={onLogout} />}
         </div>
@@ -349,31 +436,132 @@ function DailySummary({ meals, dayName, targets }: { meals: Meal[]; dayName: str
   );
 }
 
-function NutritionTab({ clientId, client, allMeals }: { clientId: string; client: Client; allMeals: Meal[] }) {
-  const { state, requestMealEdit, cancelMealRequest } = useApp();
-  const [selectedDay, setSelectedDay] = useState<number>(dayNum()); // Default to today's day (stored numbering)
+/** Full-week menu list — every day with its meals, each pickable for today. */
+function WeekMenuList({ meals, labelMode, current, onSelect }: {
+  meals: Meal[];
+  labelMode: DayLabelMode;
+  current?: number | null;
+  onSelect: (day: number) => void;
+}) {
+  const today = dayNum();
+  const typeOrder: Record<MealType, number> = { Breakfast: 0, Lunch: 1, Dinner: 2, Snack: 3 };
+  return (
+    <div className="grid gap-2.5">
+      {WEEK_ORDER_SAT_FIRST.map((d) => {
+        const dm = [...meals.filter((m) => m.day === d)].sort((a, b) => typeOrder[a.type] - typeOrder[b.type]);
+        const kcal = dm.reduce((s, m) => s + m.calories, 0);
+        const empty = dm.length === 0;
+        const isCurrent = current === d;
+        return (
+          <div key={d} className={`rounded-xl border p-3 ${isCurrent ? "border-volt-400/50 bg-volt-400/[0.05]" : "border-night-700 bg-night-800"}`}>
+            <div className="flex items-center gap-2.5">
+              <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl font-display text-sm font-bold ${isCurrent ? "bg-volt-400 text-night-950" : "bg-night-700 text-volt-300"}`}>
+                {formatDayShort(d, labelMode)}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-bold text-mist-100">
+                  {formatDayName(d, labelMode)}
+                  {d === today && <span className="ms-1.5 rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-bold text-mist-400">today</span>}
+                </span>
+                <span className="mt-0.5 block text-[11px] font-semibold text-mist-500 tnum">
+                  {empty ? "No plan" : `${dm.length} meal${dm.length === 1 ? "" : "s"} · ${kcal.toLocaleString("en-US")} kcal`}
+                </span>
+              </span>
+              {isCurrent ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-volt-400 px-2.5 py-1 text-[11px] font-extrabold text-night-950">
+                  <Check className="h-3 w-3" strokeWidth={3} /> Following
+                </span>
+              ) : !empty ? (
+                <button onClick={() => onSelect(d)} className={`${btnVolt} h-9 shrink-0 !px-3.5 !text-[13px]`}>
+                  Select for today
+                </button>
+              ) : null}
+            </div>
+            {dm.length > 0 && (
+              <div className="mt-2 grid gap-2">
+                {MEAL_TYPES.map((t) => {
+                  const list = dm.filter((m) => m.type === t);
+                  if (list.length === 0) return null;
+                  return (
+                    <div key={t}>
+                      <p className="mb-1 flex items-center gap-1.5 px-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-mist-500">
+                        <span className={`h-1.5 w-1.5 rounded-full ${MEAL_META[t].dot}`} />
+                        {t} · {list.length}
+                      </p>
+                      <ul className="grid gap-1.5 sm:grid-cols-2">
+                        {list.map((m) => (
+                          <li key={m.id} className="rounded-lg bg-night-850 px-2.5 py-2">
+                            <p className="truncate text-[13px] font-semibold text-mist-100">{m.description}</p>
+                            <span className="mt-1 flex gap-2.5 text-[11px] font-bold tnum">
+                              <span className="text-warn-300">{m.calories} kcal</span>
+                              <span className="text-volt-300">P {m.protein}g</span>
+                              <span className="text-sky-300">C {m.carbs}g</span>
+                              <span className="text-warn-300">F {m.fats}g</span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function NutritionTab({ clientId, client, allMeals, planName }: { clientId: string; client: Client; allMeals: Meal[]; planName?: string }) {
+  const { state, requestMealEdit, cancelMealRequest, setMealDayPick, toast } = useApp();
+  const [selectedDay, setSelectedDay] = useState<number>(dayNum()); // Browsing day (stored numbering)
   const [labelMode] = useState<DayLabelMode>(() => getDayLabelMode()); // Follows the coach's label choice
   const [reqMeal, setReqMeal] = useState<Meal | null>(null);
-  const autoJumped = useRef(false);
+  const [pickOpen, setPickOpen] = useState(false);
+  const [confirmSwitch, setConfirmSwitch] = useState<number | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const meals = useMemo(() => allMeals.filter((m) => m.clientId === clientId), [allMeals, clientId]);
+  const todayStr = todayISO();
+  const todayPick = useMemo(
+    () => (state.mealDayPicks ?? []).find((p) => p.clientId === clientId && p.date === todayStr),
+    [state.mealDayPicks, clientId, todayStr],
+  );
+  const logsToday = useMemo(
+    () => (state.mealLogs ?? []).some((l) => l.clientId === clientId && l.date === todayStr),
+    [state.mealLogs, clientId, todayStr],
+  );
   const myRequests = useMemo(
     () => (state.mealRequests ?? []).filter((r) => r.clientId === clientId).sort((a, b) => b.createdAt - a.createdAt),
     [state.mealRequests, clientId],
   );
   const pendingFor = (mealId: string) => myRequests.filter((r) => r.mealId === mealId && r.status === "PENDING");
 
-  // If today has no plan but another day does (the coach usually builds
-  // Monday first), jump once to the first planned day so the client
-  // actually lands on their meals instead of an empty day.
+  // Follow the picked menu: whenever the pick changes, jump the view to it.
+  const lastPickRef = useRef<number | null>(null);
   useEffect(() => {
-    if (autoJumped.current || meals.length === 0) return;
-    autoJumped.current = true;
-    if (!meals.some((m) => m.day === dayNum())) {
-      const first = WEEK_ORDER_SAT_FIRST.find((d) => meals.some((m) => m.day === d));
-      if (first) setSelectedDay(first);
+    if (todayPick && lastPickRef.current !== todayPick.day) {
+      lastPickRef.current = todayPick.day;
+      setSelectedDay(todayPick.day);
     }
-  }, [meals]);
-  
+  }, [todayPick]);
+
+  const doPick = (day: number, clearLogs: boolean) => {
+    setMealDayPick({ date: todayStr, day, clearLogs, clientId });
+    setPickOpen(false);
+    setConfirmSwitch(null);
+  };
+
+  const chooseDay = (day: number) => {
+    if (todayPick && todayPick.day === day) {
+      setPickOpen(false);
+      return;
+    }
+    // Switching menus wipes today's marks — warn first when marks exist.
+    if (logsToday) setConfirmSwitch(day);
+    else doPick(day, false);
+  };
+
   // Filter meals for selected day
   const dayMeals = useMemo(() => meals.filter((m) => m.day === selectedDay), [meals, selectedDay]);
 
@@ -387,6 +575,61 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
       return typeOrder[a.type] - typeOrder[b.type];
     });
   }, [dayMeals]);
+
+  // Export data — same poster renderer the coach uses ( Sat-first week ).
+  const buildExportDay = (day: number) => {
+    const typeOrder: Record<MealType, number> = { Breakfast: 0, Lunch: 1, Dinner: 2, Snack: 3 };
+    const list = [...meals.filter((m) => m.day === day)].sort((a, b) => {
+      if (a.time && b.time) return a.time.localeCompare(b.time);
+      if (a.time) return -1;
+      if (b.time) return 1;
+      return typeOrder[a.type] - typeOrder[b.type];
+    });
+    const totals = list.reduce(
+      (acc, m) => ({
+        calories: acc.calories + m.calories,
+        protein: acc.protein + m.protein,
+        carbs: acc.carbs + m.carbs,
+        fats: acc.fats + m.fats,
+      }),
+      { calories: 0, protein: 0, carbs: 0, fats: 0 },
+    );
+    return { day, dayName: WEEK_DAYS[day - 1], meals: list, totals };
+  };
+
+  const handleWeekPdf = async () => {
+    const days = WEEK_ORDER_SAT_FIRST.map(buildExportDay);
+    if (!days.some((d) => d.meals.length > 0)) {
+      toast("No meals in your plan yet", "warn");
+      return;
+    }
+    toast("Preparing PDF…");
+    try {
+      await exportWeekPdf({ clientName: client.name, planName, targets }, days);
+    } catch {
+      toast("Couldn't create the PDF", "warn");
+    }
+  };
+
+  const handleDayImage = async () => {
+    const d = buildExportDay(selectedDay);
+    if (d.meals.length === 0) {
+      toast("No meals planned for this day", "warn");
+      return;
+    }
+    try {
+      await exportDayImage(
+        { clientName: client.name, planName, targets },
+        {
+          ...d,
+          dayName:
+            labelMode === "numbered" ? `${formatDayName(selectedDay, labelMode)} ${WEEK_DAYS[selectedDay - 1]}` : d.dayName,
+        },
+      );
+    } catch {
+      toast("Couldn't create the image", "warn");
+    }
+  };
   
   // Weekly overview data (displayed Sat-first)
   const weeklyOverview = useMemo(() => {
@@ -409,7 +652,9 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
   
   // Nutrition targets
   const targets = client.nutritionTargets;
-  const isToday = selectedDay === dayNum();
+  // Logging (✓/✕) is only allowed on the picked menu — browsing other
+  // days is just looking at the menu.
+  const viewingPicked = !!todayPick && selectedDay === todayPick.day;
   
   // Group meals by type for display
   const mealsByType = useMemo(() => {
@@ -427,17 +672,48 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
       <div className="relative overflow-hidden rounded-2xl border border-night-700 bg-night-850 p-4 sm:p-6">
         <div className="pointer-events-none absolute inset-0 opacity-[0.35]" style={{ backgroundImage: "repeating-linear-gradient(-45deg, transparent 0 14px, rgba(205,241,75,0.04) 14px 15px)" }} />
         <div className="relative">
-          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-mist-500 sm:text-[11px]">Weekly nutrition plan</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-mist-500 sm:text-[11px]">Weekly nutrition plan{planName ? ` · ${planName}` : ""}</p>
           <h1 className="mt-1 font-display text-[30px] font-bold uppercase leading-[0.95] text-mist-100 sm:text-[44px]">
-            {isToday ? "TODAY" : formatDayName(selectedDay, labelMode)}{" "}
-            <span className={isToday ? "text-volt-400" : "text-mist-400"}>{WEEK_SHORT[selectedDay - 1]}</span>
+            {viewingPicked ? "TODAY" : formatDayName(selectedDay, labelMode)}{" "}
+            <span className={viewingPicked ? "text-volt-400" : "text-mist-400"}>{WEEK_SHORT[selectedDay - 1]}</span>
           </h1>
           <p className="mt-1.5 text-[13px] text-mist-400">
-            {isToday ? "Your meals for today" : `Meals for ${formatDayName(selectedDay, labelMode)}`} · {sortedMeals.length} meal{sortedMeals.length === 1 ? "" : "s"}
+            {viewingPicked ? `Following ${formatDayName(selectedDay, labelMode)} menu` : `Browsing ${formatDayName(selectedDay, labelMode)} menu`} · {sortedMeals.length} meal{sortedMeals.length === 1 ? "" : "s"}
           </p>
+          {viewingPicked && dayMeals.length > 0 && (
+            <div className="mt-2.5">
+              <DayAdherence clientId={clientId} date={todayISO()} total={dayMeals.length} />
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Following banner */}
+      {todayPick && (
+        <div className="flex items-center gap-3 rounded-2xl border border-volt-400/25 bg-volt-400/[0.07] p-3.5 sm:p-4">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-volt-400 font-display text-base font-bold text-night-950">
+            {formatDayShort(todayPick.day, labelMode)}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-extrabold text-mist-100">Following {formatDayName(todayPick.day, labelMode)} menu today</span>
+            <span className="mt-0.5 block text-xs font-semibold text-mist-400">Your ✓/✕ marks count on this menu only</span>
+          </span>
+          <button onClick={() => setPickOpen(true)} className={`${btnSecondary} h-10 shrink-0 !text-[13px]`}>
+            Change
+          </button>
+        </div>
+      )}
+
+      {!todayPick ? (
+        <SectionCard title="Which menu today?" description="Browse the full week, then pick the day you'll eat from" icon={<UtensilsCrossed className="h-4.5 w-4.5" />} bodyCls="p-3 sm:p-4">
+          {meals.length === 0 ? (
+            <EmptyState icon={<UtensilsCrossed className="h-6 w-6" />} title="No meals planned yet" sub="Your coach hasn't assigned any meals — check back soon." />
+          ) : (
+            <WeekMenuList meals={meals} labelMode={labelMode} current={null} onSelect={chooseDay} />
+          )}
+        </SectionCard>
+      ) : (
+      <>
       {/* Week Navigation — fixed 7-col grid, no scroll on mobile */}
       <div className="rounded-xl border border-night-700 bg-night-850 p-2 sm:p-3">
         <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
@@ -472,7 +748,38 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
 
       {/* Meals List — grouped by type like coach mode */}
       <div>
-        <h2 className="mb-2 px-1 text-[13px] font-bold uppercase tracking-[0.14em] text-mist-100">Meals · {formatDayName(selectedDay, labelMode)}</h2>
+        <div className="mb-2 flex items-center justify-between gap-2 px-1">
+          <h2 className="text-[13px] font-bold uppercase tracking-[0.14em] text-mist-100">Meals · {formatDayName(selectedDay, labelMode)}</h2>
+          <div className="flex shrink-0 items-center gap-2">
+            {todayPick && todayPick.day !== selectedDay && dayMeals.length > 0 && (
+              <button onClick={() => chooseDay(selectedDay)} className={`${btnVolt} h-9 shrink-0 !px-3.5 !text-[13px]`}>
+                Select for today
+              </button>
+            )}
+            <Dropdown
+              open={exportOpen}
+              onOpenChange={setExportOpen}
+              align="end"
+              label="Export plan"
+              trigger={
+                <button
+                  onClick={() => setExportOpen((v) => !v)}
+                  aria-haspopup="menu"
+                  aria-expanded={exportOpen}
+                  title="Export your plan as PDF / image"
+                  className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-night-600 bg-night-800 px-3 text-xs font-bold text-mist-300 transition hover:border-warn-400 hover:text-warn-300"
+                >
+                  <FileDown className="h-3.5 w-3.5" />
+                  Export
+                </button>
+              }
+              items={[
+                { type: "item", label: "Week PDF (plan images)", hint: "7 pages", icon: FileText, onClick: () => void handleWeekPdf() },
+                { type: "item", label: "Day JPG image", hint: WEEK_SHORT[selectedDay - 1], icon: ImageIcon, onClick: () => void handleDayImage() },
+              ]}
+            />
+          </div>
+        </div>
 
         {sortedMeals.length === 0 ? (
           <SectionCard title="No meals planned" icon={<UtensilsCrossed className="h-5 w-5" />} bodyCls="p-6">
@@ -537,6 +844,7 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
                           {pendingFor(meal.id).length > 0 && (
                             <Badge className={`shrink-0 ${MEAL_REQ_META.PENDING.chip}`}>Pending{pendingFor(meal.id).length > 1 ? ` × ${pendingFor(meal.id).length}` : ""}</Badge>
                           )}
+                          {viewingPicked && <MealLogButtons meal={meal} date={todayISO()} clientId={clientId} />}
                           <button
                             onClick={() => setReqMeal(meal)}
                             title="Request a change"
@@ -635,6 +943,23 @@ function NutritionTab({ clientId, client, allMeals }: { clientId: string; client
           </div>
         </div>
       </SectionCard>
+      </>
+      )}
+
+      <Modal open={pickOpen} onClose={() => setPickOpen(false)} title="Switch menu" description="Browse the full week, then pick the day you'll eat from.">
+        <div className="max-h-[62vh] overflow-y-auto pe-0.5">
+          <WeekMenuList meals={meals} labelMode={labelMode} current={todayPick?.day ?? null} onSelect={chooseDay} />
+        </div>
+      </Modal>
+
+      <ConfirmModal
+        open={confirmSwitch !== null}
+        onClose={() => setConfirmSwitch(null)}
+        title="Switch menu?"
+        message="Switching days clears today's marks (✓/✕) and you start fresh on the new menu."
+        confirmLabel="Switch & clear"
+        onConfirm={() => confirmSwitch !== null && doPick(confirmSwitch, true)}
+      />
 
       <MealRequestModal meal={reqMeal} dayLabel={reqMeal ? formatDayName(reqMeal.day, labelMode) : ""} clientId={clientId} onClose={() => setReqMeal(null)} />
     </div>
@@ -700,24 +1025,30 @@ function MealRequestModal({ meal, dayLabel, clientId, onClose }: {
 /* ---------------- today ---------------- */
 
 function TodayTab({
+  clientId,
+  todayPickDay,
   plans,
   meals,
   exercises,
   onCheckIn,
   onOpenTraining,
+  onOpenNutrition,
   sessionsToday,
 }: {
+  clientId: string;
+  todayPickDay: number | null;
   plans: { id: string; day: number; exerciseId: string; sets: number; reps: number; rest: number; notes: string }[];
   meals: Meal[];
   exercises: { id: string; name: string; category: "Chest" | "Back" | "Legs" | "Arms" | "Core" | "Cardio"; videoUrl: string }[];
   onCheckIn: () => void;
   onOpenTraining: () => void;
+  onOpenNutrition: () => void;
   sessionsToday: { id: string; time: string; type: string; status: string }[];
 }) {
   const dn = dayNum();
   const todayPlan = plans.filter((p) => p.day === dn);
-  // Filter meals for today's day only
-  const todayMeals = meals.filter((m) => m.day === dn);
+  // Flexible menus: today shows the picked plan-day, not the calendar day.
+  const todayMeals = meals.filter((m) => m.day === (todayPickDay ?? dn));
   const plannedDayNames = useMemo(
     () =>
       WEEK_ORDER_SAT_FIRST.filter((d) => d !== dn && meals.some((m) => m.day === d)).map(
@@ -749,6 +1080,7 @@ function TodayTab({
               <Flame className="h-3.5 w-3.5 text-warn-300" />
               {kcal > 0 ? `${kcal.toLocaleString("en-US")} kcal` : "No meals yet"}
             </span>
+            {todayPickDay && todayMeals.length > 0 && <DayAdherence clientId={clientId} date={todayISO()} total={todayMeals.length} />}
             {sessionsToday.length > 0 && (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[11px] font-bold text-mist-200">
                 <ClipboardList className="h-3.5 w-3.5 text-sky-300" />
@@ -830,8 +1162,28 @@ function TodayTab({
         )}
       </SectionCard>
 
-      <SectionCard title="Today's meals" icon={<UtensilsCrossed className="h-4.5 w-4.5" />} bodyCls="p-2.5 sm:p-3">
-        {todayMeals.length === 0 ? (
+      <SectionCard
+        title="Today's meals"
+        icon={<UtensilsCrossed className="h-4.5 w-4.5" />}
+        bodyCls="p-2.5 sm:p-3"
+        action={todayPickDay ? (
+          <button onClick={onOpenNutrition} className="cursor-pointer rounded-lg px-2 py-1 text-xs font-bold text-volt-300 transition hover:text-volt-200">
+            {WEEK_DAYS[todayPickDay - 1]} menu · Change
+          </button>
+        ) : undefined}
+      >
+        {!todayPickDay ? (
+          <button onClick={onOpenNutrition} className="group flex w-full cursor-pointer items-center gap-3 rounded-xl border border-dashed border-night-500 p-4 text-start transition hover:border-volt-400/50">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-night-700 text-volt-300">
+              <UtensilsCrossed className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-extrabold text-mist-100">Choose today's menu</span>
+              <span className="mt-0.5 block text-xs font-semibold text-mist-500">Pick which day you'll eat from</span>
+            </span>
+            <ArrowRight className="h-5 w-5 shrink-0 text-volt-300 transition-transform group-hover:translate-x-0.5 rtl:rotate-180" />
+          </button>
+        ) : todayMeals.length === 0 ? (
           <EmptyState icon={<UtensilsCrossed className="h-6 w-6" />} title="No meal plan yet" sub="Your coach hasn't assigned meals — check back soon.">
             {plannedDayNames.length > 0 && (
               <p className="text-xs font-semibold text-mist-500">
@@ -855,7 +1207,10 @@ function TodayTab({
                     <div className="grid gap-2">
                       {list.map((m) => (
                         <div key={m.id} className="rounded-xl border border-night-700 bg-night-850 p-2.5">
-                          <p className="text-sm font-semibold leading-5 text-mist-100">{m.description}</p>
+                          <div className="flex items-start gap-2">
+                            <p className="min-w-0 flex-1 text-sm font-semibold leading-5 text-mist-100">{m.description}</p>
+                            <MealLogButtons meal={m} date={todayISO()} clientId={clientId} />
+                          </div>
                           <p className="mt-1.5 flex gap-3 text-[11px] font-bold tnum">
                             <span className="text-warn-300">{m.calories} kcal</span>
                             <span className="text-volt-300">P {m.protein}g</span>
@@ -894,21 +1249,7 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
   const [water, setWater] = useState("2");
   const [done, setDone] = useState(true);
   const [notes, setNotes] = useState("");
-  const [photo, setPhoto] = useState<string | undefined>(undefined);
-  const [photoErr, setPhotoErr] = useState("");
   const [error, setError] = useState("");
-
-  const pickPhoto = async (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) return;
-    try {
-      setPhotoErr("");
-      setPhoto(await fileToDataUrl(f, 640));
-    } catch {
-      setPhotoErr("Could not read that image.");
-    }
-  };
 
   const submit = () => {
     const w = Number(weight);
@@ -925,7 +1266,6 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
       water: Math.max(0, Number(water) || 0),
       workoutDone: done,
       notes: notes.trim() || undefined,
-      photo,
     });
     onDone();
   };
@@ -977,35 +1317,9 @@ function CheckInTab({ clientId, onDone, alreadyToday }: { clientId: string; onDo
         </div>
       </SectionCard>
 
-      <SectionCard title="Photo & notes" icon={<Camera className="h-4.5 w-4.5" />} bodyCls="p-4 sm:p-5">
-        <div className="grid gap-4">
-          <div>
-            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-mist-400">Progress photo (optional)</label>
-            <div className="flex items-center gap-3">
-              {photo ? (
-                <div className="relative">
-                  <img src={photo} alt="Client progress photo" loading="lazy" className="h-20 w-20 rounded-xl object-cover ring-1 ring-night-600" />
-                  <button type="button" onClick={() => setPhoto(undefined)} className="absolute -end-2 -top-2 grid h-7 w-7 cursor-pointer place-items-center rounded-full bg-danger-500 text-white shadow" aria-label="Remove photo">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <span className="grid h-20 w-20 shrink-0 place-items-center rounded-xl border border-dashed border-night-500 text-night-400">
-                  <ImageIcon className="h-7 w-7" />
-                </span>
-              )}
-              <label className="inline-flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl border border-night-500 bg-night-700 px-4 text-[13px] font-bold text-mist-100 transition active:scale-95 hover:bg-night-600">
-                <Camera className="h-4 w-4" />
-                {photo ? "Replace" : "Upload"}
-                <input type="file" accept="image/*" className="hidden" onChange={(e) => void pickPhoto(e)} />
-              </label>
-            </div>
-            {photoErr && <p className="mt-1 text-xs font-semibold text-danger-400">{photoErr}</p>}
-          </div>
-          <div>
-            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-mist-400">Notes for your coach</label>
-            <textarea className="min-h-20 w-full resize-y rounded-xl border border-night-600 bg-night-800 px-3.5 py-3 text-[15px] text-mist-100 outline-none transition focus:border-volt-400 sm:text-sm" placeholder="Energy, sleep, soreness, PRs…" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
-          </div>
+      <SectionCard title="Notes for your coach" icon={<MessageCircle className="h-4.5 w-4.5" />} bodyCls="p-4 sm:p-5">
+        <div>
+          <textarea className="min-h-20 w-full resize-y rounded-xl border border-night-600 bg-night-800 px-3.5 py-3 text-[15px] text-mist-100 outline-none transition focus:border-volt-400 sm:text-sm" placeholder="Energy, sleep, soreness, PRs…" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
         </div>
         {error && <p className="mt-3 text-xs font-bold text-danger-400">{error}</p>}
         <div className="sticky bottom-[92px] z-10 mt-4 lg:static">

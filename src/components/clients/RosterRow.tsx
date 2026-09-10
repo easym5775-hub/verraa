@@ -5,12 +5,14 @@
    duplicating markup.
    ================================================================ */
 
-import { ClipboardList, Pencil, Trash2, User, UtensilsCrossed } from "lucide-react";
+import { useState } from "react";
+import { ClipboardList, MoreHorizontal, Pencil, Trash2, User, UtensilsCrossed } from "lucide-react";
 import type { CheckIn, Client, CoachView } from "../../types";
 import { GOAL_META, STATUS_META, SUB_STATE_META } from "../../types";
 import { relDay } from "../../lib";
 import { remainingLabel, type SubWithState } from "../../logic";
-import { Avatar, Badge } from "../ui";
+import { Avatar, Badge, Dropdown } from "../ui";
+import { PriorityBadge, usePriorityItems } from "./primitives";
 
 export interface RosterEntry {
   client: Client;
@@ -54,6 +56,8 @@ export function RosterRow({
   ariaRowIndex?: number;
 }) {
   const { client: c, subInfo, last } = entry;
+  const [moreOpen, setMoreOpen] = useState(false);
+  const priorityItems = usePriorityItems(c);
   return (
     <tr
       ref={measureRef}
@@ -66,8 +70,13 @@ export function RosterRow({
         <div className="flex items-center gap-3">
           <Avatar name={c.name} photo={c.photo} className="h-10 w-10 text-xs" />
           <div className="min-w-0">
-            <p className="truncate font-bold text-mist-100 transition group-hover:text-volt-300">{c.name}</p>
-            <p className="truncate text-[11px] text-mist-500">@{c.username} · {c.phone || c.email || "—"}</p>
+            <p className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate font-bold text-mist-100 transition group-hover:text-volt-300">{c.name}</span>
+              <PriorityBadge priority={c.priority} />
+            </p>
+            <p className="truncate text-[11px] text-mist-500">
+              {c.hasLogin ? `@${c.username} · ` : <span className="font-bold text-warn-300">No login · </span>}{c.phone || c.email || "—"}
+            </p>
           </div>
         </div>
       </td>
@@ -126,6 +135,25 @@ export function RosterRow({
           <button className="grid h-8 w-8 cursor-pointer place-items-center rounded-xl text-mist-400 transition hover:bg-danger-500/15 hover:text-danger-300" title="Delete" onClick={() => onDelete(c)}>
             <Trash2 className="h-4 w-4" />
           </button>
+          <Dropdown
+            open={moreOpen}
+            onOpenChange={setMoreOpen}
+            align="end"
+            label={`More actions for ${c.name}`}
+            trigger={
+              <button
+                className="grid h-8 w-8 cursor-pointer place-items-center rounded-xl text-mist-400 transition-all duration-200 hover:bg-night-700 hover:text-mist-100"
+                title="More"
+                aria-label={`More actions for ${c.name}`}
+                aria-haspopup="menu"
+                aria-expanded={moreOpen}
+                onClick={() => setMoreOpen((v) => !v)}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            }
+            items={priorityItems}
+          />
         </div>
       </td>
     </tr>

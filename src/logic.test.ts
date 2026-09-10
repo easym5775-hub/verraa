@@ -101,6 +101,8 @@ function client(over: Partial<Client> = {}): Client {
     id: "client-1",
     coachId: "coach-1",
     username: "ali",
+    hasLogin: true,
+    priority: "Normal",
     name: "Ali",
     email: "",
     phone: "",
@@ -130,6 +132,9 @@ function appState(over: Partial<AppState> = {}): AppState {
     workoutSessions: [],
     workoutEntries: [],
     mealRequests: [],
+    mealLogs: [],
+    mealDayPicks: [],
+    progressPhotos: [],
     ...over,
   };
 }

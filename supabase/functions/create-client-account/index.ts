@@ -88,33 +88,41 @@ serve(async (req) => {
   // CREATE
   // =======================================================================
   if (action === "create") {
+    // createLogin=false → coach-managed client only: no username, no
+    // password, no auth user. The coach logs everything on their behalf.
+    const createLogin = body.createLogin !== false;
     let username = String(body.username ?? "").trim().toLowerCase();
     const password = String(body.password ?? "");
     const name = String(body.name ?? "").trim();
 
-    // Enforce the `<client>.<coach>` convention server-side: if the coach
-    // typed only "ali", store "ali.ahmed". A full "ali.ahmed" passes through
-    // untouched so retries / pasted logins never double-append.
-    if (username && !username.endsWith(`.${coachSuffix}`)) {
-      const part = username.replace(/^\.+|\.+$/g, "");
-      username = `${part}.${coachSuffix}`.toLowerCase();
-    }
+    if (createLogin) {
+      // Enforce the `<client>.<coach>` convention server-side: if the coach
+      // typed only "ali", store "ali.ahmed". A full "ali.ahmed" passes through
+      // untouched so retries / pasted logins never double-append.
+      if (username && !username.endsWith(`.${coachSuffix}`)) {
+        const part = username.replace(/^\.+|\.+$/g, "");
+        username = `${part}.${coachSuffix}`.toLowerCase();
+      }
 
-    if (!/^[a-z0-9_.-]{3,24}$/.test(username)) {
-      return json({ error: `Username must be 3-24 characters (letters, numbers, dots, dashes) and ends with .${coachSuffix} — e.g. ali.${coachSuffix}.` }, 400);
+      if (!/^[a-z0-9_.-]{3,24}$/.test(username)) {
+        return json({ error: `Username must be 3-24 characters (letters, numbers, dots, dashes) and ends with .${coachSuffix} — e.g. ali.${coachSuffix}.` }, 400);
+      }
+      if (password.length < 6) return json({ error: "Password must be at least 6 characters." }, 400);
     }
-    if (password.length < 6) return json({ error: "Password must be at least 6 characters." }, 400);
     if (!name) return json({ error: "Client name is required." }, 400);
 
     // Friendly uniqueness check before hitting auth.admin. Usernames must be
     // GLOBALLY unique — the synthetic email ({username}@clients.verraa.internal)
     // has to be unique across all of Supabase Auth, not just within one coach.
-    const { data: taken } = await admin
-      .from("clients")
-      .select("id")
-      .ilike("username", username)
-      .maybeSingle();
-    if (taken) return json({ error: `Username "${username}" is already taken.` }, 409);
+    // (Skipped for coach-managed clients — they store NULL, which never conflicts.)
+    if (createLogin) {
+      const { data: taken } = await admin
+        .from("clients")
+        .select("id")
+        .ilike("username", username)
+        .maybeSingle();
+      if (taken) return json({ error: `Username "${username}" is already taken.` }, 409);
+    }
 
     // --- SERVER-SIDE client-limit enforcement (authoritative pre-check;
     //     the DB trigger enforce_coach_client_limit is the final guard) ---
@@ -165,19 +173,26 @@ serve(async (req) => {
       }
     }
 
-    const email = syntheticEmail(username);
-    const { data: created, error: createError } = await admin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { role: "client", username },
-    });
-    if (createError) return json({ error: createError.message }, 400);
+    const email = createLogin ? syntheticEmail(username) : null;
+    let authUserId: string | null = null;
+    if (createLogin) {
+      const { data: created, error: createError } = await admin.auth.admin.createUser({
+        email: email as string,
+        password,
+        email_confirm: true,
+        user_metadata: { role: "client", username },
+      });
+      if (createError) return json({ error: createError.message }, 400);
+      authUserId = created.user.id;
+    }
 
     const clientRow = {
-      id: created.user.id,
+      // Login clients reuse the auth user id; coach-managed rows get a random
+      // id (migration 0022 dropped the auth.users FK so this is allowed).
+      id: authUserId ?? crypto.randomUUID(),
       coach_id: coachId,
-      username,
+      username: createLogin ? username : null,
+      has_login: createLogin,
       name,
       // login_email = the synthetic auth email (what the client signs in with).
       // email       = the real contact email the coach typed (never used for auth).
@@ -193,14 +208,32 @@ serve(async (req) => {
       photo: body.photo ?? null,
     };
 
-    const { data: inserted, error: insertError } = await admin
-      .from("clients")
-      .insert(clientRow)
-      .select()
-      .single();
+    const insertRow = async (row: Record<string, unknown>) =>
+      await admin.from("clients").insert(row).select().single();
+
+    let inserted: unknown = null;
+    let insertError: { message?: string } | null = null;
+    {
+      const res = await insertRow(clientRow);
+      inserted = res.data;
+      insertError = res.error as { message?: string } | null;
+      // Back-compat: if migration 0022 hasn't been applied yet, the has_login
+      // column doesn't exist — retry a login-client insert without it instead
+      // of breaking normal creation.
+      if (insertError && createLogin && /has_login|column/i.test(insertError.message ?? "")) {
+        const { has_login: _dropped, ...legacyRow } = clientRow;
+        const retry = await insertRow(legacyRow);
+        inserted = retry.data;
+        insertError = retry.error as { message?: string } | null;
+      }
+    }
     if (insertError) {
       // Roll back the auth user so we don't leave orphans.
-      await admin.auth.admin.deleteUser(created.user.id);
+      if (authUserId) await admin.auth.admin.deleteUser(authUserId);
+      // Coach-managed creation without migration 0022 can't work (FK + NOT NULL).
+      if (!createLogin) {
+        return json({ error: "Coach-managed clients need migration 0022 applied — run: supabase db push" }, 400);
+      }
       return json({ error: insertError.message }, 400);
     }
 
@@ -208,22 +241,95 @@ serve(async (req) => {
   }
 
   // =======================================================================
+  // CREATE-LOGIN — upgrade a coach-managed client to a full login.
+  // Rewrites clients.id to the new auth user id (migration 0023 makes
+  // every child row follow via ON UPDATE CASCADE), so all existing
+  // plans / meals / payments / sessions keep working untouched.
+  // =======================================================================
+  if (action === "create-login") {
+    const clientId = String(body.clientId ?? "");
+    let username = String(body.username ?? "").trim().toLowerCase();
+    const password = String(body.password ?? "");
+    if (!clientId) return json({ error: "clientId is required." }, 400);
+
+    // Must be the coach's own login-less client.
+    const { data: row } = await admin
+      .from("clients")
+      .select("id, has_login")
+      .eq("id", clientId)
+      .eq("coach_id", coachId)
+      .maybeSingle();
+    if (!row) return json({ error: "Client not found." }, 404);
+    if ((row as { has_login?: boolean }).has_login !== false) {
+      return json({ error: "This client already has a login." }, 400);
+    }
+
+    if (username && !username.endsWith(`.${coachSuffix}`)) {
+      const part = username.replace(/^\.+|\.+$/g, "");
+      username = `${part}.${coachSuffix}`.toLowerCase();
+    }
+    if (!/^[a-z0-9_.-]{3,24}$/.test(username)) {
+      return json({ error: `Username must be 3-24 characters (letters, numbers, dots, dashes) and ends with .${coachSuffix} — e.g. ali.${coachSuffix}.` }, 400);
+    }
+    if (password.length < 6) return json({ error: "Password must be at least 6 characters." }, 400);
+
+    const { data: taken } = await admin
+      .from("clients")
+      .select("id")
+      .ilike("username", username)
+      .maybeSingle();
+    if (taken) return json({ error: `Username "${username}" is already taken.` }, 409);
+
+    const email = syntheticEmail(username);
+    const { data: created, error: createError } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { role: "client", username },
+    });
+    if (createError) return json({ error: createError.message }, 400);
+
+    // Point the existing row at the new auth user. Requires migrations
+    // 0022 (nullable username / has_login) + 0023 (ON UPDATE CASCADE).
+    const { data: updated, error: updateError } = await admin
+      .from("clients")
+      .update({ id: created.user.id, username, login_email: email, has_login: true })
+      .eq("id", clientId)
+      .eq("coach_id", coachId)
+      .select()
+      .single();
+    if (updateError) {
+      await admin.auth.admin.deleteUser(created.user.id);
+      if (/has_login|column|foreign key|violates/i.test(updateError.message ?? "")) {
+        return json({ error: "Login upgrade needs migrations 0022+0023 applied — run: supabase db push" }, 400);
+      }
+      return json({ error: updateError.message }, 400);
+    }
+
+    return json({ ok: true, client: updated });
+  }
+
+  // =======================================================================
   // RESET PASSWORD
   // =======================================================================
   if (action === "reset-password") {
     const clientId = String(body.clientId ?? "");
-    const newPassword = String(body.newPassword ?? "");
+    // Accept both field names (older app builds send `password`).
+    const newPassword = String(body.newPassword ?? body.password ?? "");
     if (!clientId) return json({ error: "clientId is required." }, 400);
     if (newPassword.length < 6) return json({ error: "Password must be at least 6 characters." }, 400);
 
     // Ensure the coach owns this client.
     const { data: owned } = await admin
       .from("clients")
-      .select("id")
+      .select("id, has_login")
       .eq("id", clientId)
       .eq("coach_id", coachId)
       .maybeSingle();
     if (!owned) return json({ error: "Client not found." }, 404);
+    if ((owned as { has_login?: boolean }).has_login === false) {
+      return json({ error: "This client has no login to reset (coach-managed only)." }, 400);
+    }
 
     const { error } = await admin.auth.admin.updateUserById(clientId, { password: newPassword });
     if (error) return json({ error: error.message }, 400);
@@ -246,10 +352,11 @@ serve(async (req) => {
     if (!owned) return json({ error: "Client not found." }, 404);
 
     // Deleting the clients row cascades to all their data; then remove the
-    // auth user so their login stops working.
+    // auth user so their login stops working (login clients only —
+    // coach-managed rows have no auth user, so a "not found" there is fine).
     await admin.from("clients").delete().eq("id", clientId).eq("coach_id", coachId);
     const { error } = await admin.auth.admin.deleteUser(clientId);
-    if (error) return json({ error: error.message }, 400);
+    if (error && !/not found/i.test(error.message ?? "")) return json({ error: error.message }, 400);
     return json({ ok: true });
   }
 

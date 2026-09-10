@@ -43,6 +43,7 @@ const ClientProfile = lazy(() => import("./components/Clients").then((m) => ({ d
 const PlansView = lazy(() => import("./components/Workspaces").then((m) => ({ default: m.PlansView })));
 const LibraryView = lazy(() => import("./components/Workspaces").then((m) => ({ default: m.LibraryView })));
 const CheckInsView = lazy(() => import("./components/Workspaces").then((m) => ({ default: m.CheckInsView })));
+
 const SettingsView = lazy(() => import("./components/Settings").then((m) => ({ default: m.SettingsView })));
 const ClientApp = lazy(() => import("./components/ClientApp").then((m) => ({ default: m.ClientApp })));
 const NutritionPlanView = lazy(() => import("./components/NutritionPlan").then((m) => ({ default: m.NutritionPlanView })));
@@ -223,6 +224,7 @@ function Root() {
       {coachView === "meals" && <SectionErrorBoundary section="Nutrition plan"><Suspense fallback={<MealsSkeleton />}><NutritionPlanView presetClientId={mealPreset} /></Suspense></SectionErrorBoundary>}
       {coachView === "library" && <SectionErrorBoundary section="Exercise library"><Suspense fallback={<LibrarySkeleton />}><LibraryView /></Suspense></SectionErrorBoundary>}
       {coachView === "checkins" && <SectionErrorBoundary section="Check-ins"><Suspense fallback={<CheckInsSkeleton />}><CheckInsView go={go} /></Suspense></SectionErrorBoundary>}
+
       {coachView === "pricing" && <SectionErrorBoundary section="Plans & pricing"><Suspense fallback={<GenericViewSkeleton label="Loading plans" />}><CoachPricingView go={go} /></Suspense></SectionErrorBoundary>}
       {coachView === "settings" && <SectionErrorBoundary section="Settings"><Suspense fallback={<GenericViewSkeleton label="Loading settings" />}><SettingsView /></Suspense></SectionErrorBoundary>}
     </CoachShell>

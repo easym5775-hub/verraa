@@ -3,13 +3,15 @@
    virtualized roster lists.
    ================================================================ */
 
+import { useState } from "react";
 import type { CSSProperties } from "react";
-import { ClipboardList, Pencil, Trash2, UtensilsCrossed } from "lucide-react";
+import { ClipboardList, MoreHorizontal, Pencil, Trash2, UtensilsCrossed } from "lucide-react";
 import { GOAL_META, STATUS_META, SUB_STATE_META } from "../../types";
 import { relDay } from "../../lib";
 import { remainingLabel } from "../../logic";
-import { Avatar, Badge } from "../ui";
+import { Avatar, Badge, Dropdown } from "../ui";
 import type { RosterActions, RosterEntry } from "./RosterRow";
+import { PriorityBadge, usePriorityItems } from "./primitives";
 
 export function RosterCard({
   entry,
@@ -26,6 +28,8 @@ export function RosterCard({
   style?: CSSProperties;
 }) {
   const { client: c, subInfo, last } = entry;
+  const [moreOpen, setMoreOpen] = useState(false);
+  const priorityItems = usePriorityItems(c);
   return (
     <li ref={measureRef} data-index={dataIndex} style={style}>
       <div
@@ -41,8 +45,13 @@ export function RosterCard({
         <div className="flex min-w-0 items-center gap-3">
           <Avatar name={c.name} photo={c.photo} className="h-11 w-11 shrink-0 text-xs" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-bold text-mist-100">{c.name}</p>
-            <p className="truncate text-[11px] text-mist-500">@{c.username} · {c.phone || c.email || "—"}</p>
+            <p className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-sm font-bold text-mist-100">{c.name}</span>
+              <PriorityBadge priority={c.priority} />
+            </p>
+            <p className="truncate text-[11px] text-mist-500">
+              {c.hasLogin ? `@${c.username} · ` : <span className="font-bold text-warn-300">No login · </span>}{c.phone || c.email || "—"}
+            </p>
           </div>
           <Badge className={`${STATUS_META[c.status].chip} shrink-0`}>
             <span className={`h-1.5 w-1.5 rounded-full ${STATUS_META[c.status].dot}`} />
@@ -84,6 +93,25 @@ export function RosterCard({
           <button className="grid h-10 w-10 cursor-pointer place-items-center rounded-xl text-mist-400 transition hover:bg-danger-500/15 hover:text-danger-300" title="Delete" aria-label={`Delete ${c.name}`} onClick={() => onDelete(c)}>
             <Trash2 className="h-4 w-4" />
           </button>
+          <Dropdown
+            open={moreOpen}
+            onOpenChange={setMoreOpen}
+            align="end"
+            label={`More actions for ${c.name}`}
+            trigger={
+              <button
+                className="grid h-10 w-10 cursor-pointer place-items-center rounded-xl text-mist-400 transition hover:bg-white/[0.06] hover:text-mist-100"
+                title="More"
+                aria-label={`More actions for ${c.name}`}
+                aria-haspopup="menu"
+                aria-expanded={moreOpen}
+                onClick={(e) => { e.stopPropagation(); setMoreOpen((v) => !v); }}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            }
+            items={priorityItems}
+          />
         </div>
       </div>
     </li>

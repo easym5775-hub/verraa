@@ -3,7 +3,7 @@
    ================================================================ */
 
 import { v4 as uuidv4 } from "uuid";
-import type { DayLabelMode } from "./types";
+import type { DayLabelMode, Meal, NutritionPlan } from "./types";
 
 export const uuid = (): string => uuidv4();
 
@@ -60,6 +60,32 @@ export function setDayLabelMode(m: DayLabelMode): void {
   } catch {
     /* storage unavailable — non-fatal */
   }
+}
+
+/* ---------------- diet-plan versions ---------------- */
+
+export function clientPlans(plans: NutritionPlan[] | undefined, clientId: string): NutritionPlan[] {
+  return (plans ?? [])
+    .filter((p) => p.clientId === clientId)
+    .sort((a, b) => a.createdAt - b.createdAt); // oldest first — index 0 owns pre-versioning meals
+}
+
+/** The version the client currently follows (exactly one active; oldest wins ties). */
+export function activePlan(plans: NutritionPlan[] | undefined, clientId: string): NutritionPlan | undefined {
+  const list = clientPlans(plans, clientId);
+  return list.find((p) => p.status === "active") ?? list[0];
+}
+
+/** Does this meal belong to the given version? Meals saved before versioning
+    (no planId) belong to the client's oldest version. */
+export function mealInPlan(meal: Meal, planId: string, isLegacyOwner: boolean): boolean {
+  if (meal.planId) return meal.planId === planId;
+  return isLegacyOwner;
+}
+
+/** All meals of one version (same legacy rule as mealInPlan). */
+export function planMeals(meals: Meal[], plan: NutritionPlan, isLegacyOwner: boolean): Meal[] {
+  return meals.filter((m) => mealInPlan(m, plan.id, isLegacyOwner));
 }
 
 /** Whole days from → to (positive when `to` is in the future). */

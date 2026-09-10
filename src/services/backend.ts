@@ -23,10 +23,14 @@ import type {
   Exercise,
   Meal,
   Message,
+  MealDayPick,
   MealEditRequest,
+  MealLog,
   NewClientInput,
+  NutritionPlan,
   Payment,
   PlanItem,
+  ProgressPhoto,
   Session,
   Subscription,
   WorkoutEntry,
@@ -34,6 +38,7 @@ import type {
   WorkoutTemplate,
 } from "../types";
 import { todayISO } from "../lib";
+import { normalizePriority } from "../types";
 import { rememberAwareStorage, setRemember } from "./remember";
 import {
   DEFAULT_COACH_PLANS,
@@ -96,7 +101,11 @@ export interface RoleInfo {
 type Row = Record<string, unknown>;
 
 export const clientToRow = (c: Client): Row => ({
-  username: c.username,
+  // Login-less (coach-managed) clients store NULL so the global
+  // lower(username) index never collides on empty strings.
+  username: c.username.trim() === "" ? null : c.username,
+  has_login: c.hasLogin,
+  priority: c.priority ?? "Normal",
   name: c.name,
   email: c.email,
   phone: c.phone,
@@ -127,6 +136,10 @@ export const rowToClient = (r: Row): Client => ({
   id: String(r.id),
   coachId: String(r.coach_id ?? ""),
   username: String(r.username ?? ""),
+  // Rows created before migration 0015 predate the flag — they all have logins.
+  hasLogin: r.has_login === undefined || r.has_login === null ? true : Boolean(r.has_login),
+  // Rows created before migration 0021 predate priority — default Normal.
+  priority: normalizePriority(r.priority),
   name: String(r.name ?? ""),
   email: String(r.email ?? ""),
   phone: String(r.phone ?? ""),
@@ -211,6 +224,7 @@ export const rowToCheckIn = (r: Row): CheckIn => ({
 
 export const mealToRow = (m: Meal): Row => ({
   client_id: m.clientId,
+  plan_id: m.planId ?? null,
   day: m.day,
   type: m.type,
   time: m.time ?? null,
@@ -226,6 +240,7 @@ export const rowToMeal = (r: Row): Meal => ({
   id: String(r.id),
   coachId: String(r.coach_id ?? ""),
   clientId: String(r.client_id ?? ""),
+  planId: r.plan_id ? String(r.plan_id) : undefined,
   day: Number(r.day) || 1,
   type: (r.type as Meal["type"]) ?? "Snack",
   time: r.time ? String(r.time) : undefined,
@@ -235,6 +250,26 @@ export const rowToMeal = (r: Row): Meal => ({
   carbs: Number(r.carbs) || 0,
   fats: Number(r.fats) || 0,
   notes: r.notes ? String(r.notes) : undefined,
+});
+
+/* ---------------- diet-plan version row mappers (migration 0025) ---------------- */
+
+export const nutritionPlanToRow = (p: NutritionPlan): Row => ({
+  client_id: p.clientId,
+  name: p.name,
+  status: p.status,
+  created_at: new Date(p.createdAt).toISOString(),
+  updated_at: new Date(p.updatedAt).toISOString(),
+});
+
+export const rowToNutritionPlan = (r: Row): NutritionPlan => ({
+  id: String(r.id),
+  coachId: String(r.coach_id ?? ""),
+  clientId: String(r.client_id ?? ""),
+  name: String(r.name ?? "Plan 1"),
+  status: (String(r.status ?? "active").toLowerCase() as NutritionPlan["status"]) ?? "active",
+  createdAt: typeof r.created_at === "number" ? r.created_at : Date.parse(String(r.created_at ?? "")) || 0,
+  updatedAt: typeof r.updated_at === "number" ? r.updated_at : Date.parse(String(r.updated_at ?? "")) || 0,
 });
 
 export const subscriptionToRow = (s: Subscription): Row => ({
@@ -429,6 +464,72 @@ export const rowToMealRequest = (r: Row): MealEditRequest => ({
   reviewedAt: r.reviewed_at ? Date.parse(String(r.reviewed_at)) || undefined : undefined,
 });
 
+/* ---------------- meal log row mappers ---------------- */
+
+export const mealLogToRow = (l: MealLog): Row => ({
+  client_id: l.clientId,
+  meal_id: l.mealId ?? null,
+  date: l.date,
+  day: l.day,
+  meal_type: l.mealType,
+  meal_description: l.mealDescription,
+  status: l.status,
+});
+
+export const rowToMealLog = (r: Row): MealLog => ({
+  id: String(r.id),
+  coachId: String(r.coach_id ?? ""),
+  clientId: String(r.client_id ?? ""),
+  mealId: r.meal_id ? String(r.meal_id) : undefined,
+  date: String(r.date ?? todayISO()),
+  day: Number(r.day) || 1,
+  mealType: (r.meal_type as MealLog["mealType"]) ?? "Snack",
+  mealDescription: String(r.meal_description ?? ""),
+  status: (String(r.status ?? "EATEN").toUpperCase() as MealLog["status"]) ?? "EATEN",
+  createdAt: typeof r.created_at === "number" ? r.created_at : Date.parse(String(r.created_at ?? "")) || 0,
+});
+
+/* ---------------- meal day pick row mappers ---------------- */
+
+export const mealDayPickToRow = (p: MealDayPick): Row => ({
+  client_id: p.clientId,
+  date: p.date,
+  day: p.day,
+});
+
+export const rowToMealDayPick = (r: Row): MealDayPick => ({
+  id: String(r.id),
+  coachId: String(r.coach_id ?? ""),
+  clientId: String(r.client_id ?? ""),
+  date: String(r.date ?? todayISO()),
+  day: Number(r.day) || 1,
+  createdAt: typeof r.created_at === "number" ? r.created_at : Date.parse(String(r.created_at ?? "")) || 0,
+});
+
+/* ---------------- progress photo row mappers ---------------- */
+
+export const progressPhotoToRow = (p: ProgressPhoto): Row => ({
+  client_id: p.clientId,
+  kind: p.kind,
+  photo: p.photo,
+  date: p.date,
+  ts: p.ts,
+  note: p.note ?? null,
+  uploaded_by: p.by ?? "client",
+});
+
+export const rowToProgressPhoto = (r: Row): ProgressPhoto => ({
+  id: String(r.id),
+  coachId: String(r.coach_id ?? ""),
+  clientId: String(r.client_id ?? ""),
+  kind: (String(r.kind ?? "BEFORE").toUpperCase() as ProgressPhoto["kind"]) ?? "BEFORE",
+  photo: String(r.photo ?? ""),
+  date: String(r.date ?? todayISO()),
+  ts: Number(r.ts) || 0,
+  note: r.note ? String(r.note) : undefined,
+  by: (r.uploaded_by as ProgressPhoto["by"]) ?? "client",
+});
+
 export const rowToWorkoutEntry = (r: Row): WorkoutEntry => ({
   id: String(r.id),
   coachId: String(r.coach_id ?? ""),
@@ -580,6 +681,39 @@ export function friendlyFunctionError(e: unknown): Error {
   return e instanceof Error ? e : new Error(msg || "Couldn't reach the client accounts service.");
 }
 
+/**
+ * PostgREST schema-cache miss — the app code references a column whose
+ * migration hasn't been applied to the project yet (e.g. `priority`
+ * before 0024). Translate the cryptic cache error into the one action
+ * that fixes it.
+ */
+function schemaCacheMessage(msg: string): string | null {
+  const m = msg.match(/Could not find the '([^']+)' column[^]*schema cache/i);
+  if (m) {
+    return `Couldn't save — the database is missing the '${m[1]}' update. Run: supabase db push, then try again.`;
+  }
+  return null;
+}
+
+/**
+ * A FunctionsHttpError carries the function's raw Response as `context`.
+ * Read its structured `{ error }` body so business errors (taken username,
+ * missing migration, plan limit…) surface instead of the generic
+ * "Edge Function returned a non-2xx status code" text.
+ */
+async function functionServerMessage(err: unknown): Promise<string | null> {
+  try {
+    const ctx = (err as { context?: unknown })?.context as Response | undefined;
+    if (ctx && typeof ctx.json === "function") {
+      const body = (await ctx.json()) as { error?: unknown };
+      if (body && typeof body.error === "string" && body.error.trim()) return body.error.trim();
+    }
+  } catch {
+    /* body already consumed or not JSON — caller falls back to generic handling */
+  }
+  return null;
+}
+
 /* ---------------- Backend interface ---------------- */
 
 export interface Backend {
@@ -602,6 +736,8 @@ export interface Backend {
   remove(table: string, id: string): Promise<void>;
   createClientAccount(input: NewClientInput): Promise<Client>;
   resetClientPassword(clientId: string, newPassword: string): Promise<void>;
+  /** Upgrade a coach-managed client to a full Client-mode login. */
+  createClientLogin(clientId: string, username: string, password: string): Promise<Client>;
   deleteClientAccount(clientId: string): Promise<void>;
   updateCoachName(name: string): Promise<void>;
   /** Load all coaches and subscriptions — for owner dashboard. */
@@ -1376,11 +1512,40 @@ class SupabaseBackend implements Backend {
       }),
     );
     const [clientExerciseRows, templateRows, workoutSessionRows, workoutEntryRows] = trackerResults;
-    // Meal edit requests (migration 0016) — same best-effort deal.
+    // Meal edit requests (migration 0016) + meal logs (0017) — same best-effort deal.
     let mealRequestRows: Row[] = [];
+    let mealLogRows: Row[] = [];
     try {
       const res = await supabase.from("meal_edit_requests").select("*");
       if (!res.error) mealRequestRows = (res.data ?? []) as Row[];
+    } catch {
+      /* older project without the table — not fatal */
+    }
+    try {
+      const res = await supabase.from("meal_logs").select("*");
+      if (!res.error) mealLogRows = (res.data ?? []) as Row[];
+    } catch {
+      /* older project without the table — not fatal */
+    }
+    let mealDayPickRows: Row[] = [];
+    try {
+      const res = await supabase.from("meal_day_picks").select("*");
+      if (!res.error) mealDayPickRows = (res.data ?? []) as Row[];
+    } catch {
+      /* older project without the table — not fatal */
+    }
+    let progressPhotoRows: Row[] = [];
+    try {
+      const res = await supabase.from("progress_photos").select("*");
+      if (!res.error) progressPhotoRows = (res.data ?? []) as Row[];
+    } catch {
+      /* older project without the table — not fatal */
+    }
+    // Diet-plan versions (migration 0025) — same best-effort deal.
+    let nutritionPlanRows: Row[] = [];
+    try {
+      const res = await supabase.from("nutrition_plans").select("*");
+      if (!res.error) nutritionPlanRows = (res.data ?? []) as Row[];
     } catch {
       /* older project without the table — not fatal */
     }
@@ -1403,17 +1568,21 @@ class SupabaseBackend implements Backend {
       workoutSessions: (workoutSessionRows ?? []).map(rowToWorkoutSession),
       workoutEntries: (workoutEntryRows ?? []).map(rowToWorkoutEntry),
       mealRequests: mealRequestRows.map(rowToMealRequest),
+      mealLogs: mealLogRows.map(rowToMealLog),
+      mealDayPicks: mealDayPickRows.map(rowToMealDayPick),
+      progressPhotos: progressPhotoRows.map(rowToProgressPhoto),
+      nutritionPlans: nutritionPlanRows.map(rowToNutritionPlan),
     };
   }
 
   async insert(table: string, row: Row): Promise<void> {
     const { error } = await supabase.from(table).insert(row);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(schemaCacheMessage(error.message) ?? error.message);
   }
 
   async update(table: string, id: string, row: Row): Promise<void> {
     const { error } = await supabase.from(table).update(clean(row)).eq("id", id);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(schemaCacheMessage(error.message) ?? error.message);
   }
 
   async remove(table: string, id: string): Promise<void> {
@@ -1435,8 +1604,10 @@ class SupabaseBackend implements Backend {
       throw friendlyFunctionError(e);
     }
     if (error) {
+      // Prefer the function's own JSON error over the generic non-2xx text.
+      const serverMsg = await functionServerMessage(error);
       // Surface structured limit errors even when the function gateway wraps them.
-      const msg = error.message ?? "";
+      const msg = serverMsg ?? error.message ?? "";
       if (/PLAN_LIMIT_REACHED|client limit|maximum.*clients/i.test(msg)) {
         const countM = msg.match(/(\d+)\s*\/\s*(\d+)/);
         if (countM) {
@@ -1446,7 +1617,7 @@ class SupabaseBackend implements Backend {
         }
         throw new Error(msg);
       }
-      throw friendlyFunctionError(error);
+      throw friendlyFunctionError(serverMsg ? new Error(serverMsg) : error);
     }
     const body = data as { ok?: boolean; client?: Row; error?: string };
     if (!body?.ok || !body.client) {
@@ -1476,9 +1647,33 @@ class SupabaseBackend implements Backend {
     } catch (e) {
       throw friendlyFunctionError(e);
     }
-    if (error) throw friendlyFunctionError(error);
+    if (error) {
+      const serverMsg = await functionServerMessage(error);
+      throw friendlyFunctionError(serverMsg ? new Error(serverMsg) : error);
+    }
     const body = data as { ok?: boolean; error?: string };
     if (!body?.ok) throw new Error(body?.error ?? "Couldn't reset the password.");
+  }
+
+  async createClientLogin(clientId: string, username: string, password: string): Promise<Client> {
+    let data: unknown;
+    let error: { name?: string; message?: string } | null;
+    try {
+      const res = await supabase.functions.invoke("create-client-account", {
+        body: { action: "create-login", clientId, username, password },
+      });
+      data = res.data;
+      error = res.error as { name?: string; message?: string } | null;
+    } catch (e) {
+      throw friendlyFunctionError(e);
+    }
+    if (error) {
+      const serverMsg = await functionServerMessage(error);
+      throw friendlyFunctionError(serverMsg ? new Error(serverMsg) : error);
+    }
+    const body = data as { ok?: boolean; client?: Row; error?: string };
+    if (!body?.ok || !body.client) throw new Error(body?.error ?? "Couldn't create the login.");
+    return rowToClient(body.client);
   }
 
   async deleteClientAccount(clientId: string): Promise<void> {

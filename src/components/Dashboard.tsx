@@ -25,7 +25,7 @@ import {
   Wallet,
 } from "lucide-react";
 import type { CheckIn, Client, CoachView, Session } from "../types";
-import { SESSION_STATUS_META, SUB_STATE_META, WEEK_DAYS } from "../types";
+import { SESSION_STATUS_META, SUB_STATE_META, WEEK_DAYS, priorityRank } from "../types";
 import {
   addDays,
   diffDays,
@@ -360,7 +360,10 @@ export function Dashboard({
         sort: 7,
       });
     }
-    return out.sort((a, b) => a.sort - b.sort);
+    // Priority first (Critical → Medium → Normal), then urgency.
+    return out.sort(
+      (a, b) => priorityRank(a.client.priority) - priorityRank(b.client.priority) || a.sort - b.sort,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lists, state.sessions, state.payments, state.subscriptions, state.checkIns, state.mealRequests, clientById, pendingCheckIns, today]);
 
@@ -455,7 +458,9 @@ export function Dashboard({
         sort: top.sort,
       });
     }
-    return rows.sort((a, b) => a.sort - b.sort).slice(0, 6);
+    return rows
+      .sort((a, b) => priorityRank(a.client.priority) - priorityRank(b.client.priority) || a.sort - b.sort)
+      .slice(0, 6);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeClients, pendingCheckIns, lists, state.checkIns, state.sessions, state.subscriptions, state.payments, today]);
 

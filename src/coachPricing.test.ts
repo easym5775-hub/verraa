@@ -134,9 +134,9 @@ describe("effectiveCoachStatus", () => {
 describe("getCoachClientCount", () => {
   it("counts clients for a coach", () => {
     const clients: Client[] = [
-      { id: "c1", coachId: "coach-1", username: "a", name: "A", email: "", phone: "", goal: "Lose weight", startDate: todayISO(), status: "Active", notes: "", coachNotes: [] },
-      { id: "c2", coachId: "coach-1", username: "b", name: "B", email: "", phone: "", goal: "Build muscle", startDate: todayISO(), status: "Active", notes: "", coachNotes: [] },
-      { id: "c3", coachId: "coach-2", username: "c", name: "C", email: "", phone: "", goal: "General fitness", startDate: todayISO(), status: "Active", notes: "", coachNotes: [] },
+      { id: "c1", coachId: "coach-1", username: "a", hasLogin: true, priority: "Normal", name: "A", email: "", phone: "", goal: "Lose weight", startDate: todayISO(), status: "Active", notes: "", coachNotes: [] },
+      { id: "c2", coachId: "coach-1", username: "b", hasLogin: true, priority: "Normal", name: "B", email: "", phone: "", goal: "Build muscle", startDate: todayISO(), status: "Active", notes: "", coachNotes: [] },
+      { id: "c3", coachId: "coach-2", username: "c", hasLogin: true, priority: "Normal", name: "C", email: "", phone: "", goal: "General fitness", startDate: todayISO(), status: "Active", notes: "", coachNotes: [] },
     ];
     expect(getCoachClientCount(clients, "coach-1")).toBe(2);
     expect(getCoachClientCount(clients, "coach-2")).toBe(1);
@@ -167,14 +167,14 @@ describe("getCoachPlan", () => {
 
 describe("canAddClient", () => {
   it("returns allowed when under limit", () => {
-    const clients: Client[] = [{ id: "c1", coachId: "coach-1", username: "a", name: "A", email: "", phone: "", goal: "Lose weight", startDate: todayISO(), status: "Active", notes: "", coachNotes: [] }];
+    const clients: Client[] = [{ id: "c1", coachId: "coach-1", username: "a", hasLogin: true, priority: "Normal", name: "A", email: "", phone: "", goal: "Lose weight", startDate: todayISO(), status: "Active", notes: "", coachNotes: [] }];
     const sub = makeSub({ planName: "STARTER" });
     const result = canAddClient({ clients }, DEFAULT_COACH_PLANS, [sub], "coach-1");
     expect(result.allowed).toBe(true);
   });
   it("returns not allowed when at limit", () => {
     const clients: Client[] = Array.from({ length: 20 }, (_, i) => ({
-      id: `c${i}`, coachId: "coach-1", username: `u${i}`, name: `User ${i}`, email: "", phone: "", goal: "Lose weight", startDate: todayISO(), status: "Active" as const, notes: "", coachNotes: [],
+      id: `c${i}`, coachId: "coach-1", username: `u${i}`, hasLogin: true, priority: "Normal" as const, name: `User ${i}`, email: "", phone: "", goal: "Lose weight", startDate: todayISO(), status: "Active" as const, notes: "", coachNotes: [],
     }));
     const sub = makeSub({ planName: "STARTER" });
     const result = canAddClient({ clients }, DEFAULT_COACH_PLANS, [sub], "coach-1");

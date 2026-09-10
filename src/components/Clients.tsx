@@ -13,6 +13,7 @@ import {
   ClipboardList,
   CreditCard,
   Dumbbell,
+  ImagePlus,
   KeyRound,
   LayoutGrid,
   MessageCircle,
@@ -30,9 +31,9 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import type { CheckIn, Client, CoachView, Payment, Session, SubState, Subscription } from "../types";
-import { FOLLOW_UP_PRESETS, GOAL_META, PAYMENT_STATUS_META, SESSION_STATUS_META, STATUS_META, SUB_PAYMENT_META, SUB_STATE_META } from "../types";
-import { addDays, fmtDate, fmtMoney, fmtTime, relDay, relTime, signed, toISO, todayISO, waHref } from "../lib";
+import type { CheckIn, Client, CoachView, Meal, Payment, Session, SubState, Subscription } from "../types";
+import { FOLLOW_UP_PRESETS, GOAL_META, PAYMENT_STATUS_META, PRIORITIES, SESSION_STATUS_META, STATUS_META, SUB_PAYMENT_META, SUB_STATE_META, WEEK_DAYS, WEEK_SHORT, priorityRank } from "../types";
+import { addDays, dayNum, fmtDate, fmtMoney, fmtTime, relDay, relTime, signed, toISO, todayISO, waHref } from "../lib";
 import {
   attendance,
   currentSubscription,
@@ -57,6 +58,7 @@ import {
   Modal,
   MoodDots,
   SectionCard,
+  UserPlus,
   btnDanger,
   btnPrimary,
   btnSecondary,
@@ -64,10 +66,12 @@ import {
   inputCls,
   labelCls,
 } from "./ui";
-import { WeightLine } from "./Chart";
+import { WeightLine, AdherenceTrend, type AdherenceDay } from "./Chart";
+import { PhotoGallery } from "./Photos";
 import { CoachStrengthView } from "./StrengthTracker";
 import {
   ClientFormModal,
+  CreateLoginModal,
   NutritionTargetsModal,
   PaymentFormModal,
   PhotoModal,
@@ -75,7 +79,7 @@ import {
   SessionFormModal,
   SubscriptionFormModal,
 } from "./modals";
-import { HeaderFact, Kpi, KV, MiniEmpty } from "./clients/index";
+import { HeaderFact, Kpi, KV, MiniEmpty, PriorityBadge } from "./clients/index";
 import {
   RosterCard,
   RosterRow,
@@ -141,7 +145,7 @@ export function ClientsView({
             return true;
         }
       })
-      .sort((a, b) => a.client.name.localeCompare(b.client.name));
+      .sort((a, b) => priorityRank(a.client.priority) - priorityRank(b.client.priority) || a.client.name.localeCompare(b.client.name));
   }, [enriched, q, filter]);
 
   if (!ready) return <RosterSkeleton />;
@@ -287,7 +291,7 @@ export function ClientsView({
    Client profile
    ================================================================ */
 
-type ProfileTab = "overview" | "checkins" | "training" | "sessions" | "nutrition" | "billing" | "connect";
+  type ProfileTab = "overview" | "checkins" | "training" | "sessions" | "nutrition" | "photos" | "billing" | "connect";
 
 export function ClientProfile({ clientId, go }: { clientId: string; go: (v: CoachView, id?: string) => void }) {
   const app = useApp();
@@ -304,8 +308,13 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
   const checkIns = useMemo(() => app.state.checkIns.filter((c) => c.clientId === clientId), [app.state.checkIns, clientId]);
   const plans = useMemo(() => app.state.plans.filter((p) => p.clientId === clientId), [app.state.plans, clientId]);
   const meals = useMemo(() => app.state.meals.filter((m) => m.clientId === clientId), [app.state.meals, clientId]);
+  const photoCount = useMemo(
+    () => (app.state.progressPhotos ?? []).filter((p) => p.clientId === clientId).length,
+    [app.state.progressPhotos, clientId],
+  );
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
   const ready = useViewReady(clientId);
 
   if (!client) {
@@ -333,6 +342,7 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
   };
 
   const attention: { tone: string; dot: string; text: string }[] = [];
+  if (client.priority === "Critical") attention.push({ tone: "text-danger-300", dot: "bg-danger-400", text: "Critical priority client" });
   if (fu.overdue) attention.push({ tone: "text-danger-300", dot: "bg-danger-400", text: `Follow-up ${fu.label.toLowerCase()}` });
   if (subInfo.state === "Expired") attention.push({ tone: "text-danger-300", dot: "bg-danger-400", text: "Subscription expired" });
   else if (subInfo.state === "Expiring Soon") attention.push({ tone: "text-warn-300", dot: "bg-warn-400", text: "Subscription expiring soon" });
@@ -357,6 +367,7 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
     { id: "training", label: "Training", icon: <Dumbbell className="h-3.5 w-3.5" /> },
     { id: "sessions", label: "Sessions", icon: <CalendarDays className="h-3.5 w-3.5" />, count: upcomingCount || undefined },
     { id: "nutrition", label: "Nutrition", icon: <UtensilsCrossed className="h-3.5 w-3.5" />, count: meals.length || undefined },
+    { id: "photos", label: "Photos", icon: <ImagePlus className="h-3.5 w-3.5" />, count: photoCount || undefined },
     { id: "billing", label: "Billing", icon: <Wallet className="h-3.5 w-3.5" />, dot: outstanding > 0 },
     { id: "connect", label: "Connect", icon: <MessageCircle className="h-3.5 w-3.5" />, count: msgCount || undefined },
   ];
@@ -379,12 +390,23 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
             <div className="min-w-0 flex-1 basis-52">
               <h1 className="font-display text-3xl font-bold uppercase leading-none tracking-tight text-mist-100">{client.name}</h1>
               <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-                <span className="font-bold text-mist-400">@{client.username}</span>
+                {client.hasLogin ? (
+                  <span className="font-bold text-mist-400">@{client.username}</span>
+                ) : (
+                  <button
+                    onClick={() => setLoginOpen(true)}
+                    title="Create a login for this client"
+                    className="cursor-pointer font-bold text-warn-300 transition hover:text-volt-300 hover:underline"
+                  >
+                    Coach-managed · no login — create one →
+                  </button>
+                )}
                 <span aria-hidden="true" className="text-mist-600">•</span>
                 <span className={`inline-flex items-center gap-1.5 font-bold ${statusTone}`}>
                   <span className={`h-1.5 w-1.5 rounded-full ${STATUS_META[client.status].dot}`} />
                   {client.status}{client.status === "Active" ? " client" : ""}
                 </span>
+                <PriorityBadge priority={client.priority} />
               </p>
               <p className="mt-1 text-xs font-semibold text-mist-500">{client.goal}</p>
               <p className="mt-1.5 text-[11px] font-semibold text-mist-500">
@@ -442,7 +464,18 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
                 items={[
                   ...(wa ? [{ type: "item" as const, label: "WhatsApp", icon: MessageCircle, onClick: () => window.open(wa, "_blank", "noopener") }] : []),
                   { type: "item" as const, label: "Edit client", icon: Pencil, onClick: () => setEditOpen(true) },
-                  { type: "item" as const, label: "Reset password", icon: KeyRound, onClick: () => setPwOpen(true) },
+                  ...(client.hasLogin
+                    ? [{ type: "item" as const, label: "Reset password", icon: KeyRound, onClick: () => setPwOpen(true) }]
+                    : [{ type: "item" as const, label: "Create login", icon: UserPlus, onClick: () => setLoginOpen(true) }]),
+                  { type: "divider" as const },
+                  ...PRIORITIES.map((p) => ({
+                    type: "item" as const,
+                    label: `${p} priority`,
+                    hint: client.priority === p ? "✓" : undefined,
+                    onClick: () => {
+                      if (client.priority !== p) app.updateClient({ ...client, priority: p });
+                    },
+                  })),
                   { type: "divider" as const },
                   { type: "item" as const, label: "Delete client", icon: Trash2, danger: true, onClick: () => setDelOpen(true) },
                 ]}
@@ -600,6 +633,16 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
             )}
           </SectionCard>
           <MealsCard mealsCount={meals.length} go={go} clientId={client.id} targets={targets ? { calories: targets.calories } : undefined} />
+          <div className="sm:col-span-2">
+            <MealAdherenceCard clientId={client.id} meals={meals} />
+          </div>
+        </div>
+      )}
+
+      {/* Photos — before & after gallery */}
+      {tab === "photos" && (
+        <div className="mt-3 w-full">
+          <PhotoGallery key={client.id} clientId={client.id} role="coach" />
         </div>
       )}
 
@@ -626,6 +669,7 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
       <ClientFormModal open={editOpen} initial={client} onClose={() => setEditOpen(false)} />
       <NutritionTargetsModal open={nutritionOpen} clientId={client.id} onClose={() => setNutritionOpen(false)} />
       <ResetPasswordModal open={pwOpen} clientId={client.id} onClose={() => setPwOpen(false)} />
+      {!client.hasLogin && <CreateLoginModal open={loginOpen} client={client} onClose={() => setLoginOpen(false)} />}
       <ConfirmModal
         open={delOpen}
         onClose={() => setDelOpen(false)}
@@ -1223,6 +1267,77 @@ function ProgressCard({ checkIns, sessionsCount }: { checkIns: CheckIn[]; sessio
           {sessionsCount.completed}/{sessionsCount.countable} · <span className="font-display text-sm text-volt-300 tnum">{sessionsCount.pct}%</span>
         </p>
       </div>
+    </SectionCard>
+  );
+}
+
+/* ---------------- meal adherence (last 7 days) ----------------
+   Planned meals come from the current weekly plan (by weekday);
+   eaten comes from the client's ✓ marks. Rest days (no plan) are
+   skipped so they don't drag the average down. */
+
+function MealAdherenceCard({ clientId, meals }: { clientId: string; meals: Meal[] }) {
+  const { state } = useApp();
+  const days: AdherenceDay[] = useMemo(() => {
+    const logs = (state.mealLogs ?? []).filter((l) => l.clientId === clientId);
+    const picks = (state.mealDayPicks ?? []).filter((p) => p.clientId === clientId);
+    const arr: AdherenceDay[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = addDays(todayISO(), -i);
+      const wd = dayNum(new Date(date + "T12:00:00")); // 1 = Monday
+      // Flexible menus: measure against the day the client actually followed
+      // (falls back to the calendar weekday for days picked before this feature).
+      const pickDay = picks.find((p) => p.date === date)?.day;
+      const planned = meals.filter((m) => m.day === (pickDay ?? wd)).length;
+      const dayLogs = logs.filter((l) => l.date === date);
+      const eaten = Math.min(
+        dayLogs.filter((l) => l.status === "EATEN").length,
+        planned,
+      );
+      arr.push({
+        date,
+        weekday: WEEK_DAYS[wd - 1] ?? `Day ${wd}`,
+        letter: (WEEK_SHORT[wd - 1] ?? "?").slice(0, 1),
+        planned,
+        eaten,
+        skipped: dayLogs
+          .filter((l) => l.status === "SKIPPED")
+          .map((l) => ({ mealType: l.mealType, mealDescription: l.mealDescription })),
+        rate: planned > 0 ? eaten / planned : null,
+        followed: pickDay ? (WEEK_DAYS[pickDay - 1] ?? `Day ${pickDay}`) : null,
+      });
+    }
+    return arr;
+  }, [state.mealLogs, state.mealDayPicks, meals, clientId]);
+
+  const withPlan = days.filter((d) => d.rate !== null);
+  const totP = withPlan.reduce((s, d) => s + d.planned, 0);
+  const totE = withPlan.reduce((s, d) => s + d.eaten, 0);
+  const pct = totP > 0 ? Math.round((totE / totP) * 100) : null;
+
+  return (
+    <SectionCard title="Meal adherence" description="Last 7 days" icon={<UtensilsCrossed className="h-4.5 w-4.5" />} bodyCls="p-5">
+      {pct === null ? (
+        <EmptyState icon={<UtensilsCrossed className="h-6 w-6" />} title="No meals planned" sub="Assign meals first — adherence is measured against the plan." />
+      ) : (
+        <>
+          <div className="flex items-baseline gap-2">
+            <p className={`font-display text-3xl font-bold tnum ${pct >= 80 ? "text-moss-300" : pct >= 50 ? "text-warn-300" : "text-danger-300"}`}>
+              {pct}%
+            </p>
+            <p className="text-xs font-semibold text-mist-500 tnum">
+              {totE} of {totP} meals on track
+            </p>
+          </div>
+          <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-night-700">
+            <div className={`h-full rounded-full transition-all ${pct >= 80 ? "bg-moss-400" : pct >= 50 ? "bg-warn-400" : "bg-danger-400"}`} style={{ width: `${pct}%` }} />
+          </div>
+          <div className="mt-3">
+            <AdherenceTrend days={days} />
+          </div>
+          <p className="mt-2 text-[11px] font-semibold text-mist-500">Hover or tap the trend to inspect any day — rest days (no plan) don't count.</p>
+        </>
+      )}
     </SectionCard>
   );
 }

@@ -4,6 +4,8 @@
 
 export type Goal = "Lose weight" | "Build muscle" | "General fitness";
 export type ClientStatus = "Active" | "Paused" | "Completed";
+/** Coach-set importance: Critical (VIP) always surfaces first, then Medium, then Normal. */
+export type ClientPriority = "Critical" | "Medium" | "Normal";
 export type ExerciseCategory = "Chest" | "Back" | "Legs" | "Arms" | "Core" | "Cardio";
 export type MealType = "Breakfast" | "Lunch" | "Dinner" | "Snack";
 export type SessionStatus = "Scheduled" | "Confirmed" | "Completed" | "Missed" | "Cancelled";
@@ -56,6 +58,10 @@ export interface Client {
   id: string;
   coachId: string;
   username: string;
+  /** False for coach-managed clients with no Client-mode login. */
+  hasLogin: boolean;
+  /** Coach-set importance — drives needs-attention ordering. Defaults to Normal. */
+  priority: ClientPriority;
   name: string;
   email: string;
   phone: string;
@@ -112,6 +118,9 @@ export interface Meal {
   id: string;
   coachId: string;
   clientId: string;
+  /** Which diet-plan version this meal belongs to. Undefined = saved before
+      versioning — those meals belong to the client's oldest version. */
+  planId?: string;
   day: number; // 1..7 — Day 1 = Monday
   type: MealType;
   time?: string; // HH:mm (optional)
@@ -121,6 +130,23 @@ export interface Meal {
   carbs: number;
   fats: number;
   notes?: string;
+}
+
+/* ---------------- diet-plan versions (one standing plan per client) ----------------
+   The coach does NOT rebuild the plan weekly. Each client follows ONE diet
+   plan for the whole subscription; when the coach changes it, the previous
+   plan is kept as an archived version that can be viewed or restored. */
+
+export type NutritionPlanStatus = "active" | "archived";
+
+export interface NutritionPlan {
+  id: string;
+  coachId: string;
+  clientId: string;
+  name: string; // e.g. "Plan 1", "Cutting — March"
+  status: NutritionPlanStatus; // exactly one "active" per client; the rest are history
+  createdAt: number; // epoch ms
+  updatedAt: number; // epoch ms
 }
 
 export interface Subscription {
@@ -300,6 +326,62 @@ export interface MealEditRequest {
   reviewedAt?: number;
 }
 
+/* ---------------- meal compliance (client logs per meal per day) ----------------
+   The client taps ✓ (ate it) or ✕ (skipped / cheated) on each meal.
+   One row per meal per calendar date — tapping again switches or clears.
+   meal_id is FK-free so history survives meal deletes. */
+
+export type MealLogStatus = "EATEN" | "SKIPPED";
+
+export interface MealLog {
+  id: string;
+  coachId: string;
+  clientId: string;
+  mealId?: string;
+  date: string; // ISO — the calendar day this log belongs to
+  day: number; // snapshot of the plan day
+  mealType: MealType;
+  mealDescription: string;
+  status: MealLogStatus;
+  createdAt: number;
+}
+
+/* ---------------- flexible menus (client picks which day to eat) ----------------
+   The weekly plan is an open menu, not a calendar sentence. Each day the
+   client picks which plan-day (1..7) they follow; compliance marks are
+   logged against that day's meals with the calendar date. Switching days
+   clears that date's marks (after an explicit warning). */
+
+export interface MealDayPick {
+  id: string;
+  coachId: string;
+  clientId: string;
+  date: string; // ISO — the calendar day this pick belongs to
+  day: number; // 1..7 — the plan-day followed
+  createdAt: number;
+}
+
+/* ---------------- progress photos (Before / After) ----------------
+   Dedicated gallery per client — separate from daily check-ins.
+   Both sides can upload; photos are compact JPEG data URLs. */
+
+export type ProgressPhotoKind = "BEFORE" | "AFTER";
+
+export interface ProgressPhoto {
+  id: string;
+  coachId: string;
+  clientId: string;
+  kind: ProgressPhotoKind;
+  photo: string; // data URL
+  date: string; // ISO — upload day
+  ts: number; // epoch ms — insertion order
+  note?: string;
+  /** Who uploaded it — shown as a small badge in shared galleries. */
+  by?: SenderRole;
+}
+
+export const PHOTO_KINDS: ProgressPhotoKind[] = ["BEFORE", "AFTER"];
+
 /** Stable identity key for last-weight / PR matching. */
 export function workoutExerciseKey(e: {
   exerciseId?: string;
@@ -317,8 +399,9 @@ export interface AppState {
   clients: Client[];
   exercises: Exercise[];
   plans: PlanItem[];
-  checkIns: CheckIn[];
-  meals: Meal[];
+    checkIns: CheckIn[];
+    meals: Meal[];
+    nutritionPlans?: NutritionPlan[];
   subscriptions: Subscription[];
   payments: Payment[];
   sessions: Session[];
@@ -333,6 +416,9 @@ export interface AppState {
   workoutSessions: WorkoutSession[];
   workoutEntries: WorkoutEntry[];
   mealRequests: MealEditRequest[];
+  mealLogs: MealLog[];
+  mealDayPicks: MealDayPick[];
+  progressPhotos: ProgressPhoto[];
 }
 
 /* ---------------- input types ---------------- */
@@ -340,6 +426,8 @@ export interface AppState {
 export interface NewClientInput {
   username: string;
   password: string;
+  /** False = coach-managed only, no Client-mode login is created. Defaults to true. */
+  createLogin?: boolean;
   name: string;
   email?: string;
   phone?: string;
@@ -419,6 +507,22 @@ export const STATUS_META: Record<ClientStatus, { chip: string; dot: string }> = 
   Paused: { chip: "border-warn-400/25 bg-warn-400/10 text-warn-300", dot: "bg-warn-400" },
   Completed: { chip: "border-night-500/60 bg-night-600/30 text-mist-300", dot: "bg-mist-400" },
 };
+
+export const PRIORITIES: ClientPriority[] = ["Critical", "Medium", "Normal"];
+
+export const PRIORITY_META: Record<ClientPriority, { chip: string; dot: string }> = {
+  Critical: { chip: "border-danger-500/25 bg-danger-500/10 text-danger-300", dot: "bg-danger-400" },
+  Medium: { chip: "border-warn-400/25 bg-warn-400/10 text-warn-300", dot: "bg-warn-400" },
+  Normal: { chip: "border-night-500/60 bg-night-600/30 text-mist-400", dot: "bg-mist-500" },
+};
+
+/** Sort weight — Critical (VIP) always first, then Medium, then Normal. */
+export const priorityRank = (p: ClientPriority | string | undefined | null): number =>
+  p === "Critical" ? 0 : p === "Medium" ? 1 : 2;
+
+/** Normalize any stored value to a valid priority (pre-migration rows lack the column). */
+export const normalizePriority = (p: unknown): ClientPriority =>
+  p === "Critical" || p === "Medium" ? p : "Normal";
 
 export const CAT_META: Record<ExerciseCategory, { chip: string; dot: string }> = {
   Chest: { chip: "border-rose-400/25 bg-rose-400/10 text-rose-300", dot: "bg-rose-400" },

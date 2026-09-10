@@ -121,6 +121,8 @@ const rowToClient = (r: Row, cfg: ConnectionConfig): Client => ({
   id: String(r.id),
   coachId: String(r.coach_id ?? getCoachId(cfg)),
   username: String(r.username ?? r.name ?? "client").toLowerCase().replace(/\s+/g, "_"),
+  hasLogin: true,
+  priority: "Normal",
   name: String(r.name ?? ""),
   phone: String(r.phone ?? ""),
   email: String(r.email ?? ""),

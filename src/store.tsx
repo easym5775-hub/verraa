@@ -27,18 +27,24 @@ import type {
   Exercise,
   ExerciseCategory,
   Meal,
+  MealDayPick,
   MealEditRequest,
+  MealLog,
+  MealLogStatus,
   NewClientInput,
+  NutritionPlan,
   NutritionTargets,
   Payment,
   PlanItem,
+  ProgressPhoto,
+  ProgressPhotoKind,
   Session,
   SessionStatus,
   Subscription,
   WorkoutEntry,
   WorkoutSession,
 } from "./types";
-import { workoutExerciseKey } from "./types";
+import { WEEK_DAYS, workoutExerciseKey } from "./types";
 import { errorMessage, todayISO, uid, uuid } from "./lib";
 import {
   getCoachClientCount,
@@ -54,12 +60,16 @@ import {
   clientExerciseToRow,
   clientToRow,
   exerciseToRow,
+  mealDayPickToRow,
+  mealLogToRow,
   mealRequestToRow,
   mealToRow,
   messageToRow,
   notificationToRow,
+  nutritionPlanToRow,
   paymentToRow,
   planToRow,
+  progressPhotoToRow,
   sessionToRow,
   subscriptionToRow,
   workoutEntryToRow,
@@ -94,6 +104,7 @@ interface Store {
   updateClient: (client: Client) => void;
   deleteClient: (id: string) => void;
   resetClientPassword: (clientId: string, newPassword: string) => Promise<void>;
+  createClientLogin: (clientId: string, username: string, password: string) => Promise<void>;
 
   addExercise: (input: Omit<Exercise, "id" | "coachId">) => void;
   updateExercise: (ex: Exercise) => void;
@@ -106,6 +117,13 @@ interface Store {
   addMeal: (input: Omit<Meal, "id" | "coachId">) => void;
   updateMeal: (meal: Meal) => void;
   deleteMeal: (id: string) => void;
+
+  /* ---- Diet-plan versions (one standing plan per client) ---- */
+  addNutritionPlan: (input: { clientId: string; name?: string }) => NutritionPlan;
+  duplicateNutritionPlan: (sourcePlanId: string, name?: string) => NutritionPlan | null;
+  renameNutritionPlan: (id: string, name: string) => void;
+  deleteNutritionPlan: (id: string) => void;
+  setActiveNutritionPlan: (id: string) => void;
 
   addCheckIn: (input: Omit<CheckIn, "id" | "ts" | "coachId">) => void;
   deleteCheckIn: (id: string) => void;
@@ -137,6 +155,20 @@ interface Store {
   requestMealEdit: (input: { meal: Meal; message: string; suggestion?: string; clientId?: string }) => MealEditRequest | null;
   cancelMealRequest: (id: string) => void;
   reviewMealRequest: (id: string, approve: boolean, coachNote?: string) => void;
+
+  /* ---- Meal compliance (client taps ✓ / ✕ per meal per day) ----
+     status null clears the mark. No success toast — toggles are rapid
+     and the button state itself is the feedback. */
+  setMealLog: (input: { meal: Meal; date: string; status: MealLogStatus | null; clientId?: string }) => void;
+
+  /* ---- Flexible menus: which plan-day the client follows on a date ----
+     clearLogs wipes that date's compliance marks (used when switching
+     days, after an explicit UI warning). */
+  setMealDayPick: (input: { date: string; day: number; clearLogs?: boolean; clientId?: string }) => void;
+
+  /* ---- Progress photos (Before / After galleries, both sides upload) ---- */
+  addProgressPhoto: (input: { kind: ProgressPhotoKind; photo: string; note?: string; date?: string; clientId?: string }) => ProgressPhoto | null;
+  deleteProgressPhoto: (id: string) => void;
 
   addSubscription: (input: Omit<Subscription, "id" | "createdAt" | "coachId">, opts?: { paymentMethod?: Payment["method"] }) => Subscription;
   updateSubscription: (sub: Subscription, opts?: { paymentMethod?: Payment["method"] }) => void;
@@ -187,6 +219,7 @@ const EMPTY: AppState = {
   plans: [],
   checkIns: [],
   meals: [],
+  nutritionPlans: [],
   subscriptions: [],
   payments: [],
   sessions: [],
@@ -200,6 +233,9 @@ const EMPTY: AppState = {
   workoutSessions: [],
   workoutEntries: [],
   mealRequests: [],
+  mealLogs: [],
+  mealDayPicks: [],
+  progressPhotos: [],
 };
 
 export function StoreProvider({ children }: { children: ReactNode }) {
@@ -392,7 +428,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const client = await backend.createClientAccount(input);
         setState((s) => ({ ...s, clients: [client, ...s.clients] }));
-        toast(`${client.name} added — their login works right away`);
+        toast(client.hasLogin ? `${client.name} added — their login works right away` : `${client.name} added (coach-managed, no login)`);
         return client;
       } catch (e) {
         // Normalize backend limit rejections (edge function / trigger)
@@ -428,6 +464,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           plans: s.plans.filter((x) => x.clientId !== id),
           checkIns: s.checkIns.filter((x) => x.clientId !== id),
           meals: s.meals.filter((x) => x.clientId !== id),
+          nutritionPlans: (s.nutritionPlans ?? []).filter((x) => x.clientId !== id),
           subscriptions: s.subscriptions.filter((x) => x.clientId !== id),
           payments: s.payments.filter((x) => x.clientId !== id),
           sessions: s.sessions.filter((x) => x.clientId !== id),
@@ -438,6 +475,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           workoutSessions: s.workoutSessions.filter((x) => x.clientId !== id),
           workoutEntries: s.workoutEntries.filter((x) => x.clientId !== id),
           mealRequests: (s.mealRequests ?? []).filter((x) => x.clientId !== id),
+          mealLogs: (s.mealLogs ?? []).filter((x) => x.clientId !== id),
+          mealDayPicks: (s.mealDayPicks ?? []).filter((x) => x.clientId !== id),
+          progressPhotos: (s.progressPhotos ?? []).filter((x) => x.clientId !== id),
         }),
         () => backend.deleteClientAccount(id),
       );
@@ -450,6 +490,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     async (clientId: string, newPassword: string): Promise<void> => {
       await backend.resetClientPassword(clientId, newPassword);
       toast("Password reset — share it securely");
+    },
+    [toast],
+  );
+
+  const createClientLogin = useCallback(
+    async (clientId: string, username: string, password: string): Promise<void> => {
+      const updated = await backend.createClientLogin(clientId, username, password);
+      // The row id changes to the new auth user id — swap by old id.
+      setState((s) => ({ ...s, clients: s.clients.map((x) => (x.id === clientId ? updated : x)) }));
+      toast(`${updated.name} can now sign in as @${updated.username}`);
     },
     [toast],
   );
@@ -569,6 +619,166 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       );
     },
     [mutate],
+  );
+
+  /* ---------------- diet-plan versions ---------------- */
+
+  const addNutritionPlan = useCallback(
+    (input: { clientId: string; name?: string }) => {
+      const existing = (stateRef.current.nutritionPlans ?? []).filter((p) => p.clientId === input.clientId);
+      const now = Date.now();
+      const plan: NutritionPlan = {
+        id: uuid(),
+        coachId: coachId(),
+        clientId: input.clientId,
+        name: input.name?.trim() || `Plan ${existing.length + 1}`,
+        // The client's first version is the standing plan right away.
+        status: existing.length === 0 ? "active" : "archived",
+        createdAt: now,
+        updatedAt: now,
+      };
+      mutate(
+        (s) => ({ ...s, nutritionPlans: [...(s.nutritionPlans ?? []), plan] }),
+        () => backend.insert("nutrition_plans", { id: plan.id, coach_id: plan.coachId, ...nutritionPlanToRow(plan) }),
+        `"${plan.name}" created`,
+      );
+      return plan;
+    },
+    [mutate],
+  );
+
+  const duplicateNutritionPlan = useCallback(
+    (sourcePlanId: string, name?: string) => {
+      const s = stateRef.current;
+      const source = (s.nutritionPlans ?? []).find((p) => p.id === sourcePlanId);
+      if (!source) {
+        toast("Plan not found", "warn");
+        return null;
+      }
+      const siblings = (s.nutritionPlans ?? []).filter((p) => p.clientId === source.clientId);
+      const now = Date.now();
+      const copy: NutritionPlan = {
+        id: uuid(),
+        coachId: source.coachId,
+        clientId: source.clientId,
+        name: name?.trim() || `${source.name} (copy)`,
+        status: "archived",
+        createdAt: now,
+        updatedAt: now,
+      };
+      const isLegacyOwner =
+        siblings.length > 0 && siblings.every((p) => p.createdAt >= source.createdAt);
+      const sourceMeals = s.meals.filter((m) =>
+        m.clientId === source.clientId && (m.planId ? m.planId === source.id : isLegacyOwner),
+      );
+      const copiedMeals: Meal[] = sourceMeals.map((m) => ({
+        ...m,
+        id: uuid(),
+        coachId: source.coachId,
+        planId: copy.id,
+      }));
+      mutate(
+        (st) => ({
+          ...st,
+          nutritionPlans: [...(st.nutritionPlans ?? []), copy],
+          meals: [...st.meals, ...copiedMeals],
+        }),
+        async () => {
+          await backend.insert("nutrition_plans", { id: copy.id, coach_id: copy.coachId, ...nutritionPlanToRow(copy) });
+          await Promise.all(
+            copiedMeals.map((m) => backend.insert("meals", { id: m.id, coach_id: m.coachId, ...mealToRow(m) })),
+          );
+        },
+        `"${copy.name}" duplicated (${copiedMeals.length} meals)`,
+      );
+      return copy;
+    },
+    [mutate, toast],
+  );
+
+  const renameNutritionPlan = useCallback(
+    (id: string, name: string) => {
+      const cur = (stateRef.current.nutritionPlans ?? []).find((p) => p.id === id);
+      if (!cur || !name.trim()) return;
+      const next: NutritionPlan = { ...cur, name: name.trim(), updatedAt: Date.now() };
+      mutate(
+        (s) => ({
+          ...s,
+          nutritionPlans: (s.nutritionPlans ?? []).map((x) => (x.id === id ? next : x)),
+        }),
+        () => backend.update("nutrition_plans", id, nutritionPlanToRow(next)),
+        "Plan renamed",
+      );
+    },
+    [mutate],
+  );
+
+  const deleteNutritionPlan = useCallback(
+    (id: string) => {
+      const s = stateRef.current;
+      const cur = (s.nutritionPlans ?? []).find((p) => p.id === id);
+      if (!cur) return;
+      if (cur.status === "active") {
+        toast("Activate another plan first — the active plan can't be deleted", "warn");
+        return;
+      }
+      mutate(
+        (st) => ({
+          ...st,
+          nutritionPlans: (st.nutritionPlans ?? []).filter((x) => x.id !== id),
+          // Drop this version's explicit meals; pre-versioning orphans stay
+          // and re-attach to the next-oldest version via the legacy rule.
+          meals: st.meals.filter((m) => !(m.clientId === cur.clientId && m.planId === id)),
+        }),
+        async () => {
+          const doomed = s.meals.filter((m) => m.clientId === cur.clientId && m.planId === id);
+          await Promise.all(doomed.map((m) => backend.remove("meals", m.id)));
+          await backend.remove("nutrition_plans", id);
+        },
+        `"${cur.name}" deleted`,
+      );
+    },
+    [mutate, toast],
+  );
+
+  const setActiveNutritionPlan = useCallback(
+    (id: string) => {
+      const s = stateRef.current;
+      const cur = (s.nutritionPlans ?? []).find((p) => p.id === id);
+      if (!cur) return;
+      if (cur.status === "active") return;
+      const siblings = (s.nutritionPlans ?? []).filter((p) => p.clientId === cur.clientId);
+      const isLegacyOwner = siblings.length > 0 && siblings.every((p) => p.createdAt >= cur.createdAt);
+      const mealCount = s.meals.filter(
+        (m) => m.clientId === cur.clientId && (m.planId ? m.planId === cur.id : isLegacyOwner),
+      ).length;
+      if (mealCount === 0) {
+        toast("Add at least one meal to this plan before activating it", "warn");
+        return;
+      }
+      const now = Date.now();
+      const activated: NutritionPlan = { ...cur, status: "active", updatedAt: now };
+      const archived = siblings
+        .filter((p) => p.status === "active" && p.id !== id)
+        .map((p) => ({ ...p, status: "archived" as const, updatedAt: now }));
+      mutate(
+        (st) => ({
+          ...st,
+          nutritionPlans: (st.nutritionPlans ?? []).map((x) => {
+            if (x.id === id) return activated;
+            const a = archived.find((p) => p.id === x.id);
+            return a ?? x;
+          }),
+        }),
+        async () => {
+          await Promise.all(archived.map((p) => backend.update("nutrition_plans", p.id, nutritionPlanToRow(p))));
+          await backend.update("nutrition_plans", id, nutritionPlanToRow(activated));
+        },
+        `"${cur.name}" is now the client's plan`,
+      );
+      addNotification({ clientId: cur.clientId, kind: "meal_updated", text: "Your nutrition plan was updated" });
+    },
+    [mutate, toast, addNotification],
   );
 
   /* ---------------- check-ins ---------------- */
@@ -828,15 +1038,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const cur = stateRef.current.mealRequests?.find((x) => x.id === id);
       if (!cur || cur.status !== "PENDING") return;
       const note = coachNote?.trim().slice(0, 500) || undefined;
-      const next: MealEditRequest = {
-        ...cur,
-        status: approve ? "APPROVED" : "REJECTED",
-        coachNote: note,
-        reviewedAt: Date.now(),
-      };
+      // No history: a decided request is deleted right away — the client
+      // keeps the outcome in their notification.
       mutate(
-        (s) => ({ ...s, mealRequests: (s.mealRequests ?? []).map((x) => (x.id === id ? next : x)) }),
-        () => backend.update("meal_edit_requests", id, mealRequestToRow(next)),
+        (s) => ({ ...s, mealRequests: (s.mealRequests ?? []).filter((x) => x.id !== id) }),
+        () => backend.remove("meal_edit_requests", id),
         approve ? "Approved — client notified" : "Rejected — client notified",
       );
       addNotification({
@@ -848,6 +1054,146 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
     },
     [mutate, addNotification],
+  );
+
+  /* ---------------- meal compliance ---------------- */
+
+  const setMealLog = useCallback(
+    (input: { meal: Meal; date: string; status: MealLogStatus | null; clientId?: string }) => {
+      const clientId = trackerClientId(input.clientId);
+      if (!clientId) {
+        toast("Couldn't save — not signed in as a client.", "warn");
+        return;
+      }
+      const existing = (stateRef.current.mealLogs ?? []).find(
+        (x) => x.clientId === clientId && x.mealId === input.meal.id && x.date === input.date,
+      );
+      if (!input.status) {
+        if (!existing) return;
+        mutate(
+          (s) => ({ ...s, mealLogs: (s.mealLogs ?? []).filter((x) => x.id !== existing.id) }),
+          () => backend.remove("meal_logs", existing.id),
+        );
+        return;
+      }
+      if (existing) {
+        if (existing.status === input.status) return;
+        const next: MealLog = { ...existing, status: input.status };
+        mutate(
+          (s) => ({ ...s, mealLogs: (s.mealLogs ?? []).map((x) => (x.id === existing.id ? next : x)) }),
+          () => backend.update("meal_logs", existing.id, mealLogToRow(next)),
+        );
+        return;
+      }
+      const log: MealLog = {
+        id: uuid(),
+        coachId: coachId(),
+        clientId,
+        mealId: input.meal.id,
+        date: input.date,
+        day: input.meal.day,
+        mealType: input.meal.type,
+        mealDescription: input.meal.description,
+        status: input.status,
+        createdAt: Date.now(),
+      };
+      mutate(
+        (s) => ({ ...s, mealLogs: [log, ...(s.mealLogs ?? [])] }),
+        () => backend.insert("meal_logs", { id: log.id, coach_id: log.coachId, ...mealLogToRow(log) }),
+      );
+    },
+    [mutate, toast, trackerClientId],
+  );
+
+  /* ---------------- flexible menus ---------------- */
+
+  const setMealDayPick = useCallback(
+    (input: { date: string; day: number; clearLogs?: boolean; clientId?: string }) => {
+      const clientId = trackerClientId(input.clientId);
+      if (!clientId) {
+        toast("Couldn't save — not signed in as a client.", "warn");
+        return;
+      }
+      const day = Math.min(7, Math.max(1, Math.floor(input.day) || 1));
+      const existing = (stateRef.current.mealDayPicks ?? []).find((x) => x.clientId === clientId && x.date === input.date);
+      // Capture doomed log ids BEFORE the optimistic update (stateRef flips synchronously inside mutate).
+      const doomedIds = input.clearLogs
+        ? (stateRef.current.mealLogs ?? []).filter((x) => x.clientId === clientId && x.date === input.date).map((x) => x.id)
+        : [];
+      const pick: MealDayPick = existing
+        ? { ...existing, day }
+        : { id: uuid(), coachId: coachId(), clientId, date: input.date, day, createdAt: Date.now() };
+      mutate(
+        (s) => ({
+          ...s,
+          mealDayPicks: existing
+            ? (s.mealDayPicks ?? []).map((x) => (x.id === existing.id ? pick : x))
+            : [pick, ...(s.mealDayPicks ?? [])],
+          mealLogs: input.clearLogs
+            ? (s.mealLogs ?? []).filter((x) => !(x.clientId === clientId && x.date === input.date))
+            : s.mealLogs,
+        }),
+        async () => {
+          for (const id of doomedIds) await backend.remove("meal_logs", id);
+          if (existing) await backend.update("meal_day_picks", existing.id, mealDayPickToRow(pick));
+          else await backend.insert("meal_day_picks", { id: pick.id, coach_id: pick.coachId, ...mealDayPickToRow(pick) });
+        },
+        input.clearLogs ? "Switched menu — today's marks cleared" : `Following ${WEEK_DAYS[day - 1]} menu today`,
+      );
+    },
+    [mutate, toast, trackerClientId],
+  );
+
+  /* ---------------- progress photos ---------------- */
+
+  const addProgressPhoto = useCallback(
+    (input: { kind: ProgressPhotoKind; photo: string; note?: string; date?: string; clientId?: string }) => {
+      const me = meRef.current;
+      // Coach uploads on behalf of the viewed client; client uploads their own.
+      const clientId =
+        input.clientId ?? (me?.role === "client" ? me.userId : "");
+      if (!clientId) {
+        toast("Pick a client first.", "warn");
+        return null;
+      }
+      if (!input.photo) {
+        toast("Pick a photo first.", "warn");
+        return null;
+      }
+      const p: ProgressPhoto = {
+        id: uuid(),
+        coachId: me?.role === "coach" ? me.coachId : (me?.coachId ?? ""),
+        clientId,
+        kind: input.kind,
+        photo: input.photo,
+        date: input.date ?? todayISO(),
+        ts: Date.now(),
+        note: input.note?.trim() || undefined,
+        by: me?.role === "coach" ? "coach" : "client",
+      };
+      if (!p.coachId) {
+        toast("Couldn't save — not signed in.", "warn");
+        return null;
+      }
+      mutate(
+        (s) => ({ ...s, progressPhotos: [p, ...(s.progressPhotos ?? [])] }),
+        () => backend.insert("progress_photos", { id: p.id, coach_id: p.coachId, ...progressPhotoToRow(p) }),
+        "Photo added",
+      );
+      return p;
+    },
+    [mutate, toast],
+  );
+
+  const deleteProgressPhoto = useCallback(
+    (id: string) => {
+      mutate(
+        (s) => ({ ...s, progressPhotos: (s.progressPhotos ?? []).filter((x) => x.id !== id) }),
+        () => backend.remove("progress_photos", id),
+        "Photo deleted",
+      );
+    },
+    [mutate],
   );
 
   /* ---------------- subscriptions & payments ---------------- */
@@ -1264,6 +1610,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         updateClient,
         deleteClient,
         resetClientPassword,
+        createClientLogin,
         addExercise,
         updateExercise,
         deleteExercise,
@@ -1273,6 +1620,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         addMeal,
         updateMeal,
         deleteMeal,
+        addNutritionPlan,
+        duplicateNutritionPlan,
+        renameNutritionPlan,
+        deleteNutritionPlan,
+        setActiveNutritionPlan,
         addCheckIn,
         deleteCheckIn,
         addClientExercise,
@@ -1284,6 +1636,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         requestMealEdit,
         cancelMealRequest,
         reviewMealRequest,
+        setMealLog,
+        setMealDayPick,
+        addProgressPhoto,
+        deleteProgressPhoto,
         addSubscription,
         updateSubscription,
         renewSubscription,
