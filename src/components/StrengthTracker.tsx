@@ -10,7 +10,10 @@ import {
   Check,
   ChevronDown,
   Dumbbell,
+  FileDown,
+  FileText,
   History,
+  Image as ImageIcon,
   Medal,
   Pencil,
   Play,
@@ -22,10 +25,11 @@ import {
   X,
 } from "lucide-react";
 import type { ExerciseCategory, PlanItem, WorkoutEntry } from "../types";
-import { CATEGORIES, CAT_META, workoutExerciseKey } from "../types";
+import { CATEGORIES, CAT_META, WEEK_DAYS, WEEK_ORDER_SAT_FIRST, WEEK_SHORT, workoutExerciseKey } from "../types";
 import { dayNum, fmtDate, relDay, todayISO, uid } from "../lib";
 import { useApp } from "../store";
-import { Badge, ConfirmModal, EmptyState, Modal, SectionCard, btnPrimary, btnSecondary, btnDanger, btnVolt, inputCls, labelCls } from "./ui";
+import { Badge, ConfirmModal, Dropdown, EmptyState, Modal, SectionCard, btnPrimary, btnSecondary, btnDanger, btnVolt, inputCls, labelCls } from "./ui";
+import { exportWorkoutDayImage, exportWorkoutWeekPdf } from "./workoutExport";
 
 /* ---------------- draft types ---------------- */
 
@@ -61,7 +65,7 @@ function firePRConfetti() {
    ================================================================ */
 
 export function StrengthTracker({ clientId }: { clientId: string }) {
-  const { state, addClientExercise, deleteClientExercise, logWorkoutSession, updateWorkoutEntry, deleteWorkoutEntry, deleteWorkoutSession } = useApp();
+  const { state, toast, addClientExercise, deleteClientExercise, logWorkoutSession, updateWorkoutEntry, deleteWorkoutEntry, deleteWorkoutSession } = useApp();
 
   const [workoutName, setWorkoutName] = useState("");
   const [workoutNotes, setWorkoutNotes] = useState("");
@@ -70,6 +74,7 @@ export function StrengthTracker({ clientId }: { clientId: string }) {
   const [exerciseTargetRow, setExerciseTargetRow] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(true);
   const [search, setSearch] = useState("");
+  const [exportOpen, setExportOpen] = useState(false);
   const [summary, setSummary] = useState<{ name: string; prs: string[]; count: number } | null>(null);
   const [confirmDeleteSession, setConfirmDeleteSession] = useState<string | null>(null);
   const [confirmDeleteEntry, setConfirmDeleteEntry] = useState<WorkoutEntry | null>(null);
@@ -86,6 +91,63 @@ export function StrengthTracker({ clientId }: { clientId: string }) {
   );
   const myCustom = useMemo(() => state.clientExercises.filter((e) => e.clientId === clientId), [state.clientExercises, clientId]);
   const todayPlan: PlanItem[] = useMemo(() => state.plans.filter((p) => p.clientId === clientId && p.day === dayNum()), [state.plans, clientId]);
+  const clientName = useMemo(() => state.clients.find((c) => c.id === clientId)?.name ?? "My workout", [state.clients, clientId]);
+
+  /* ----- workout plan export (same poster system as nutrition) ----- */
+  const buildWorkoutExportDay = (day: number) => {
+    const exById = new Map(state.exercises.map((e) => [e.id, e]));
+    const list = state.plans
+      .filter((p) => p.clientId === clientId && p.day === day)
+      .map((p) => {
+        const ex = exById.get(p.exerciseId);
+        return {
+          name: ex?.name ?? "Exercise",
+          category: ex?.category,
+          sets: p.sets,
+          reps: p.reps,
+          rest: p.rest,
+          notes: p.notes || undefined,
+          hasVideo: !!ex?.videoUrl,
+        };
+      });
+    return {
+      day,
+      dayName: `Day ${day} · ${WEEK_DAYS[day - 1]}`,
+      items: list,
+      totals: {
+        exercises: list.length,
+        sets: list.reduce((s, x) => s + x.sets, 0),
+        reps: list.reduce((s, x) => s + x.sets * x.reps, 0),
+      },
+    };
+  };
+
+  const handleWorkoutWeekPdf = async () => {
+    const days = WEEK_ORDER_SAT_FIRST.map(buildWorkoutExportDay);
+    if (!days.some((d) => d.items.length > 0)) {
+      toast("No workout planned yet", "warn");
+      return;
+    }
+    toast("Preparing PDF…");
+    try {
+      await exportWorkoutWeekPdf({ clientName, planName: "Weekly split" }, days);
+    } catch {
+      toast("Couldn't create the PDF", "warn");
+    }
+  };
+
+  const handleWorkoutDayImage = async () => {
+    const d = buildWorkoutExportDay(dayNum());
+    if (d.items.length === 0) {
+      toast("No workout programmed for today", "warn");
+      return;
+    }
+    try {
+      await exportWorkoutDayImage({ clientName, planName: "Weekly split" }, d);
+    } catch {
+      toast("Couldn't create the image", "warn");
+    }
+  };
 
   const exNameOf = (id: string) => state.exercises.find((e) => e.id === id)?.name ?? "Exercise";
   const exCatOf = (id: string) => state.exercises.find((e) => e.id === id)?.category;
@@ -392,6 +454,31 @@ export function StrengthTracker({ clientId }: { clientId: string }) {
                 <Dumbbell className="h-4 w-4 text-volt-300" /> From today's plan · {todayPlan.length}
               </button>
             )}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Dropdown
+              open={exportOpen}
+              onOpenChange={setExportOpen}
+              align="start"
+              label="Export workout plan"
+              trigger={
+                <button
+                  onClick={() => setExportOpen((v) => !v)}
+                  aria-haspopup="menu"
+                  aria-expanded={exportOpen}
+                  title="Export your workout plan as PDF / image"
+                  className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-night-600 bg-night-800 px-3 text-xs font-bold text-mist-300 transition hover:border-warn-400 hover:text-warn-300"
+                >
+                  <FileDown className="h-3.5 w-3.5" />
+                  Export plan
+                </button>
+              }
+              items={[
+                { type: "item", label: "Week PDF (plan images)", hint: "7 pages", icon: FileText, onClick: () => void handleWorkoutWeekPdf() },
+                { type: "item", label: "Day JPG image", hint: WEEK_SHORT[dayNum() - 1], icon: ImageIcon, onClick: () => void handleWorkoutDayImage() },
+              ]}
+            />
+            <span className="text-[11px] font-semibold text-mist-500">Same poster style as your nutrition plan</span>
           </div>
         </div>
       </div>

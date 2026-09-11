@@ -42,8 +42,55 @@ export interface CoachNote {
   text: string;
   createdAt: number;
   pinned?: boolean;
+  /** Section inside the Notes tab — old notes without one read as General. */
+  category?: NoteCategory;
   /** Creator display name — reserved for future multi-coach teams. */
   by?: string;
+}
+
+/** Coach-note sections, always displayed in this priority order. */
+export type NoteCategory = "critical" | "workout" | "nutrition" | "general";
+
+export const NOTE_CATEGORIES: NoteCategory[] = ["critical", "workout", "nutrition", "general"];
+
+export const NOTE_CATEGORY_META: Record<NoteCategory, { chip: string; dot: string; label: string }> = {
+  critical: { chip: "border-danger-500/25 bg-danger-500/10 text-danger-300", dot: "bg-danger-400", label: "Critical" },
+  workout: { chip: "border-volt-400/25 bg-volt-400/10 text-volt-300", dot: "bg-volt-400", label: "Workout plan" },
+  nutrition: { chip: "border-warn-400/25 bg-warn-400/10 text-warn-300", dot: "bg-warn-400", label: "Nutrition" },
+  general: { chip: "border-night-500/60 bg-night-600/30 text-mist-300", dot: "bg-mist-400", label: "General info" },
+};
+
+/** Normalize raw JSON note rows — unknown/missing categories read as General. */
+export function normalizeCoachNotes(notes: unknown): CoachNote[] {
+  if (!Array.isArray(notes)) return [];
+  const out: CoachNote[] = [];
+  for (const n of notes) {
+    if (!n || typeof n !== "object") continue;
+    const r = n as Record<string, unknown>;
+    const id = String(r.id ?? "");
+    if (!id) continue;
+    const cat = r.category;
+    out.push({
+      id,
+      text: String(r.text ?? ""),
+      createdAt: Number(r.createdAt ?? 0) || 0,
+      ...(typeof r.pinned === "boolean" ? { pinned: r.pinned } : {}),
+      category: cat === "critical" || cat === "workout" || cat === "nutrition" ? cat : "general",
+      ...(typeof r.by === "string" && r.by ? { by: r.by } : {}),
+    });
+  }
+  return out;
+}
+
+/** Coach's private to-do item for a client (Notes tab). Done items are
+    cleared explicitly — nothing auto-deletes. */
+export interface ClientTodo {
+  id: string;
+  coachId: string;
+  clientId: string;
+  text: string;
+  done: boolean;
+  createdAt: number; // epoch ms
 }
 
 export interface NutritionTargets {
@@ -419,6 +466,7 @@ export interface AppState {
   mealLogs: MealLog[];
   mealDayPicks: MealDayPick[];
   progressPhotos: ProgressPhoto[];
+  todos: ClientTodo[];
 }
 
 /* ---------------- input types ---------------- */

@@ -6,9 +6,9 @@
    ================================================================ */
 
 import { Link } from "react-router-dom";
-import { ArrowRight, BadgeCheck, Check } from "lucide-react";
+import { ArrowRight, BadgeCheck, Check, X } from "lucide-react";
 import type { CoachPlanConfig } from "../../coachPricing";
-import { DEFAULT_COACH_PLANS } from "../../coachPricing";
+import { DEFAULT_COACH_PLANS, getPlanFeatureDisplay } from "../../coachPricing";
 import { btnPrimary, btnSecondary } from "../ui";
 import { Reveal, SectionShell } from "./Reveal";
 
@@ -74,17 +74,53 @@ export function PricingSection() {
                 </p>
                 <p className="mt-2 text-sm font-extrabold text-volt-200">{capacityLabel(plan)}</p>
                 <ul className="mt-5 grid flex-1 content-start gap-2.5">
-                  {(plan.features ?? []).map((f) => (
-                    <li key={f} className="flex items-start gap-2 text-[13px] font-semibold text-mist-300">
-                      <span
-                        className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-volt-400/10 text-volt-300 ring-1 ring-volt-400/25"
-                        aria-hidden="true"
+                  {getPlanFeatureDisplay(plan.id).map((f) => {
+                    const excluded = f.tone === "excluded";
+                    const highlight = f.tone === "highlight";
+                    return (
+                      <li
+                        key={f.label}
+                        className={`flex items-start gap-2 text-[13px] ${
+                          excluded
+                            ? "font-extrabold text-danger-300"
+                            : highlight
+                              ? "font-extrabold text-moss-300"
+                              : "font-semibold text-mist-300"
+                        }`}
                       >
-                        <Check className="h-3 w-3" strokeWidth={3} />
-                      </span>
-                      {f}
-                    </li>
-                  ))}
+                        <span
+                          className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full ring-1 ${
+                            excluded
+                              ? "bg-danger-500/10 text-danger-300 ring-danger-500/30"
+                              : highlight
+                                ? "bg-moss-400/15 text-moss-300 ring-moss-400/40"
+                                : "bg-volt-400/10 text-volt-300 ring-volt-400/25"
+                          }`}
+                          aria-hidden="true"
+                        >
+                          {excluded ? (
+                            <X className="h-3 w-3" strokeWidth={3} />
+                          ) : highlight ? (
+                            <BadgeCheck className="h-3 w-3" strokeWidth={2.5} />
+                          ) : (
+                            <Check className="h-3 w-3" strokeWidth={3} />
+                          )}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block leading-5">{f.label}</span>
+                          {f.note && (
+                            <span
+                              className={`mt-0.5 block text-[11px] font-semibold leading-4 ${
+                                highlight ? "text-moss-400/90" : "text-mist-500"
+                              }`}
+                            >
+                              {f.note}
+                            </span>
+                          )}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
                 <Link
                   to="/signup"

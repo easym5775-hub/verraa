@@ -10,22 +10,29 @@ import {
   Camera,
   Check,
   ClipboardList,
+  Copy,
+  FileDown,
+  FileText,
+  Image as ImageIcon,
   Library as LibraryIcon,
   Pencil,
   Play,
   Plus,
+  Printer,
   Search,
+  Share2,
   Trash2,
   X,
 } from "lucide-react";
 import type { CheckIn, CoachView, Exercise, PlanItem } from "../types";
-import { CAT_META, CATEGORIES, WEEK_DAYS, WEEK_SHORT } from "../types";
+import { CAT_META, CATEGORIES, WEEK_DAYS, WEEK_ORDER_SAT_FIRST, WEEK_SHORT } from "../types";
 import { dayNum, fmtDate, relDay, signed } from "../lib";
 import { useApp } from "../store";
 import {
   Avatar,
   Badge,
   ConfirmModal,
+  Dropdown,
   EmptyState,
   Modal,
   MoodDots,
@@ -36,6 +43,8 @@ import {
   inputCls,
   labelCls,
 } from "./ui";
+import { IconWhatsapp } from "../icons";
+import { exportWorkoutDayImage, exportWorkoutWeekPdf } from "./workoutExport";
 import { ExerciseFormModal, PhotoModal, PlanItemFormModal } from "./modals";
 import { PageHeader } from "./Shell";
 import { CheckInsSkeleton, LibrarySkeleton, PlansSkeleton, useViewReady } from "./skeletons";
@@ -45,12 +54,13 @@ import { CheckInsSkeleton, LibrarySkeleton, PlansSkeleton, useViewReady } from "
    ================================================================ */
 
 export function PlansView({ presetClientId }: { presetClientId: string | null }) {
-  const { state, deletePlanItem } = useApp();
+  const { state, me, toast, deletePlanItem } = useApp();
   const [clientId, setClientId] = useState(presetClientId ?? state.clients[0]?.id ?? "");
   const [day, setDay] = useState(dayNum());
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<PlanItem | null>(null);
   const [deleting, setDeleting] = useState<PlanItem | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const ready = useViewReady(clientId);
 
   useEffect(() => {
@@ -66,6 +76,157 @@ export function PlansView({ presetClientId }: { presetClientId: string | null })
   const items = state.plans.filter((p) => p.clientId === clientId && p.day === day);
   const countFor = (d: number) => state.plans.filter((p) => p.clientId === clientId && p.day === d).length;
   const exOf = (id: string) => state.exercises.find((e) => e.id === id);
+
+  /* ---------- export / share (same system as nutrition plan) ---------- */
+
+  const buildExportDay = (d: number) => {
+    const list = state.plans
+      .filter((p) => p.clientId === clientId && p.day === d)
+      .map((p) => {
+        const ex = state.exercises.find((e) => e.id === p.exerciseId);
+        return {
+          name: ex?.name ?? "Removed exercise",
+          category: ex?.category,
+          sets: p.sets,
+          reps: p.reps,
+          rest: p.rest,
+          notes: p.notes || undefined,
+          hasVideo: !!ex?.videoUrl,
+        };
+      });
+    const totals = {
+      exercises: list.length,
+      sets: list.reduce((s, x) => s + x.sets, 0),
+      reps: list.reduce((s, x) => s + x.sets * x.reps, 0),
+    };
+    return { day: d, dayName: `Day ${d} · ${WEEK_DAYS[d - 1]}`, items: list, totals };
+  };
+
+  const buildDayText = (d: number) => {
+    const { items, totals } = buildExportDay(d);
+    const lines = items.map((it, i) => {
+      const base = `${i + 1}. ${it.name}${it.category ? ` (${it.category})` : ""}: ${it.sets}×${it.reps}${it.rest > 0 ? `, ${it.rest}s rest` : ""}`;
+      return it.notes ? `${base} — ${it.notes}` : base;
+    });
+    return { list: items, totals, lines };
+  };
+
+  const buildShareText = (dayOnly: boolean) => {
+    if (!client) return "";
+    const head = `*Workout Plan — ${client.name}*`;
+    if (dayOnly) {
+      const { lines, totals } = buildDayText(day);
+      return [
+        head,
+        `*Day ${day} · ${WEEK_DAYS[day - 1]}*`,
+        "",
+        ...(lines.length ? lines.map((l) => `• ${l}`) : ["No exercises — rest day."]),
+        "",
+        `Total: ${totals.exercises} exercises · ${totals.sets} sets · ${totals.reps} reps`,
+      ].join("\n");
+    }
+    const parts: string[] = [head, ""];
+    for (const d of WEEK_ORDER_SAT_FIRST) {
+      const { lines, totals } = buildDayText(d);
+      parts.push(`*Day ${d} · ${WEEK_DAYS[d - 1]}* — ${totals.exercises} ex · ${totals.sets} sets`);
+      if (lines.length) parts.push(...lines.map((l) => `• ${l}`));
+      else parts.push("— rest / no session —");
+      parts.push("");
+    }
+    return parts.join("\n").trim();
+  };
+
+  const handleWeekPdf = async () => {
+    if (!client) return;
+    const days = WEEK_ORDER_SAT_FIRST.map(buildExportDay);
+    if (!days.some((d) => d.items.length > 0)) {
+      toast("Add at least one exercise before exporting", "warn");
+      return;
+    }
+    toast("Preparing PDF…");
+    try {
+      await exportWorkoutWeekPdf(
+        { clientName: client.name, coachName: me?.name, planName: "Weekly split" },
+        days,
+      );
+    } catch {
+      toast("Couldn't create the PDF", "warn");
+    }
+  };
+
+  const handleDayImage = async () => {
+    if (!client) return;
+    const d = buildExportDay(day);
+    if (d.items.length === 0) {
+      toast("No exercises programmed for this day", "warn");
+      return;
+    }
+    try {
+      await exportWorkoutDayImage(
+        { clientName: client.name, coachName: me?.name, planName: "Weekly split" },
+        d,
+      );
+    } catch {
+      toast("Couldn't create the image", "warn");
+    }
+  };
+
+  const handleCopy = async (dayOnly: boolean) => {
+    try {
+      await navigator.clipboard.writeText(buildShareText(dayOnly));
+      toast(dayOnly ? "Day workout copied — paste anywhere" : "Full week workout copied");
+    } catch {
+      toast("Couldn't copy — select & copy manually", "warn");
+    }
+  };
+
+  const handleWhatsAppShare = (dayOnly: boolean) => {
+    const text = buildShareText(dayOnly);
+    if (!text) return;
+    const digits = (client?.phone ?? "").replace(/\D/g, "");
+    const url =
+      digits.length >= 8
+        ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
+        : `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const handlePrint = () => {
+    if (!client) return;
+    const rows = WEEK_ORDER_SAT_FIRST.map((d) => {
+      const { list, totals } = buildDayText(d);
+      const exHtml = list.length
+        ? list
+            .map(
+              (it, i) => `<tr>
+                  <td style="padding:8px 10px;border-bottom:1px solid #eee;"><strong>${i + 1}. ${it.name}</strong>${it.category ? ` <span style="color:#888">(${it.category})</span>` : ""}${it.notes ? `<br/><span style="color:#666;font-size:12px">${it.notes}</span>` : ""}</td>
+                  <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;">${it.sets} × ${it.reps}</td>
+                  <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;">${it.rest > 0 ? `${it.rest}s` : "—"}</td>
+                </tr>`,
+            )
+            .join("")
+        : `<tr><td colspan="3" style="padding:12px;color:#888;">No session — rest day</td></tr>`;
+      return `<h2 style="margin:22px 0 6px;font-size:15px;">Day ${d} · ${WEEK_DAYS[d - 1]} — ${totals.exercises} ex · ${totals.sets} sets · ${totals.reps} reps</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #eee;border-radius:8px;overflow:hidden;">
+          <thead><tr style="background:#f6f6f6;text-align:left;">
+            <th style="padding:8px 10px;">Exercise</th><th>Sets × Reps</th><th>Rest</th>
+          </tr></thead><tbody>${exHtml}</tbody>
+        </table>`;
+    }).join("");
+    const w = window.open("", "_blank", "width=900,height=700");
+    if (!w) {
+      toast("Allow popups to print the plan", "warn");
+      return;
+    }
+    w.document.write(`<html><head><title>Workout Plan — ${client.name}</title></head><body style="font-family:Arial,sans-serif;padding:28px;color:#111;max-width:800px;margin:auto;">
+      <h1 style="margin:0;">Workout Plan — ${client.name}</h1>
+      <p style="color:#555;margin:6px 0 0;">Weekly split • Printed ${new Date().toLocaleDateString()}</p>
+      ${rows}
+      <p style="margin-top:24px;color:#888;font-size:12px;">Made with VERRAA • Ask your coach before swapping exercises</p>
+      <script>window.onload=()=>{window.print();}</script>
+    </body></html>`);
+    w.document.close();
+  };
 
   if (!ready) return <PlansSkeleton />;
 
@@ -127,9 +288,59 @@ export function PlansView({ presetClientId }: { presetClientId: string | null })
             delay={140}
             bodyCls="p-3"
             action={
-              <button className={`${btnPrimary} ${btnSm}`} onClick={() => { setEditing(null); setModalOpen(true); }}>
-                <Plus className="h-3.5 w-3.5" strokeWidth={2.6} /> Add exercise
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-night-600 bg-night-800 px-3 py-1.5 text-xs font-bold text-mist-300 transition hover:border-volt-400 hover:text-volt-300"
+                  onClick={() => void handleCopy(true)}
+                  title="Copy this day as text"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  Copy Text
+                </button>
+                <button
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-night-600 bg-night-800 px-3 py-1.5 text-xs font-bold text-mist-300 transition hover:border-moss-400 hover:text-moss-300"
+                  onClick={() => handleWhatsAppShare(true)}
+                  title={client.phone ? `Send to ${client.phone} via WhatsApp` : "Share via WhatsApp"}
+                >
+                  <IconWhatsapp className="h-3.5 w-3.5" />
+                  Day
+                </button>
+                <button
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-night-600 bg-night-800 px-3 py-1.5 text-xs font-bold text-mist-300 transition hover:border-sky-400 hover:text-sky-300"
+                  onClick={() => handleWhatsAppShare(false)}
+                  title="Share full week via WhatsApp"
+                >
+                  <Share2 className="h-3.5 w-3.5" />
+                  Week
+                </button>
+                <Dropdown
+                  open={exportOpen}
+                  onOpenChange={setExportOpen}
+                  align="end"
+                  label="Export workout plan"
+                  trigger={
+                    <button
+                      onClick={() => setExportOpen((v) => !v)}
+                      aria-haspopup="menu"
+                      aria-expanded={exportOpen}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-night-600 bg-night-800 px-3 py-1.5 text-xs font-bold text-mist-300 transition hover:border-warn-400 hover:text-warn-300"
+                      title="Export the workout plan as PDF / image / print"
+                    >
+                      <FileDown className="h-3.5 w-3.5" />
+                      Export
+                    </button>
+                  }
+                  items={[
+                    { type: "item", label: "Week PDF (plan images)", hint: "7 pages", icon: FileText, onClick: () => void handleWeekPdf() },
+                    { type: "item", label: "Day JPG image", hint: WEEK_SHORT[day - 1], icon: ImageIcon, onClick: () => void handleDayImage() },
+                    { type: "divider" },
+                    { type: "item", label: "Print week", icon: Printer, onClick: handlePrint },
+                  ]}
+                />
+                <button className={`${btnPrimary} ${btnSm}`} onClick={() => { setEditing(null); setModalOpen(true); }}>
+                  <Plus className="h-3.5 w-3.5" strokeWidth={2.6} /> Add exercise
+                </button>
+              </div>
             }
           >
             {items.length === 0 ? (

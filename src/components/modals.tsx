@@ -38,7 +38,7 @@ import {
 } from "../types";
 import { buildClientUsername, coachUsernameSuffix, fileToDataUrl, isValidUsername, maxClientPartLength, randomPassword, stripCoachSuffix, todayISO } from "../lib";
 import { useApp } from "../store";
-import { isPlanLimitError, type PlanLimitError } from "../coachPricing";
+import { ClientModeError, isClientModeError, isPlanLimitError, type PlanLimitError } from "../coachPricing";
 import { Modal, Toggle, btnPrimary, btnSecondary, inputCls, labelCls, textareaCls } from "./ui";
 
 /* ---------------- shared photo field ---------------- */
@@ -107,7 +107,9 @@ export function ClientFormModal({
   onSaved?: (c: Client) => void;
   onUpgrade?: () => void;
 }) {
-  const { createClient, updateClient, me } = useApp();
+  const { createClient, updateClient, me, myPlanAllowsClientMode, myCoachPlan } = useApp();
+  // Starter has No Client Mode — new clients are coach-managed only.
+  const planAllowsLogin = (myPlanAllowsClientMode as boolean | undefined) ?? true;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   // True = the client gets a Client-mode login; false = coach-managed only
@@ -125,6 +127,7 @@ export function ClientFormModal({
   const [photo, setPhoto] = useState<string | undefined>(undefined);
   const [error, setError] = useState("");
   const [limitInfo, setLimitInfo] = useState<PlanLimitError | null>(null);
+  const [modeInfo, setModeInfo] = useState<ClientModeError | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Client logins are `<client>.<coach>` — e.g. coach "Ahmed" + "ali" => "ali.ahmed".
@@ -139,7 +142,7 @@ export function ClientFormModal({
     if (!open) return;
     setUsername("");
     setPassword("");
-    setCreateLogin(true);
+    setCreateLogin(planAllowsLogin);
     setName(initial?.name ?? "");
     setEmail(initial?.email ?? "");
     setPhone(initial?.phone ?? "");
@@ -152,11 +155,18 @@ export function ClientFormModal({
     setPhoto(initial?.photo);
     setError("");
     setLimitInfo(null);
+    setModeInfo(null);
     setBusy(false);
-  }, [open, initial]);
+  }, [open, initial, planAllowsLogin]);
 
   const save = async () => {
     if (!name.trim()) return setError("Client name is required.");
+    if (!initial && createLogin && !planAllowsLogin) {
+      const err = new ClientModeError(myCoachPlan);
+      setModeInfo(err);
+      setError(err.message);
+      return;
+    }
     let fullUsername = "";
     if (!initial && createLogin) {
       const part = stripCoachSuffix(username, coachSuffix).replace(/^\.+|\.+$/g, "");
@@ -173,6 +183,7 @@ export function ClientFormModal({
     setBusy(true);
     setError("");
     setLimitInfo(null);
+    setModeInfo(null);
     try {
       if (initial) {
         updateClient({
@@ -212,6 +223,9 @@ export function ClientFormModal({
       if (isPlanLimitError(e)) {
         setLimitInfo(e);
         setError(e.message);
+      } else if (isClientModeError(e)) {
+        setModeInfo(e);
+        setError(e.message);
       } else {
         setError(e instanceof Error ? e.message : "Couldn't save the client.");
       }
@@ -228,9 +242,11 @@ export function ClientFormModal({
       description={
         initial
           ? undefined
-          : createLogin
-            ? `Pick the username & password they'll sign in with — login ends with .${coachSuffix} (your name).`
-            : "Coach-managed only — no app login, you'll log everything yourself."
+          : !planAllowsLogin
+            ? "Starter plan — No Client Mode. New clients are coach-managed; you log progress manually."
+            : createLogin
+              ? `Pick the username & password they'll sign in with — login ends with .${coachSuffix} (your name).`
+              : "Coach-managed only — no app login, you'll log everything yourself."
       }
       wide
     >
@@ -242,19 +258,34 @@ export function ClientFormModal({
         </div>
         {!initial && (
           <>
+            {!planAllowsLogin && (
+              <div
+                role="note"
+                className="rounded-xl border border-danger-500/25 bg-danger-500/[0.07] px-3.5 py-2.5 text-[13px] font-semibold leading-5 text-danger-300 sm:col-span-2"
+              >
+                <span className="font-extrabold">No Client Mode on {myCoachPlan.name}.</span>{" "}
+                Progress is added manually by you. Upgrade to Professional for client logins + auto tracking.
+              </div>
+            )}
             <div className="sm:col-span-2">
               <Toggle
-                checked={createLogin}
-                onChange={setCreateLogin}
+                checked={planAllowsLogin ? createLogin : false}
+                onChange={(v) => {
+                  if (!planAllowsLogin) return;
+                  setCreateLogin(v);
+                }}
+                disabled={!planAllowsLogin}
                 label="Client login access"
                 hint={
-                  createLogin
-                    ? "They'll sign in to their own app with a username + password."
-                    : "Off — client lives in coach mode only, you log everything yourself."
+                  !planAllowsLogin
+                    ? "Starter plan — logins are disabled. Upgrade to Professional for Client Mode."
+                    : createLogin
+                      ? "They'll sign in to their own app with a username + password."
+                      : "Off — client lives in coach mode only, you log everything yourself."
                 }
               />
             </div>
-            {createLogin && (
+            {createLogin && planAllowsLogin && (
             <>
             <div>
               <label className={labelCls}>Login username *</label>
@@ -341,7 +372,24 @@ export function ClientFormModal({
           <textarea className={textareaCls} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Injuries, preferences, schedule…" />
         </div>
       </div>
-      {error && !limitInfo && <p className="mt-3 rounded-xl border border-danger-500/25 bg-danger-500/10 px-3 py-2 text-xs font-bold text-danger-300">{error}</p>}
+      {error && !limitInfo && !modeInfo && <p className="mt-3 rounded-xl border border-danger-500/25 bg-danger-500/10 px-3 py-2 text-xs font-bold text-danger-300">{error}</p>}
+      {modeInfo && (
+        <div role="alert" className="mt-3 rounded-xl border border-danger-500/30 bg-danger-500/[0.08] p-4">
+          <p className="text-sm font-extrabold leading-6 text-danger-200">No Client Mode on your {modeInfo.plan.name} plan.</p>
+          <p className="mt-1 text-[13px] font-semibold leading-5 text-mist-300">Clients stay coach-managed (manual progress). Upgrade to Professional for Client Mode + auto tracking.</p>
+          {onUpgrade && (
+            <button
+              className={`${btnPrimary} mt-3 w-full`}
+              onClick={() => {
+                onClose();
+                onUpgrade();
+              }}
+            >
+              Upgrade Plan
+            </button>
+          )}
+        </div>
+      )}
       {limitInfo && (
         <div role="alert" className="mt-3 rounded-xl border border-warn-400/30 bg-warn-400/[0.08] p-4">
           <p className="text-sm font-bold leading-6 text-warn-200">You've reached the {limitInfo.limit}-client limit of your {limitInfo.plan.name} plan.</p>
@@ -1110,8 +1158,9 @@ export function ResetPasswordModal({ open, clientId, onClose }: { open: boolean;
 
 /* ---------------- create login for a coach-managed client ---------------- */
 
-export function CreateLoginModal({ open, client, onClose }: { open: boolean; client: Client; onClose: () => void }) {
-  const { createClientLogin, me } = useApp();
+export function CreateLoginModal({ open, client, onClose, onUpgrade }: { open: boolean; client: Client; onClose: () => void; onUpgrade?: () => void }) {
+  const { createClientLogin, me, myPlanAllowsClientMode, myCoachPlan } = useApp();
+  const planAllowsLogin = (myPlanAllowsClientMode as boolean | undefined) ?? true;
   const [username, setUsername] = useState("");
   const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
@@ -1160,8 +1209,37 @@ export function CreateLoginModal({ open, client, onClose }: { open: boolean; cli
       open={open}
       onClose={onClose}
       title={`Create login · ${client.name.split(" ")[0]}`}
-      description="They'll sign in to their own app with these credentials. All existing data stays untouched."
+      description={
+        planAllowsLogin
+          ? "They'll sign in to their own app with these credentials. All existing data stays untouched."
+          : `${myCoachPlan.name} plan has No Client Mode — logins are disabled. Upgrade to Professional for Client Mode.`
+      }
     >
+      {!planAllowsLogin ? (
+        <div role="alert" className="grid gap-3">
+          <p className="rounded-xl border border-danger-500/25 bg-danger-500/[0.07] px-3.5 py-2.5 text-[13px] font-semibold leading-5 text-danger-300">
+            <span className="font-extrabold">No Client Mode on {myCoachPlan.name}.</span> This client stays
+            coach-managed (you log progress manually).
+          </p>
+          <div className="flex gap-2">
+            <button className={btnSecondary} onClick={onClose}>
+              Close
+            </button>
+            {onUpgrade && (
+              <button
+                className={`${btnPrimary} flex-1`}
+                onClick={() => {
+                  onClose();
+                  onUpgrade();
+                }}
+              >
+                Upgrade Plan
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+      <>
       <div className="grid gap-4">
         <div>
           <label className={labelCls}>Login username *</label>
@@ -1206,6 +1284,8 @@ export function CreateLoginModal({ open, client, onClose }: { open: boolean; cli
           Cancel
         </button>
       </div>
+      </>
+      )}
     </Modal>
   );
 }

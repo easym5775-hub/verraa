@@ -9,6 +9,7 @@ import type {
   Session,
   Subscription,
 } from "../types";
+import { normalizeCoachNotes } from "../types";
 import type { ConnectionConfig, DataProvider, EntityOp, RemoteData } from "./dataProvider";
 import {
   getMetadata,
@@ -135,7 +136,7 @@ const rowToClient = (r: Row, cfg: ConnectionConfig): Client => ({
   photo: r.photo ? String(r.photo) : undefined,
   followUpDays: r.follow_up_days === "" || r.follow_up_days === undefined ? undefined : Number(r.follow_up_days),
   lastFollowUp: r.last_follow_up ? String(r.last_follow_up) : undefined,
-  coachNotes: fromJsonCell<Client["coachNotes"]>(r.coach_notes) ?? [],
+  coachNotes: normalizeCoachNotes(fromJsonCell<unknown>(r.coach_notes)),
   nutritionTargets: fromJsonCell<Client["nutritionTargets"]>(r.nutrition_targets),
 });
 

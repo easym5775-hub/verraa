@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   CalendarDays,
@@ -16,6 +17,7 @@ import {
   ImagePlus,
   KeyRound,
   LayoutGrid,
+  ListChecks,
   MessageCircle,
   Pencil,
   Pin,
@@ -31,8 +33,8 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import type { CheckIn, Client, CoachView, Meal, Payment, Session, SubState, Subscription } from "../types";
-import { FOLLOW_UP_PRESETS, GOAL_META, PAYMENT_STATUS_META, PRIORITIES, SESSION_STATUS_META, STATUS_META, SUB_PAYMENT_META, SUB_STATE_META, WEEK_DAYS, WEEK_SHORT, priorityRank } from "../types";
+import type { CheckIn, Client, CoachNote, CoachView, Meal, NoteCategory, Payment, Session, SubState, Subscription } from "../types";
+import { FOLLOW_UP_PRESETS, GOAL_META, NOTE_CATEGORIES, NOTE_CATEGORY_META, PAYMENT_STATUS_META, PRIORITIES, SESSION_STATUS_META, STATUS_META, SUB_PAYMENT_META, SUB_STATE_META, WEEK_DAYS, WEEK_SHORT, normalizeCoachNotes, priorityRank } from "../types";
 import { addDays, dayNum, fmtDate, fmtMoney, fmtTime, relDay, relTime, signed, toISO, todayISO, waHref } from "../lib";
 import {
   attendance,
@@ -65,6 +67,7 @@ import {
   btnSm,
   inputCls,
   labelCls,
+  textareaCls,
 } from "./ui";
 import { WeightLine, AdherenceTrend, type AdherenceDay } from "./Chart";
 import { PhotoGallery } from "./Photos";
@@ -106,7 +109,8 @@ export function ClientsView({
   go: (v: CoachView, id?: string) => void;
   initialFilter?: ClientsFilter;
 }) {
-  const { state, deleteClient, myClientCount, myClientLimit, myCoachPlan } = useApp();
+  const { state, deleteClient, myClientCount, myClientLimit, myCoachPlan, myPlanAllowsClientMode, myProgressMode, myFrozenLoginCount } = useApp();
+  const planAllowsLogin = (myPlanAllowsClientMode as boolean | undefined) ?? true;
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<ClientsFilter>(initialFilter ?? "All");
   const [formOpen, setFormOpen] = useState(false);
@@ -181,6 +185,20 @@ export function ClientsView({
                 ? `${myClientCount} clients · ${myCoachPlan.name} (Unlimited)`
                 : `${myClientCount} / ${myClientLimit} clients · ${myCoachPlan.name}`}
             </button>
+            <span className="text-mist-500"> · </span>
+            {planAllowsLogin ? (
+              <span className="font-bold text-moss-300" title="Progress is auto-calculated via Client Mode">
+                Auto via Client Mode
+              </span>
+            ) : (
+              <button
+                className="cursor-pointer font-bold text-danger-300 hover:underline"
+                onClick={() => go("pricing")}
+                title="Starter has No Client Mode — upgrade to Professional"
+              >
+                No Client Mode · Manual{myFrozenLoginCount > 0 ? ` · ${myFrozenLoginCount} frozen` : ""}
+              </button>
+            )}
           </p>
         </div>
         <button
@@ -291,7 +309,7 @@ export function ClientsView({
    Client profile
    ================================================================ */
 
-  type ProfileTab = "overview" | "checkins" | "training" | "sessions" | "nutrition" | "photos" | "billing" | "connect";
+  type ProfileTab = "overview" | "checkins" | "training" | "sessions" | "nutrition" | "photos" | "billing" | "notes" | "connect";
 
 export function ClientProfile({ clientId, go }: { clientId: string; go: (v: CoachView, id?: string) => void }) {
   const app = useApp();
@@ -369,10 +387,21 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
     { id: "nutrition", label: "Nutrition", icon: <UtensilsCrossed className="h-3.5 w-3.5" />, count: meals.length || undefined },
     { id: "photos", label: "Photos", icon: <ImagePlus className="h-3.5 w-3.5" />, count: photoCount || undefined },
     { id: "billing", label: "Billing", icon: <Wallet className="h-3.5 w-3.5" />, dot: outstanding > 0 },
+    { id: "notes", label: "Notes", icon: <StickyNote className="h-3.5 w-3.5" />, count: client.coachNotes?.length || undefined },
     { id: "connect", label: "Connect", icon: <MessageCircle className="h-3.5 w-3.5" />, count: msgCount || undefined },
   ];
 
   const statusTone = client.status === "Active" ? "text-moss-300" : client.status === "Paused" ? "text-warn-300" : "text-mist-400";
+  const planAllowsLogin = ((app as unknown as { myPlanAllowsClientMode?: boolean }).myPlanAllowsClientMode) ?? true;
+  const loginFrozen = client.hasLogin && !planAllowsLogin;
+  const requestLogin = () => {
+    if (!planAllowsLogin) {
+      app.toast("Starter plan has No Client Mode — upgrade to Professional for client logins.", "warn");
+      go("pricing");
+      return;
+    }
+    setLoginOpen(true);
+  };
 
   return (
     <div>
@@ -391,14 +420,21 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
               <h1 className="font-display text-3xl font-bold uppercase leading-none tracking-tight text-mist-100">{client.name}</h1>
               <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                 {client.hasLogin ? (
-                  <span className="font-bold text-mist-400">@{client.username}</span>
+                  <>
+                    <span className="font-bold text-mist-400">@{client.username}</span>
+                    {loginFrozen && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-danger-500/30 bg-danger-500/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-danger-300" title="Starter plan has No Client Mode — this login is frozen until you upgrade">
+                        Frozen · No Client Mode
+                      </span>
+                    )}
+                  </>
                 ) : (
                   <button
-                    onClick={() => setLoginOpen(true)}
-                    title="Create a login for this client"
-                    className="cursor-pointer font-bold text-warn-300 transition hover:text-volt-300 hover:underline"
+                    onClick={requestLogin}
+                    title={planAllowsLogin ? "Create a login for this client" : "Starter plan has No Client Mode — upgrade to Professional"}
+                    className={`cursor-pointer font-bold transition hover:underline ${planAllowsLogin ? "text-warn-300 hover:text-volt-300" : "text-danger-300 hover:text-danger-200"}`}
                   >
-                    Coach-managed · no login — create one →
+                    {planAllowsLogin ? "Coach-managed · no login — create one →" : "No Client Mode (Starter) — upgrade for logins →"}
                   </button>
                 )}
                 <span aria-hidden="true" className="text-mist-600">•</span>
@@ -466,7 +502,7 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
                   { type: "item" as const, label: "Edit client", icon: Pencil, onClick: () => setEditOpen(true) },
                   ...(client.hasLogin
                     ? [{ type: "item" as const, label: "Reset password", icon: KeyRound, onClick: () => setPwOpen(true) }]
-                    : [{ type: "item" as const, label: "Create login", icon: UserPlus, onClick: () => setLoginOpen(true) }]),
+                    : [{ type: "item" as const, label: planAllowsLogin ? "Create login" : "Create login (Starter: disabled)", icon: UserPlus, onClick: requestLogin }]),
                   { type: "divider" as const },
                   ...PRIORITIES.map((p) => ({
                     type: "item" as const,
@@ -496,6 +532,15 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
                 {a.text}
               </span>
             ))}
+          </div>
+        )}
+        {loginFrozen && (
+          <div role="alert" className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-danger-500/25 bg-danger-500/[0.07] px-3.5 py-2.5">
+            <span className="text-xs font-extrabold text-danger-300">Login frozen — No Client Mode on your current plan.</span>
+            <span className="text-[11px] font-semibold text-mist-400">Their data is safe; progress is manual until you upgrade.</span>
+            <button onClick={() => go("pricing")} className="cursor-pointer text-[11px] font-extrabold text-volt-300 hover:underline">
+              View plans →
+            </button>
           </div>
         )}
       </div>
@@ -569,7 +614,6 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
           </div>
           <div className="grid content-start gap-3">
             <FollowUpCard client={client} checkIns={checkIns} />
-            <CoachNotesCard client={client} />
           </div>
         </div>
       )}
@@ -653,15 +697,17 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
         </div>
       )}
 
-      {/* Connect — chat gets real height, notes beside it */}
+      {/* Notes — categorized, priority-ordered coach notes */}
+      {tab === "notes" && (
+        <div className="mt-3 w-full">
+          <CoachNotesTab key={client.id} client={client} />
+        </div>
+      )}
+
+      {/* Connect — chat gets the full width */}
       {tab === "connect" && (
-        <div className="mt-3 grid items-start gap-3 lg:grid-cols-5">
-          <div className="lg:col-span-3">
-            <ChatThreadCard clientId={client.id} clientName={client.name} tall />
-          </div>
-          <div className="lg:col-span-2">
-            <CoachNotesCard client={client} />
-          </div>
+        <div className="mx-auto mt-3 w-full max-w-4xl">
+          <ChatThreadCard clientId={client.id} clientName={client.name} tall />
         </div>
       )}
 
@@ -669,7 +715,7 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
       <ClientFormModal open={editOpen} initial={client} onClose={() => setEditOpen(false)} />
       <NutritionTargetsModal open={nutritionOpen} clientId={client.id} onClose={() => setNutritionOpen(false)} />
       <ResetPasswordModal open={pwOpen} clientId={client.id} onClose={() => setPwOpen(false)} />
-      {!client.hasLogin && <CreateLoginModal open={loginOpen} client={client} onClose={() => setLoginOpen(false)} />}
+      {!client.hasLogin && <CreateLoginModal open={loginOpen} client={client} onClose={() => setLoginOpen(false)} onUpgrade={() => go("pricing")} />}
       <ConfirmModal
         open={delOpen}
         onClose={() => setDelOpen(false)}
@@ -1443,87 +1489,305 @@ function ChatThreadCard({ clientId, clientName, tall }: { clientId: string; clie
   );
 }
 
-/* ---------------- coach notes ---------------- */
+/* ---------------- coach notes tab (categorized, priority-ordered) ---------------- */
 
-function CoachNotesCard({ client }: { client: Client }) {
-  const { addCoachNote, updateCoachNote, deleteCoachNote, toggleCoachNotePin } = useApp();
+function NoteCatIcon({ cat, className = "h-4 w-4" }: { cat: NoteCategory; className?: string }) {
+  if (cat === "critical") return <AlertTriangle className={className} />;
+  if (cat === "workout") return <Dumbbell className={className} />;
+  if (cat === "nutrition") return <UtensilsCrossed className={className} />;
+  return <StickyNote className={className} />;
+}
+
+const sortNotes = (list: CoachNote[]): CoachNote[] =>
+  [...list].sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false) || b.createdAt - a.createdAt);
+
+/* ---------------- coach to-do list (private tasks per client) ---------------- */
+
+function TodoCard({ clientId }: { clientId: string }) {
+  const { state, addTodo, toggleTodo, deleteTodo, clearCompletedTodos } = useApp();
   const [draft, setDraft] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editText, setEditText] = useState("");
-  const [deleting, setDeleting] = useState<string | null>(null);
-  // Pinned notes float to the top, then newest first.
-  const notes = [...(client.coachNotes ?? [])].sort(
-    (a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false) || b.createdAt - a.createdAt,
+  const [showDone, setShowDone] = useState(false);
+
+  const todos = useMemo(
+    () =>
+      (state.todos ?? [])
+        .filter((t) => t.clientId === clientId)
+        .sort((a, b) => a.createdAt - b.createdAt),
+    [state.todos, clientId],
   );
+  const pending = todos.filter((t) => !t.done);
+  const done = todos.filter((t) => t.done);
 
   const add = () => {
     if (!draft.trim()) return;
-    addCoachNote(client.id, draft.trim());
+    addTodo(clientId, draft.trim());
     setDraft("");
   };
 
   return (
     <SectionCard
-      title="Coach notes"
-      icon={<StickyNote className="h-4.5 w-4.5" />}
-      bodyCls="p-4"
+      title="To-do"
+      icon={<ListChecks className="h-4.5 w-4.5" />}
+      bodyCls="p-3 sm:p-4"
+      description="Your private tasks for this client."
       action={
-        <span className="rounded-full bg-white/[0.05] px-2.5 py-1 text-[11px] font-bold text-mist-400 tnum">
-          {notes.length}
-        </span>
+        pending.length > 0 ? (
+          <span className="rounded-full bg-volt-400/15 px-2.5 py-1 text-[11px] font-extrabold text-volt-300 tnum">
+            {pending.length} open
+          </span>
+        ) : undefined
       }
     >
       <div className="flex gap-2">
-        <input className={`${inputCls} h-10 min-w-0 flex-1`} placeholder="Add note…" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} aria-label="Add note" />
-        <button onClick={add} disabled={!draft.trim()} className={`${btnPrimary} h-10 shrink-0 px-3.5`} aria-label="Add note">
+        <input
+          className={`${inputCls} h-10 min-w-0 flex-1`}
+          placeholder="e.g. Review Friday's check-in…"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+          aria-label="New task"
+        />
+        <button onClick={add} disabled={!draft.trim()} className={`${btnPrimary} h-10 shrink-0 px-3.5`} aria-label="Add task">
           <Plus className="h-4 w-4" strokeWidth={2.6} />
         </button>
       </div>
-      {notes.length === 0 ? (
-        <p className="mt-4 rounded-xl border border-dashed border-night-600 px-4 py-5 text-center text-xs text-mist-500">No notes yet.</p>
-      ) : (
-        <ul className="mt-3 grid max-h-80 gap-2 overflow-y-auto overscroll-contain pe-0.5">
-          {notes.map((n) => (
-            <li key={n.id} className={`group rounded-xl border p-3 transition-colors ${n.pinned ? "border-volt-400/30 bg-volt-400/[0.05]" : "border-night-700 bg-night-800"}`}>
-              {editingId === n.id ? (
-                <div className="flex gap-2">
-                  <input className={`${inputCls} h-9 min-w-0 flex-1`} value={editText} onChange={(e) => setEditText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && editText.trim()) { updateCoachNote(client.id, n.id, editText.trim()); setEditingId(null); } }} autoFocus aria-label="Edit note" />
-                  <button className={`${btnPrimary} h-9 px-3`} disabled={!editText.trim()} onClick={() => { if (editText.trim()) { updateCoachNote(client.id, n.id, editText.trim()); setEditingId(null); } }} aria-label="Save note">
-                    <Check className="h-3.5 w-3.5" strokeWidth={2.6} />
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-start gap-2">
-                    {n.pinned && <Pin className="mt-1 h-3.5 w-3.5 shrink-0 fill-volt-400 text-volt-400" aria-label="Pinned" />}
-                    <p className="min-w-0 flex-1 text-sm font-semibold leading-6 text-mist-100">{n.text}</p>
-                  </div>
-                  <div className="mt-1.5 flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold text-mist-500">
-                      Added {relDay(toISO(new Date(n.createdAt)))}{n.by ? ` • ${n.by}` : ""}
-                    </span>
-                    <span className="ms-auto flex gap-0.5 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
-                      <button
-                        className={`grid h-6 w-6 cursor-pointer place-items-center rounded-md transition-all duration-200 ${n.pinned ? "text-volt-300 hover:bg-volt-400/15" : "text-mist-400 hover:bg-night-700 hover:text-mist-100"}`}
-                        title={n.pinned ? "Unpin" : "Pin to top"}
-                        onClick={() => toggleCoachNotePin(client.id, n.id)}
-                      >
-                        <Pin className={`h-3 w-3 ${n.pinned ? "fill-volt-400" : ""}`} />
-                      </button>
-                      <button className="grid h-6 w-6 cursor-pointer place-items-center rounded-md text-mist-400 transition-all duration-200 hover:bg-night-700 hover:text-mist-100" title="Edit" onClick={() => { setEditingId(n.id); setEditText(n.text); }}>
-                        <Pencil className="h-3 w-3" />
-                      </button>
-                      <button className="grid h-6 w-6 cursor-pointer place-items-center rounded-md text-mist-400 transition hover:bg-danger-500/15 hover:text-danger-300" title="Delete" onClick={() => setDeleting(n.id)}>
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </span>
-                  </div>
-                </>
-              )}
+
+      {pending.length > 0 && (
+        <ul className="mt-2.5 grid gap-1.5">
+          {pending.map((t) => (
+            <li
+              key={t.id}
+              className="group flex items-center gap-2.5 rounded-xl border border-night-700 bg-night-800 px-2.5 py-2"
+            >
+              <button
+                onClick={() => toggleTodo(t.id)}
+                aria-pressed={false}
+                aria-label={`Mark done: ${t.text}`}
+                className="grid h-5 w-5 shrink-0 cursor-pointer place-items-center rounded-md border border-night-500 transition hover:border-volt-400 hover:bg-volt-400/10"
+              />
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-mist-100" title={t.text}>
+                {t.text}
+              </span>
+              <button
+                className="grid h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-lg text-mist-500 opacity-0 transition hover:bg-danger-500/15 hover:text-danger-300 focus-visible:opacity-100 group-hover:opacity-100"
+                title="Delete task"
+                onClick={() => deleteTodo(t.id)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
             </li>
           ))}
         </ul>
       )}
+
+      {done.length > 0 && (
+        <div className="mt-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowDone((v) => !v)}
+              aria-expanded={showDone}
+              className="flex cursor-pointer items-center gap-1.5 px-0.5 py-1 text-[11px] font-bold text-mist-500 transition hover:text-mist-200"
+            >
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${showDone ? "rotate-180" : ""}`} />
+              Done ({done.length})
+            </button>
+            <button
+              onClick={() => clearCompletedTodos(clientId)}
+              className="ms-auto cursor-pointer rounded-lg px-2 py-1 text-[11px] font-bold text-mist-500 transition hover:bg-danger-500/10 hover:text-danger-300"
+            >
+              Clear completed
+            </button>
+          </div>
+          {showDone && (
+            <ul className="mt-1 grid gap-1.5">
+              {done.map((t) => (
+                <li
+                  key={t.id}
+                  className="group flex items-center gap-2.5 rounded-xl border border-night-700/60 bg-night-800/50 px-2.5 py-2"
+                >
+                  <button
+                    onClick={() => toggleTodo(t.id)}
+                    aria-pressed={true}
+                    aria-label={`Reopen: ${t.text}`}
+                    title="Reopen"
+                    className="grid h-5 w-5 shrink-0 cursor-pointer place-items-center rounded-md border border-volt-400 bg-volt-400 text-night-950 transition hover:brightness-110"
+                  >
+                    <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                  </button>
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-mist-500 line-through" title={t.text}>
+                    {t.text}
+                  </span>
+                  <button
+                    className="grid h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-lg text-mist-500 opacity-0 transition hover:bg-danger-500/15 hover:text-danger-300 focus-visible:opacity-100 group-hover:opacity-100"
+                    title="Delete task"
+                    onClick={() => deleteTodo(t.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {todos.length === 0 && (
+        <p className="mt-2.5 rounded-xl border border-dashed border-white/10 bg-white/[0.015] px-4 py-3 text-center text-xs font-semibold text-mist-500">
+          Nothing to do — enjoy the calm.
+        </p>
+      )}
+    </SectionCard>
+  );
+}
+
+function CoachNotesTab({ client }: { client: Client }) {
+  const { addCoachNote, updateCoachNote, deleteCoachNote, toggleCoachNotePin } = useApp();
+  const [draft, setDraft] = useState("");
+  const [draftCat, setDraftCat] = useState<NoteCategory>("general");
+  const [filter, setFilter] = useState<"all" | NoteCategory>("all");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editCat, setEditCat] = useState<NoteCategory>("general");
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Partial<Record<NoteCategory, boolean>>>({});
+
+  const notes = useMemo(() => normalizeCoachNotes(client.coachNotes), [client.coachNotes]);
+  const counts = useMemo(() => {
+    const m: Record<NoteCategory, number> = { critical: 0, workout: 0, nutrition: 0, general: 0 };
+    for (const n of notes) m[n.category ?? "general"] += 1;
+    return m;
+  }, [notes]);
+
+  const visibleCats: NoteCategory[] = filter === "all" ? NOTE_CATEGORIES : [filter];
+
+  const add = () => {
+    if (!draft.trim()) return;
+    addCoachNote(client.id, draft.trim(), draftCat);
+    setDraft("");
+  };
+
+  const startEdit = (n: CoachNote) => {
+    setEditingId(n.id);
+    setEditText(n.text);
+    setEditCat(n.category ?? "general");
+  };
+
+  const saveEdit = () => {
+    if (!editingId || !editText.trim()) return;
+    updateCoachNote(client.id, editingId, editText.trim(), editCat);
+    setEditingId(null);
+  };
+
+  const shared = { onEdit: startEdit, onDelete: setDeleting, togglePin: (id: string) => toggleCoachNotePin(client.id, id) };
+
+  return (
+    <div className="grid items-start gap-3 lg:grid-cols-3">
+      {/* composer + filter rail */}
+      <div className="grid content-start gap-3 lg:sticky lg:top-24">
+        <SectionCard
+          title="New note"
+          icon={<Plus className="h-4.5 w-4.5" />}
+          bodyCls="p-4"
+          description="Private — the client never sees these."
+        >
+          <textarea
+            className={`${textareaCls} min-h-20`}
+            placeholder="e.g. Cut carbs by 20g on rest days…"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            aria-label="New note text"
+          />
+          <p className="mb-1.5 mt-3 text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">Section</p>
+          <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Note section">
+            {NOTE_CATEGORIES.map((c) => {
+              const meta = NOTE_CATEGORY_META[c];
+              const on = draftCat === c;
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => setDraftCat(c)}
+                  className={`flex cursor-pointer items-center gap-1.5 rounded-xl border px-2.5 py-2 text-xs font-bold transition active:scale-[0.98] ${
+                    on ? meta.chip : "border-night-600 bg-night-800 text-mist-400 hover:border-night-500 hover:text-mist-200"
+                  }`}
+                >
+                  <NoteCatIcon cat={c} className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{meta.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <button className={`${btnPrimary} mt-3 w-full`} onClick={add} disabled={!draft.trim()}>
+            <Plus className="h-4 w-4" strokeWidth={2.6} /> Add note
+          </button>
+        </SectionCard>
+
+        <SectionCard title="Sections" icon={<StickyNote className="h-4.5 w-4.5" />} bodyCls="p-2">
+          <FilterRow
+            active={filter === "all"}
+            onClick={() => setFilter("all")}
+            icon={<StickyNote className="h-3.5 w-3.5" />}
+            label="All notes"
+            count={notes.length}
+          />
+          {NOTE_CATEGORIES.map((c) => (
+            <FilterRow
+              key={c}
+              active={filter === c}
+              onClick={() => setFilter(filter === c ? "all" : c)}
+              icon={<NoteCatIcon cat={c} className="h-3.5 w-3.5" />}
+              label={NOTE_CATEGORY_META[c].label}
+              count={counts[c]}
+            />
+          ))}
+        </SectionCard>
+      </div>
+
+      {/* grouped sections — critical first, then workout, nutrition, general */}
+      <div className="grid content-start gap-3 lg:col-span-2">
+        <TodoCard clientId={client.id} />
+        {notes.length === 0 ? (
+          <SectionCard title="Notes" icon={<StickyNote className="h-4.5 w-4.5" />} bodyCls="p-4">
+            <MiniEmpty
+              icon={<StickyNote className="h-4 w-4" />}
+              title="No notes yet"
+              sub="Capture anything worth remembering — flagged, training, food or general."
+            />
+          </SectionCard>
+        ) : (
+          visibleCats.map((cat) => {
+            const list = sortNotes(notes.filter((n) => (n.category ?? "general") === cat));
+            if (list.length === 0) return null;
+            return (
+              <NoteSection
+                key={cat}
+                cat={cat}
+                notes={list}
+                collapsed={!!collapsed[cat]}
+                onToggle={() => setCollapsed((s) => ({ ...s, [cat]: !s[cat] }))}
+                editingId={editingId}
+                editText={editText}
+                editCat={editCat}
+                setEditText={setEditText}
+                setEditCat={setEditCat}
+                onSaveEdit={saveEdit}
+                onCancelEdit={() => setEditingId(null)}
+                {...shared}
+              />
+            );
+          })
+        )}
+        {filter !== "all" && notes.length > 0 && sortNotes(notes.filter((n) => (n.category ?? "general") === filter)).length === 0 && (
+          <MiniEmpty
+            icon={<NoteCatIcon cat={filter} className="h-4 w-4" />}
+            title={`No ${NOTE_CATEGORY_META[filter].label.toLowerCase()} notes`}
+            sub="Switch sections or add one from the composer."
+          />
+        )}
+      </div>
+
       <ConfirmModal
         open={!!deleting}
         onClose={() => setDeleting(null)}
@@ -1531,7 +1795,228 @@ function CoachNotesCard({ client }: { client: Client }) {
         message="This private note will be removed."
         onConfirm={() => deleting && deleteCoachNote(client.id, deleting)}
       />
-    </SectionCard>
+    </div>
+  );
+}
+
+function FilterRow({
+  active,
+  onClick,
+  icon,
+  label,
+  count,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  count: number;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-start text-[13px] font-bold transition ${
+        active ? "bg-volt-400 text-night-950" : "text-mist-300 hover:bg-white/[0.05] hover:text-mist-100"
+      }`}
+    >
+      <span className="shrink-0" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-extrabold tnum ${active ? "bg-night-950/15 text-night-950" : "bg-white/[0.06] text-mist-400"}`}>
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function NoteSection({
+  cat,
+  notes,
+  collapsed,
+  onToggle,
+  editingId,
+  editText,
+  editCat,
+  setEditText,
+  setEditCat,
+  onSaveEdit,
+  onCancelEdit,
+  onEdit,
+  onDelete,
+  togglePin,
+}: {
+  cat: NoteCategory;
+  notes: CoachNote[];
+  collapsed: boolean;
+  onToggle: () => void;
+  editingId: string | null;
+  editText: string;
+  editCat: NoteCategory;
+  setEditText: (v: string) => void;
+  setEditCat: (v: NoteCategory) => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
+  onEdit: (n: CoachNote) => void;
+  onDelete: (id: string) => void;
+  togglePin: (id: string) => void;
+}) {
+  const meta = NOTE_CATEGORY_META[cat];
+  const critical = cat === "critical";
+  return (
+    <section
+      aria-label={`${meta.label} notes`}
+      className={`rise overflow-hidden rounded-[20px] border shadow-sm backdrop-blur-xl ${
+        critical ? "border-danger-500/25 bg-night-900/60" : "border-white/[0.07] bg-night-900/60"
+      }`}
+    >
+      <button onClick={onToggle} aria-expanded={!collapsed} className="flex w-full cursor-pointer items-center gap-2.5 px-4 py-3.5 text-start">
+        <span className={`icon-tile h-9 w-9 shrink-0 ${critical ? "!border-danger-500/30 !bg-danger-500/10 !text-danger-300" : ""}`} aria-hidden="true">
+          <NoteCatIcon cat={cat} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className={`block text-[13px] font-bold uppercase tracking-[0.14em] ${critical ? "text-danger-300" : "text-mist-100"}`}>
+            {meta.label}
+          </span>
+          <span className="mt-0.5 block text-xs text-mist-500">
+            {notes.length} note{notes.length === 1 ? "" : "s"}
+          </span>
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-mist-500 transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`} />
+      </button>
+      {!collapsed && (
+        <ul className={`grid gap-2 border-t p-3 ${critical ? "border-danger-500/20" : "border-white/[0.06]"}`}>
+          {notes.map((n) => (
+            <NoteRow
+              key={n.id}
+              note={n}
+              critical={critical}
+              editing={editingId === n.id}
+              editText={editText}
+              editCat={editCat}
+              setEditText={setEditText}
+              setEditCat={setEditCat}
+              onSaveEdit={onSaveEdit}
+              onCancelEdit={onCancelEdit}
+              onEdit={() => onEdit(n)}
+              onDelete={() => onDelete(n.id)}
+              onTogglePin={() => togglePin(n.id)}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function NoteRow({
+  note: n,
+  critical,
+  editing,
+  editText,
+  editCat,
+  setEditText,
+  setEditCat,
+  onSaveEdit,
+  onCancelEdit,
+  onEdit,
+  onDelete,
+  onTogglePin,
+}: {
+  note: CoachNote;
+  critical: boolean;
+  editing: boolean;
+  editText: string;
+  editCat: NoteCategory;
+  setEditText: (v: string) => void;
+  setEditCat: (v: NoteCategory) => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onTogglePin: () => void;
+}) {
+  const meta = NOTE_CATEGORY_META[n.category ?? "general"];
+  if (editing) {
+    return (
+      <li className="rounded-xl border border-volt-400/40 bg-night-800 p-3">
+        <input
+          className={`${inputCls} h-10`}
+          value={editText}
+          onChange={(e) => setEditText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onSaveEdit();
+            if (e.key === "Escape") onCancelEdit();
+          }}
+          autoFocus
+          aria-label="Edit note"
+        />
+        <div className="mt-2 flex flex-wrap gap-1" role="radiogroup" aria-label="Note section">
+          {NOTE_CATEGORIES.map((c) => (
+            <button
+              key={c}
+              type="button"
+              role="radio"
+              aria-checked={editCat === c}
+              onClick={() => setEditCat(c)}
+              className={`cursor-pointer rounded-lg border px-2 py-1 text-[11px] font-bold transition ${
+                editCat === c
+                  ? NOTE_CATEGORY_META[c].chip
+                  : "border-night-600 bg-night-800 text-mist-500 hover:border-night-500"
+              }`}
+            >
+              {NOTE_CATEGORY_META[c].label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-1.5">
+          <button className={`${btnPrimary} ${btnSm} flex-1`} disabled={!editText.trim()} onClick={onSaveEdit}>
+            <Check className="h-3.5 w-3.5" strokeWidth={2.6} /> Save
+          </button>
+          <button className={`${btnSecondary} ${btnSm}`} onClick={onCancelEdit}>
+            Cancel
+          </button>
+        </div>
+      </li>
+    );
+  }
+  return (
+    <li
+      className={`group rounded-xl border p-3 transition-colors ${
+        n.pinned
+          ? "border-volt-400/30 bg-volt-400/[0.05]"
+          : critical
+            ? "border-danger-500/20 bg-night-800"
+            : "border-night-700 bg-night-800"
+      }`}
+    >
+      <div className="flex items-start gap-2">
+        {n.pinned && <Pin className="mt-1 h-3.5 w-3.5 shrink-0 fill-volt-400 text-volt-400" aria-label="Pinned" />}
+        <p className="min-w-0 flex-1 text-sm font-semibold leading-6 text-mist-100">{n.text}</p>
+        <Badge className={`${meta.chip} shrink-0`}>{meta.label}</Badge>
+      </div>
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <span className="text-[10px] font-bold text-mist-500">
+          Added {relDay(toISO(new Date(n.createdAt)))}{n.by ? ` • ${n.by}` : ""}
+        </span>
+        <span className="ms-auto flex gap-0.5 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+          <button
+            className={`grid h-6 w-6 cursor-pointer place-items-center rounded-md transition-all duration-200 ${n.pinned ? "text-volt-300 hover:bg-volt-400/15" : "text-mist-400 hover:bg-night-700 hover:text-mist-100"}`}
+            title={n.pinned ? "Unpin" : "Pin to top"}
+            onClick={onTogglePin}
+          >
+            <Pin className={`h-3 w-3 ${n.pinned ? "fill-volt-400" : ""}`} />
+          </button>
+          <button className="grid h-6 w-6 cursor-pointer place-items-center rounded-md text-mist-400 transition-all duration-200 hover:bg-night-700 hover:text-mist-100" title="Edit" onClick={onEdit}>
+            <Pencil className="h-3 w-3" />
+          </button>
+          <button className="grid h-6 w-6 cursor-pointer place-items-center rounded-md text-mist-400 transition hover:bg-danger-500/15 hover:text-danger-300" title="Delete" onClick={onDelete}>
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </span>
+      </div>
+    </li>
   );
 }
 

@@ -1,7 +1,7 @@
 /* ================================================================
    VERRAA — coach command center (action-oriented workspace).
-   Priority: Needs Attention → Today's Schedule → Pending Work (KPIs)
-   → Clients to Review → Business Health → Recent Activity → Plan Usage.
+   Priority: KPI stats → Needs Attention → Today's Schedule
+   → Clients to Review + Recent Activity → Business Health → Plan Usage.
    Everything is computed from real store data; nothing is invented.
    ================================================================ */
 
@@ -103,26 +103,16 @@ export function Dashboard({
 
   const activeClients = useMemo(() => state.clients.filter((c) => c.status === "Active"), [state.clients]);
 
-  /* ----- pending check-ins: recent (7d) check-ins the coach hasn't followed up yet.
-     There is no reviewed flag in the data model, so "pending" = submitted in the
-     last 7 days AND the client's lastFollowUp predates the check-in (or is unset). */
-  const pendingCheckIns = useMemo(() => {
+  /* ----- recent check-ins: view-only feed (last 7d).
+     Check-ins are observational — the coach browses them from the
+     check-ins page / client profile. They never require a review
+     action and never appear in Needs Attention. */
+  const recentCheckIns = useMemo(() => {
     const cutoff = addDays(today, -7);
     return state.checkIns
       .filter((ci) => ci.date >= cutoff)
-      .filter((ci) => {
-        const c = clientById.get(ci.clientId);
-        if (!c) return true;
-        if (!c.lastFollowUp) return true;
-        return c.lastFollowUp < ci.date;
-      })
       .sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
-  }, [state.checkIns, clientById, today]);
-
-  const overduePendingCount = useMemo(
-    () => pendingCheckIns.filter((ci) => diffDays(ci.date, today) >= 3).length,
-    [pendingCheckIns, today],
-  );
+  }, [state.checkIns, today]);
 
   const todaySessions = useMemo(
     () => state.sessions.filter((s) => s.date === today).sort((a, b) => a.time.localeCompare(b.time)),
@@ -236,8 +226,8 @@ export function Dashboard({
         title: "Check-in overdue",
         detail: `${d} day${d === 1 ? "" : "s"} since last contact`,
         meta: d <= 1 ? "Due now" : `${d}d overdue`,
-        actionLabel: "Review",
-        run: () => go("checkins"),
+        actionLabel: "View",
+        run: () => go("client", client.id),
         sort: 1,
       });
       covered.add(client.id);
@@ -260,27 +250,9 @@ export function Dashboard({
         }
       }
     }
-    // Check-ins waiting for review (one card per client, newest first)
-    const seenCheckin = new Set<string>();
-    for (const ci of pendingCheckIns) {
-      if (seenCheckin.has(ci.clientId)) continue;
-      seenCheckin.add(ci.clientId);
-      const client = clientById.get(ci.clientId);
-      if (!client) continue;
-      const urgent = diffDays(ci.date, today) >= 3;
-      out.push({
-        key: `ci-${client.id}`,
-        client,
-        severity: urgent ? "high" : "med",
-        title: "Check-in needs review",
-        detail: `${ci.weight} kg · ${ci.date === today ? "today" : fmtShort(ci.date)}`,
-        meta: ci.date === today ? "Today" : urgent ? `${diffDays(ci.date, today)}d waiting` : "Waiting",
-        actionLabel: "Review",
-        run: () => go("checkins"),
-        sort: 3,
-      });
-      if (urgent) covered.add(client.id);
-    }
+    // NOTE: submitted check-ins are view-only — they never create
+    // Needs Attention cards. Missing/overdue check-ins above are the
+    // only check-in-related alerts, and "no recent activity" below.
     // Overdue / pending money (one card per subscription or standalone payment)
     for (const sub of state.subscriptions) {
       if (sub.paymentStatus === "Paid") continue;
@@ -331,7 +303,7 @@ export function Dashboard({
       });
     }
     for (const { client, info } of lists.followUpsDue) {
-      if (covered.has(client.id) || seenCheckin.has(client.id)) continue;
+      if (covered.has(client.id)) continue;
       out.push({
         key: `due-${client.id}`,
         client,
@@ -345,7 +317,7 @@ export function Dashboard({
       });
     }
     for (const client of lists.staleCheckIns) {
-      if (covered.has(client.id) || seenCheckin.has(client.id)) continue;
+      if (covered.has(client.id)) continue;
       const last = latestCheckIn(state.checkIns.filter((c) => c.clientId === client.id));
       const days = last ? Math.max(1, diffDays(last.date, today)) : null;
       out.push({
@@ -365,14 +337,11 @@ export function Dashboard({
       (a, b) => priorityRank(a.client.priority) - priorityRank(b.client.priority) || a.sort - b.sort,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lists, state.sessions, state.payments, state.subscriptions, state.checkIns, state.mealRequests, clientById, pendingCheckIns, today]);
+  }, [lists, state.sessions, state.payments, state.subscriptions, state.checkIns, state.mealRequests, clientById, today]);
 
-  /* ----- clients to review (actionable roster slice) ----- */
+  /* ----- clients to review (actionable roster slice).
+     Submitted check-ins are view-only and never create a review reason. ----- */
   const reviewRows = useMemo<ReviewRow[]>(() => {
-    const pendingByClient = new Map<string, CheckIn>();
-    for (const ci of pendingCheckIns) {
-      if (!pendingByClient.has(ci.clientId)) pendingByClient.set(ci.clientId, ci);
-    }
     const overdueIds = new Set(lists.overdueFollowUps.map((x) => x.client.id));
     const dueIds = new Map(lists.followUpsDue.map((x) => [x.client.id, x.info.label]));
     const expiringIds = new Map(lists.expiringSoon.map((x) => [x.client.id, remainingLabel(x.info.daysLeft)]));
@@ -396,23 +365,13 @@ export function Dashboard({
       const lastLabel = last ? (last.date === today ? "Today" : `${diffDays(last.date, today)}d ago`) : "No check-ins";
       const reasons: { reason: string; tone: Severity; sort: number; action: string; run: () => void }[] = [];
 
-      const pend = pendingByClient.get(client.id);
-      if (pend) {
-        reasons.push({
-          reason: "Check-in received",
-          tone: "high",
-          sort: 1,
-          action: "Review",
-          run: () => go("checkins"),
-        });
-      }
       if (expiredIds.has(client.id)) {
         reasons.push({ reason: "Subscription expired", tone: "high", sort: 0, action: "Renew", run: () => go("client", client.id) });
       } else if (expiringIds.has(client.id)) {
         reasons.push({ reason: "Plan ending soon", tone: "med", sort: 3, action: "Update", run: () => go("client", client.id) });
       }
       if (overdueIds.has(client.id)) {
-        reasons.push({ reason: "Follow-up overdue", tone: "high", sort: 1, action: "Review", run: () => go("checkins") });
+        reasons.push({ reason: "Follow-up overdue", tone: "high", sort: 1, action: "View", run: () => go("client", client.id) });
       } else if (dueIds.has(client.id)) {
         reasons.push({ reason: "Follow-up due", tone: "low", sort: 5, action: "View", run: () => go("client", client.id) });
       }
@@ -428,7 +387,7 @@ export function Dashboard({
       if (missedIds.has(client.id)) {
         reasons.push({ reason: "Missed session", tone: "high", sort: 1, action: "Open", run: () => go("client", client.id) });
       }
-      if (staleIds.has(client.id) && !pend) {
+      if (staleIds.has(client.id)) {
         reasons.push({ reason: "No recent activity", tone: "low", sort: 6, action: "View", run: () => go("client", client.id) });
       }
       // Low attendance from real session outcomes (needs a meaningful sample).
@@ -462,7 +421,7 @@ export function Dashboard({
       .sort((a, b) => priorityRank(a.client.priority) - priorityRank(b.client.priority) || a.sort - b.sort)
       .slice(0, 6);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeClients, pendingCheckIns, lists, state.checkIns, state.sessions, state.subscriptions, state.payments, today]);
+  }, [activeClients, lists, state.checkIns, state.sessions, state.subscriptions, state.payments, today]);
 
   /* ----- activity feed (real events, newest first, max 5) ----- */
   const activity = useMemo(() => {
@@ -532,17 +491,16 @@ export function Dashboard({
   // only that row — never this whole dashboard tree.
 
   const attentionCount = alerts.length;
-  const primaryIsReview = pendingCheckIns.length > 0;
   const isNewCoach = state.clients.length === 0;
 
   const contextLine = isNewCoach
     ? "Add your first client to start coaching."
-    : pendingCheckIns.length > 0
-      ? `${pendingCheckIns.length} check-in${pendingCheckIns.length === 1 ? " is" : "s are"} waiting for review${overduePendingCount > 0 ? ` · ${overduePendingCount} overdue` : ""}`
-      : openTodaySessions.length > 0
-        ? `${openTodaySessions.length} session${openTodaySessions.length === 1 ? "" : "s"} today${nextSession ? ` · next at ${fmtTime(nextSession.time)}` : ""}`
-        : attentionCount > 0
-          ? `${attentionCount} thing${attentionCount === 1 ? "" : "s"} need${attentionCount === 1 ? "s" : ""} your attention today.`
+    : openTodaySessions.length > 0
+      ? `${openTodaySessions.length} session${openTodaySessions.length === 1 ? "" : "s"} today${nextSession ? ` · next at ${fmtTime(nextSession.time)}` : ""}`
+      : attentionCount > 0
+        ? `${attentionCount} thing${attentionCount === 1 ? "" : "s"} need${attentionCount === 1 ? "s" : ""} your attention today.`
+        : recentCheckIns.length > 0
+          ? `${recentCheckIns.length} check-in${recentCheckIns.length === 1 ? "" : "s"} in the last 7 days — browse anytime.`
           : "You're all caught up. Quiet day ahead.";
 
   if (booting) return <DashboardSkeleton />;
@@ -559,40 +517,43 @@ export function Dashboard({
           <p className="text-balance mt-1.5 max-w-xl text-[13px] leading-6 text-mist-400">{contextLine}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          {primaryIsReview ? (
-            <>
-              <button className={`${btnPrimary} ${btnSm} !min-h-[38px]`} onClick={() => go("checkins")}>
-                <Camera className="h-3.5 w-3.5" /> Review check-ins
-                {pendingCheckIns.length > 0 && (
-                  <span className="rounded-full bg-night-950/15 px-1.5 py-0.5 text-[11px] font-extrabold leading-4 tnum">
-                    {pendingCheckIns.length}
-                  </span>
-                )}
-              </button>
-              <button className={`${btnSecondary} ${btnSm} !min-h-[38px]`} onClick={() => setSessionModal(true)}>
-                <CalendarDays className="h-3.5 w-3.5" /> Add session
-              </button>
-              <button className={`${btnSecondary} ${btnSm} !min-h-[38px]`} onClick={() => setClientModal(true)}>
-                <Plus className="h-3.5 w-3.5" strokeWidth={2.6} /> New client
-              </button>
-            </>
-          ) : (
-            <>
-              <button className={`${btnSecondary} ${btnSm} !min-h-[38px]`} onClick={() => setSessionModal(true)}>
-                <CalendarDays className="h-3.5 w-3.5" /> Add session
-              </button>
-              <button className={`${btnSecondary} ${btnSm} !min-h-[38px]`} onClick={() => openRecordPayment(null)}>
-                <Wallet className="h-3.5 w-3.5" /> Add payment
-              </button>
-              <button className={`${btnPrimary} ${btnSm} !min-h-[38px]`} onClick={() => setClientModal(true)}>
-                <Plus className="h-3.5 w-3.5" strokeWidth={2.6} /> New client
-              </button>
-            </>
-          )}
+          <button className={`${btnSecondary} ${btnSm} !min-h-[38px]`} onClick={() => go("checkins")}>
+            <Camera className="h-3.5 w-3.5" /> View check-ins
+            {recentCheckIns.length > 0 && (
+              <span className="rounded-full bg-white/[0.08] px-1.5 py-0.5 text-[11px] font-extrabold leading-4 tnum">
+                {recentCheckIns.length}
+              </span>
+            )}
+          </button>
+          <button className={`${btnSecondary} ${btnSm} !min-h-[38px]`} onClick={() => setSessionModal(true)}>
+            <CalendarDays className="h-3.5 w-3.5" /> Add session
+          </button>
+          <button className={`${btnSecondary} ${btnSm} !min-h-[38px]`} onClick={() => openRecordPayment(null)}>
+            <Wallet className="h-3.5 w-3.5" /> Add payment
+          </button>
+          <button className={`${btnPrimary} ${btnSm} !min-h-[38px]`} onClick={() => setClientModal(true)}>
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.6} /> New client
+          </button>
         </div>
       </header>
 
-      {/* 2 — action center (2:1 on desktop, stacked on tablet/mobile) */}
+      {/* 2 — KPI stats first (Active → Sessions → Check-ins → Payments) */}
+      <KpiRow
+        recentCount={recentCheckIns.length}
+        sessionsCount={todaySessions.length}
+        nextSessionLabel={nextSession ? fmtTime(nextSession.time) : null}
+        activeCount={activeClients.length}
+        totalCount={state.clients.length}
+        attentionCount={attentionCount}
+        outstandingTotal={outstanding.total}
+        outstandingCount={outstanding.count}
+        onViewCheckins={() => go("checkins")}
+        onAddSession={() => setSessionModal(true)}
+        onViewRoster={() => openClientsWithFilter("Active")}
+        onCollect={() => openRecordPayment(null)}
+      />
+
+      {/* 3 — action center (2:1 on desktop, stacked on tablet/mobile) */}
       <div className="grid items-start gap-4 lg:gap-5 xl:grid-cols-3">
         <NeedsAttentionCard
           alerts={alerts}
@@ -611,41 +572,32 @@ export function Dashboard({
         />
       </div>
 
-      {/* 3 — operational KPI row (4) */}
-      <KpiRow
-        pendingCount={pendingCheckIns.length}
-        overdueCount={overduePendingCount}
-        sessionsCount={todaySessions.length}
-        nextSessionLabel={nextSession ? fmtTime(nextSession.time) : null}
-        activeCount={activeClients.length}
-        totalCount={state.clients.length}
-        attentionCount={attentionCount}
-        outstandingTotal={outstanding.total}
-        outstandingCount={outstanding.count}
-        onReviewCheckins={() => go("checkins")}
-        onAddSession={() => setSessionModal(true)}
-        onViewRoster={() => openClientsWithFilter("Active")}
-        onCollect={() => openRecordPayment(null)}
-      />
-
-      {/* 4 — clients to review */}
-      <ClientsToReviewCard rows={reviewRows} totalClients={state.clients.length} onAddClient={() => setClientModal(true)} onOpenCheckins={() => go("checkins")} />
+      {/* 4 — clients to review + recent activity side-by-side (3:2 on desktop).
+          Both are collapsible with a 2-row compact preview to save vertical space. */}
+      <div className="grid items-start gap-4 lg:gap-5 xl:grid-cols-5">
+        <ClientsToReviewCard
+          rows={reviewRows}
+          totalClients={state.clients.length}
+          onAddClient={() => setClientModal(true)}
+          onOpenCheckins={() => go("checkins")}
+          className="xl:col-span-3"
+        />
+        <RecentActivityCard activity={activity} onOpen={(id) => go("client", id)} className="xl:col-span-2" />
+      </div>
 
       {/* secondary progress (only when meaningful) */}
       <SecondaryProgress checkIns={state.checkIns} clients={state.clients} go={go} />
 
-      {/* 5 + 6 — business health + recent activity (60:40 on desktop, stacked below) */}
-      <div className="grid items-start gap-4 lg:gap-5 xl:grid-cols-5">
-        <BusinessHealthCard
-          clients={state.clients}
-          revenueMonth={revenueMonth}
-          revenuePrev={revenuePrev}
-          outstanding={outstanding}
-          forecast={forecast}
-          openClients={openClientsWithFilter}
-        />
-        <RecentActivityCard activity={activity} onOpen={(id) => go("client", id)} />
-      </div>
+      {/* 5 — business health (full width now that activity moved up — chart breathes) */}
+      <BusinessHealthCard
+        clients={state.clients}
+        revenueMonth={revenueMonth}
+        revenuePrev={revenuePrev}
+        outstanding={outstanding}
+        forecast={forecast}
+        openClients={openClientsWithFilter}
+        className="w-full"
+      />
 
       {/* 7 — compact plan usage */}
       <CompactPlanUsage
@@ -685,6 +637,11 @@ function NeedsAttentionCard({
   onReviewAll: () => void;
   onOpenClient: (id: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const hasAlerts = alerts.length > 0;
+  // Collapsed = compact preview (first 2). Expanded = full list with scroll.
+  const visible = open ? alerts : alerts.slice(0, 2);
+  const hiddenCount = alerts.length - visible.length;
   return (
     <CardShell
       label="Needs Attention"
@@ -693,6 +650,9 @@ function NeedsAttentionCard({
       className="xl:col-span-2"
       count={alerts.length > 0 ? alerts.length : "clear"}
       countTone={alerts.length > 0 ? "bg-danger-500/15 text-danger-300 ring-danger-500/20" : "bg-moss-400/10 text-moss-300 ring-moss-400/20"}
+      collapsible={hasAlerts}
+      open={open}
+      onToggle={() => setOpen((v) => !v)}
       action={
         alerts.length > 0 ? (
           <button className={`${btnSecondary} ${btnSm}`} onClick={onReviewAll}>
@@ -712,54 +672,66 @@ function NeedsAttentionCard({
           </div>
         </div>
       ) : (
-        <ul className="divide-y divide-white/[0.06]">
-          {alerts.slice(0, 6).map((a) => (
-            <li key={a.key}>
-              <div className="group flex items-center gap-3 px-5 py-3 transition-colors duration-200 hover:bg-white/[0.025]">
-                <span className="relative grid h-10 w-10 shrink-0 place-items-center">
-                  <Avatar name={a.client.name} photo={a.client.photo} className="h-10 w-10 text-xs" />
-                  <span
-                    className={`absolute -end-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-night-950 ${SEV_DOT[a.severity]} ${a.severity === "high" ? "tick-pulse" : ""}`}
-                    aria-hidden="true"
-                  />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-mist-100">{a.client.name}</p>
-                  <p className="truncate text-[13px] text-mist-400">
-                    <span className={`font-bold ${SEV_TEXT[a.severity]}`}>{a.title}</span>
-                    <span className="text-mist-500"> — {a.detail}</span>
-                  </p>
+        <div>
+          <ul className={`divide-y divide-white/[0.06] ${open && alerts.length > 6 ? "max-h-[380px] overflow-y-auto" : ""}`}>
+            {visible.map((a) => (
+              <li key={a.key}>
+                <div className="group flex items-center gap-3 px-5 py-3 transition-colors duration-200 hover:bg-white/[0.025]">
+                  <span className="relative grid h-10 w-10 shrink-0 place-items-center">
+                    <Avatar name={a.client.name} photo={a.client.photo} className="h-10 w-10 text-xs" />
+                    <span
+                      className={`absolute -end-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-night-950 ${SEV_DOT[a.severity]} ${a.severity === "high" ? "tick-pulse" : ""}`}
+                      aria-hidden="true"
+                    />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-mist-100">{a.client.name}</p>
+                    <p className="truncate text-[13px] text-mist-400">
+                      <span className={`font-bold ${SEV_TEXT[a.severity]}`}>{a.title}</span>
+                      <span className="text-mist-500"> — {a.detail}</span>
+                    </p>
+                  </div>
+                  <span className="hidden shrink-0 rounded-full bg-white/[0.04] px-2 py-0.5 text-[11px] font-bold text-mist-500 sm:inline">
+                    {a.meta}
+                  </span>
+                  <button
+                    className={`${btnSecondary} ${btnSm} !min-h-[36px] shrink-0`}
+                    onClick={a.run}
+                    aria-label={`${a.actionLabel} — ${a.client.name}: ${a.title}`}
+                  >
+                    {a.actionLabel}
+                  </button>
+                  <button
+                    className="hidden shrink-0 cursor-pointer rounded-lg px-1.5 py-1 text-[11px] font-bold text-mist-500 underline-offset-2 hover:text-volt-300 hover:underline xl:inline"
+                    onClick={() => onOpenClient(a.client.id)}
+                  >
+                    Profile
+                  </button>
                 </div>
-                <span className="hidden shrink-0 rounded-full bg-white/[0.04] px-2 py-0.5 text-[11px] font-bold text-mist-500 sm:inline">
-                  {a.meta}
-                </span>
-                <button
-                  className={`${btnSecondary} ${btnSm} !min-h-[36px] shrink-0`}
-                  onClick={a.run}
-                  aria-label={`${a.actionLabel} — ${a.client.name}: ${a.title}`}
-                >
-                  {a.actionLabel}
-                </button>
-                <button
-                  className="hidden shrink-0 cursor-pointer rounded-lg px-1.5 py-1 text-[11px] font-bold text-mist-500 underline-offset-2 hover:text-volt-300 hover:underline xl:inline"
-                  onClick={() => onOpenClient(a.client.id)}
-                >
-                  Profile
-                </button>
-              </div>
-            </li>
-          ))}
-          {alerts.length > 6 && (
-            <li className="px-5 py-2.5 text-center">
+              </li>
+            ))}
+          </ul>
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setOpen(true)}
+              className="flex w-full cursor-pointer items-center justify-center gap-1 border-t border-white/[0.06] bg-white/[0.015] px-5 py-2.5 text-xs font-bold text-mist-400 transition hover:bg-white/[0.03] hover:text-volt-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-volt-400/50"
+              aria-label={`Show ${hiddenCount} more alerts`}
+            >
+              + {hiddenCount} more — tap to expand
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          )}
+          {open && alerts.length > 6 && (
+            <div className="border-t border-white/[0.06] px-5 py-2.5 text-center">
               <button
                 className="cursor-pointer rounded-lg px-2 py-1 text-xs font-bold text-mist-400 transition hover:text-volt-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50"
                 onClick={onReviewAll}
               >
-                + {alerts.length - 6} more in the clients list
+                Open full list in clients
               </button>
-            </li>
+            </div>
           )}
-        </ul>
+        </div>
       )}
     </CardShell>
   );
@@ -897,30 +869,37 @@ function ClientsToReviewCard({
   totalClients,
   onAddClient,
   onOpenCheckins,
+  className = "",
 }: {
   rows: ReviewRow[];
   totalClients: number;
   onAddClient: () => void;
   onOpenCheckins: () => void;
+  className?: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const hasRows = rows.length > 0;
+  const visible = open ? rows : rows.slice(0, 2);
+  const hiddenCount = rows.length - visible.length;
+  const isEmpty = totalClients === 0 || rows.length === 0;
   return (
-    <section
-      aria-label="Clients to review"
-      className="rise overflow-hidden rounded-2xl border border-white/[0.07] bg-night-900/60 shadow-sm backdrop-blur-xl"
-      style={{ animationDelay: "100ms" }}
-    >
-      <header className="flex items-center gap-2 border-b border-white/[0.06] px-5 py-3.5">
-        <span className="icon-tile h-8 w-8" aria-hidden="true">
-          <Users className="h-4 w-4" />
-        </span>
-        <h2 className="truncate text-sm font-bold tracking-tight text-mist-100">Clients to Review</h2>
-        <span className="shrink-0 rounded-full bg-white/[0.05] px-2 py-0.5 text-xs font-bold text-mist-400 tnum">{rows.length}</span>
-        {rows.length > 0 && (
-          <button className={`${btnSecondary} ${btnSm} ms-auto`} onClick={onOpenCheckins}>
+    <CardShell
+      label="Clients to Review"
+      icon={<Users className="h-4 w-4" />}
+      delay={100}
+      className={className}
+      count={rows.length}
+      collapsible={!isEmpty}
+      open={open}
+      onToggle={() => setOpen((v) => !v)}
+      action={
+        rows.length > 0 ? (
+          <button className={`${btnSecondary} ${btnSm}`} onClick={onOpenCheckins}>
             Open check-ins <ArrowRight className="h-3.5 w-3.5 rtl:rotate-180" />
           </button>
-        )}
-      </header>
+        ) : undefined
+      }
+    >
       {totalClients === 0 ? (
         <div className="grid place-items-center px-5 py-8 text-center">
           <div>
@@ -945,37 +924,49 @@ function ClientsToReviewCard({
           </div>
         </div>
       ) : (
-        <ul className="divide-y divide-white/[0.06]">
-          {rows.map((r) => (
-            <li key={r.client.id}>
-              <div className="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-white/[0.025]">
-                <button
-                  className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-xl text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50"
-                  onClick={r.run}
-                  aria-label={`${r.client.name} — ${r.reason}. ${r.lastActivity}`}
-                >
-                  <Avatar name={r.client.name} photo={r.client.photo} className="h-9 w-9 text-[11px]" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-bold text-mist-100 transition-colors group-hover:text-volt-200">{r.client.name}</span>
-                    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-                      <span className={`inline-flex items-center gap-1.5 font-bold ${SEV_TEXT[r.reasonTone]}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${SEV_DOT[r.reasonTone]}`} aria-hidden="true" />
-                        {r.reason}
+        <div>
+          <ul className={`divide-y divide-white/[0.06] ${open && rows.length > 6 ? "max-h-[380px] overflow-y-auto" : ""}`}>
+            {visible.map((r) => (
+              <li key={r.client.id}>
+                <div className="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-white/[0.025]">
+                  <button
+                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-xl text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50"
+                    onClick={r.run}
+                    aria-label={`${r.client.name} — ${r.reason}. ${r.lastActivity}`}
+                  >
+                    <Avatar name={r.client.name} photo={r.client.photo} className="h-9 w-9 text-[11px]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-bold text-mist-100 transition-colors group-hover:text-volt-200">{r.client.name}</span>
+                      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                        <span className={`inline-flex items-center gap-1.5 font-bold ${SEV_TEXT[r.reasonTone]}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${SEV_DOT[r.reasonTone]}`} aria-hidden="true" />
+                          {r.reason}
+                        </span>
+                        <span className="font-medium text-mist-500">{r.lastActivity}</span>
                       </span>
-                      <span className="font-medium text-mist-500">{r.lastActivity}</span>
                     </span>
-                  </span>
-                  <span className="hidden shrink-0 text-[11px] font-bold text-mist-500 md:inline">{r.status}</span>
-                </button>
-                <button className={`${btnSecondary} ${btnSm} !min-h-[36px] shrink-0`} onClick={r.run} aria-label={`${r.actionLabel} — ${r.client.name}`}>
-                  {r.actionLabel}
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+                    <span className="hidden shrink-0 text-[11px] font-bold text-mist-500 md:inline">{r.status}</span>
+                  </button>
+                  <button className={`${btnSecondary} ${btnSm} !min-h-[36px] shrink-0`} onClick={r.run} aria-label={`${r.actionLabel} — ${r.client.name}`}>
+                    {r.actionLabel}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setOpen(true)}
+              className="flex w-full cursor-pointer items-center justify-center gap-1 border-t border-white/[0.06] bg-white/[0.015] px-5 py-2.5 text-xs font-bold text-mist-400 transition hover:bg-white/[0.03] hover:text-volt-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-volt-400/50"
+              aria-label={`Show ${hiddenCount} more clients`}
+            >
+              + {hiddenCount} more — tap to expand
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          )}
+        </div>
       )}
-    </section>
+    </CardShell>
   );
 }
 
@@ -1153,6 +1144,7 @@ function BusinessHealthCard({
   outstanding,
   forecast,
   openClients,
+  className = "",
 }: {
   clients: Client[];
   revenueMonth: number;
@@ -1160,6 +1152,7 @@ function BusinessHealthCard({
   outstanding: { total: number; count: number };
   forecast: RevenueForecast;
   openClients: (f: "Active" | "Expiring Soon" | "Expired") => void;
+  className?: string;
 }) {
   const { state } = useApp();
   const today = todayISO();
@@ -1193,7 +1186,7 @@ function BusinessHealthCard({
   return (
     <section
       aria-label="Business health"
-      className="rise flex h-full flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-night-900/60 shadow-sm backdrop-blur-xl xl:col-span-3"
+      className={`rise flex h-full flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-night-900/60 shadow-sm backdrop-blur-xl ${className}`}
       style={{ animationDelay: "140ms" }}
     >
       <header className="flex items-center gap-2 border-b border-white/[0.06] px-5 py-3.5">
@@ -1203,93 +1196,94 @@ function BusinessHealthCard({
         <h2 className="truncate text-sm font-bold tracking-tight text-mist-100">Business Health</h2>
         <span className="ms-auto hidden shrink-0 text-[11px] font-semibold text-mist-500 sm:inline">revenue · plans · dues</span>
       </header>
-      <div className="px-5 pt-4">
-        <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">Revenue · this month</p>
-            <p className="mt-1 text-[30px] font-extrabold leading-8 tracking-tight text-mist-100 tnum">
-              {fmtMoney(revenueMonth)} <span className="text-sm font-bold text-mist-500">EGP</span>
-            </p>
-          </div>
-          {revenuePrev > 0 ? (
-            <span className={`mb-1 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold tnum ring-1 ${diff >= 0 ? "bg-moss-400/10 text-moss-300 ring-moss-400/20" : "bg-danger-500/10 text-danger-300 ring-danger-500/20"}`}>
-              {diff >= 0 ? "+" : ""}{fmtMoney(diff)} vs last mo
-            </span>
-          ) : (
-            <span className="mb-1 text-[11px] font-semibold text-mist-500">no payments last month</span>
-          )}
-        </div>
-        {hasRevenue ? (
-          <>
-            <div className="mt-3 flex items-end gap-2" role="img" aria-label={`Weekly revenue, last 6 weeks. This month ${fmtMoney(revenueMonth)} EGP.`}>
-              {weeks.map((w, i) => (
-                <div key={w.start} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-                  <span className={`text-[11px] font-bold tnum ${w.total > 0 ? "text-mist-300" : "text-white/20"}`}>
-                    {w.total > 0 ? `${Math.round(w.total / 100) / 10}k` : ""}
-                  </span>
-                  <div className="flex h-14 w-full items-end" title={`Week of ${fmtDate(w.start)}: ${fmtMoney(w.total)} EGP`}>
-                    <div
-                      className={`bar-grow w-full rounded-t-[5px] ${w.current ? "bg-volt-400" : w.total > 0 ? "bg-moss-600" : "bg-white/[0.07]"}`}
-                      style={{ height: w.total > 0 ? `${Math.max(8, (w.total / weekMax) * 100)}%` : "4px", animationDelay: `${i * 60}ms` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-            <p className="mt-1.5 text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-mist-500">last 6 weeks · paid only</p>
-          </>
-        ) : (
-          <p className="mt-2 rounded-xl border border-dashed border-white/10 bg-white/[0.015] px-3 py-2.5 text-center text-xs text-mist-500">
-            No revenue yet — recorded payments will build this trend.
-          </p>
-        )}
-      </div>
-      <div className="mx-5 my-3.5 border-t border-white/[0.06]" />
-      <div className="grid flex-1 grid-cols-3 gap-2 px-5 pb-5">
-        <SubCount label="Active" value={counts.Active} tone="text-moss-300" filter="Active" openClients={openClients} />
-        <SubCount label="Expiring" value={counts["Expiring Soon"]} tone="text-warn-300" filter="Expiring Soon" openClients={openClients} />
-        <SubCount label="Expired" value={counts.Expired} tone="text-danger-300" filter="Expired" openClients={openClients} />
-      </div>
-      <div className="mx-5 border-t border-white/[0.06]" />
-      <div className="px-5 py-4">
-        <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
-          <div className="flex items-center gap-2.5">
-            <span className="icon-tile h-9 w-9 shrink-0" aria-hidden="true">
-              <TrendingUp className="h-4 w-4" />
-            </span>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">Forecast · {forecast.nextMonthLabel}</p>
-              <p className="mt-0.5 text-xs font-semibold text-mist-400">
-                {forecast.renewalsDue > 0 ? (
-                  <>{forecast.renewalsDue} renewal{forecast.renewalsDue === 1 ? "" : "s"} · {fmtMoney(forecast.renewalValue)} EGP expected</>
-                ) : (
-                  <>No renewals due</>
-                )}
-                {forecast.prepaid > 0 && <> · {fmtMoney(forecast.prepaid)} EGP prepaid</>}
+      <div className="grid flex-1 gap-0 lg:grid-cols-2">
+        <div className="px-5 pt-4 lg:border-e lg:border-white/[0.06] lg:pb-5">
+          <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">Revenue · this month</p>
+              <p className="mt-1 text-[30px] font-extrabold leading-8 tracking-tight text-mist-100 tnum">
+                {fmtMoney(revenueMonth)} <span className="text-sm font-bold text-mist-500">EGP</span>
               </p>
             </div>
+            {revenuePrev > 0 ? (
+              <span className={`mb-1 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold tnum ring-1 ${diff >= 0 ? "bg-moss-400/10 text-moss-300 ring-moss-400/20" : "bg-danger-500/10 text-danger-300 ring-danger-500/20"}`}>
+                {diff >= 0 ? "+" : ""}{fmtMoney(diff)} vs last mo
+              </span>
+            ) : (
+              <span className="mb-1 text-[11px] font-semibold text-mist-500">no payments last month</span>
+            )}
           </div>
-          <p className="text-[26px] font-extrabold leading-8 tracking-tight text-mist-100 tnum">
-            {fmtMoney(forecast.projected)} <span className="text-sm font-bold text-mist-500">EGP</span>
-          </p>
+          {hasRevenue ? (
+            <>
+              <div className="mt-3 flex items-end gap-2" role="img" aria-label={`Weekly revenue, last 6 weeks. This month ${fmtMoney(revenueMonth)} EGP.`}>
+                {weeks.map((w, i) => (
+                  <div key={w.start} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                    <span className={`text-[11px] font-bold tnum ${w.total > 0 ? "text-mist-300" : "text-white/20"}`}>
+                      {w.total > 0 ? `${Math.round(w.total / 100) / 10}k` : ""}
+                    </span>
+                    <div className="flex h-14 w-full items-end" title={`Week of ${fmtDate(w.start)}: ${fmtMoney(w.total)} EGP`}>
+                      <div
+                        className={`bar-grow w-full rounded-t-[5px] ${w.current ? "bg-volt-400" : w.total > 0 ? "bg-moss-600" : "bg-white/[0.07]"}`}
+                        style={{ height: w.total > 0 ? `${Math.max(8, (w.total / weekMax) * 100)}%` : "4px", animationDelay: `${i * 60}ms` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-1.5 text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-mist-500">last 6 weeks · paid only</p>
+            </>
+          ) : (
+            <p className="mt-2 rounded-xl border border-dashed border-white/10 bg-white/[0.015] px-3 py-2.5 text-center text-xs text-mist-500">
+              No revenue yet — recorded payments will build this trend.
+            </p>
+          )}
+          <div className="my-3.5 border-t border-white/[0.06]" />
+          <div className="grid grid-cols-3 gap-2">
+            <SubCount label="Active" value={counts.Active} tone="text-moss-300" filter="Active" openClients={openClients} />
+            <SubCount label="Expiring" value={counts["Expiring Soon"]} tone="text-warn-300" filter="Expiring Soon" openClients={openClients} />
+            <SubCount label="Expired" value={counts.Expired} tone="text-danger-300" filter="Expired" openClients={openClients} />
+          </div>
         </div>
-        {forecast.endingSoon > 0 ? (
-          <button
-            onClick={() => openClients("Expiring Soon")}
-            className="mt-2.5 flex w-full cursor-pointer items-center gap-1.5 rounded-xl border border-warn-400/20 bg-warn-400/[0.05] px-3.5 py-2 text-start text-xs font-semibold text-mist-400 transition hover:border-warn-400/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50"
-          >
-            <CalendarDays className="h-3.5 w-3.5 shrink-0 text-warn-300" aria-hidden="true" />
-            <span>
-              <span className="font-extrabold text-warn-300 tnum">{forecast.endingSoon} ending in 30 days</span>
-              {" · "}{fmtMoney(forecast.endingSoonValue)} EGP renewal pipeline — renew now to lock it in
-            </span>
-          </button>
-        ) : (
-          <p className="mt-2.5 rounded-xl border border-dashed border-white/10 bg-white/[0.015] px-3 py-2.5 text-center text-xs text-mist-500">
-            No subscriptions ending in the next 30 days — nothing urgent in the pipeline.
-          </p>
-        )}
-        <p className="mt-2 text-[10.5px] font-medium text-mist-500/80">Estimate — assumes renewals at the same price, plus prepayments.</p>
+        <div className="border-t border-white/[0.06] px-5 py-4 lg:border-t-0">
+          <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
+            <div className="flex items-center gap-2.5">
+              <span className="icon-tile h-9 w-9 shrink-0" aria-hidden="true">
+                <TrendingUp className="h-4 w-4" />
+              </span>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">Forecast · {forecast.nextMonthLabel}</p>
+                <p className="mt-0.5 text-xs font-semibold text-mist-400">
+                  {forecast.renewalsDue > 0 ? (
+                    <>{forecast.renewalsDue} renewal{forecast.renewalsDue === 1 ? "" : "s"} · {fmtMoney(forecast.renewalValue)} EGP expected</>
+                  ) : (
+                    <>No renewals due</>
+                  )}
+                  {forecast.prepaid > 0 && <> · {fmtMoney(forecast.prepaid)} EGP prepaid</>}
+                </p>
+              </div>
+            </div>
+            <p className="text-[26px] font-extrabold leading-8 tracking-tight text-mist-100 tnum">
+              {fmtMoney(forecast.projected)} <span className="text-sm font-bold text-mist-500">EGP</span>
+            </p>
+          </div>
+          {forecast.endingSoon > 0 ? (
+            <button
+              onClick={() => openClients("Expiring Soon")}
+              className="mt-2.5 flex w-full cursor-pointer items-center gap-1.5 rounded-xl border border-warn-400/20 bg-warn-400/[0.05] px-3.5 py-2 text-start text-xs font-semibold text-mist-400 transition hover:border-warn-400/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50"
+            >
+              <CalendarDays className="h-3.5 w-3.5 shrink-0 text-warn-300" aria-hidden="true" />
+              <span>
+                <span className="font-extrabold text-warn-300 tnum">{forecast.endingSoon} ending in 30 days</span>
+                {" · "}{fmtMoney(forecast.endingSoonValue)} EGP renewal pipeline — renew now to lock it in
+              </span>
+            </button>
+          ) : (
+            <p className="mt-2.5 rounded-xl border border-dashed border-white/10 bg-white/[0.015] px-3 py-2.5 text-center text-xs text-mist-500">
+              No subscriptions ending in the next 30 days — nothing urgent in the pipeline.
+            </p>
+          )}
+          <p className="mt-2 text-[10.5px] font-medium text-mist-500/80">Estimate — assumes renewals at the same price, plus prepayments.</p>
+        </div>
       </div>
       <div className="border-t border-white/[0.06] bg-white/[0.015] px-5 py-3">
         {outstanding.count > 0 ? (
@@ -1343,22 +1337,27 @@ function SubCount({
 function RecentActivityCard({
   activity,
   onOpen,
+  className = "",
 }: {
   activity: { key: string; clientId: string; ts: number; kind: "checkin" | "subscription" | "payment" | "client" | "session"; text: string; meta: string }[];
   onOpen: (id: string) => void;
+  className?: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const hasActivity = activity.length > 0;
+  const visible = open ? activity : activity.slice(0, 2);
+  const hiddenCount = activity.length - visible.length;
   return (
-    <section
-      aria-label="Recent activity"
-      className="rise flex h-full flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-night-900/60 shadow-sm backdrop-blur-xl xl:col-span-2"
-      style={{ animationDelay: "180ms" }}
+    <CardShell
+      label="Recent Activity"
+      icon={<Clock className="h-4 w-4" />}
+      delay={180}
+      className={className}
+      count={activity.length > 0 ? activity.length : undefined}
+      collapsible={hasActivity}
+      open={open}
+      onToggle={() => setOpen((v) => !v)}
     >
-      <header className="flex items-center gap-2 border-b border-white/[0.06] px-5 py-3.5">
-        <span className="icon-tile h-8 w-8" aria-hidden="true">
-          <Clock className="h-4 w-4" />
-        </span>
-        <h2 className="text-sm font-bold tracking-tight text-mist-100">Recent Activity</h2>
-      </header>
       {activity.length === 0 ? (
         <div className="grid flex-1 place-items-center px-5 py-8 text-center">
           <div>
@@ -1367,8 +1366,9 @@ function RecentActivityCard({
           </div>
         </div>
       ) : (
-        <ul className="flex-1 divide-y divide-white/[0.05] px-2 py-1.5">
-          {activity.map((ev) => (
+        <div>
+          <ul className="flex-1 divide-y divide-white/[0.05] px-2 py-1.5">
+            {visible.map((ev) => (
             <li key={ev.key}>
               <button
                 className="group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-start transition-colors duration-200 hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50"
@@ -1409,9 +1409,20 @@ function RecentActivityCard({
               </button>
             </li>
           ))}
-        </ul>
+          </ul>
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setOpen(true)}
+              className="flex w-full cursor-pointer items-center justify-center gap-1 border-t border-white/[0.06] bg-white/[0.015] px-5 py-2.5 text-xs font-bold text-mist-400 transition hover:bg-white/[0.03] hover:text-volt-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-volt-400/50"
+              aria-label={`Show ${hiddenCount} more activities`}
+            >
+              + {hiddenCount} more — tap to expand
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          )}
+        </div>
       )}
-    </section>
+    </CardShell>
   );
 }
 

@@ -26,7 +26,7 @@ import { Reveal, SectionShell } from "./Reveal";
 
 const TITLE = "Coach Mode — VERRAA: Dashboard, Clients, Plans & Payments";
 const DESC =
-  "Explore VERRAA Coach Mode: a command-center dashboard, client roster, check-in inbox, workout plans, nutrition, sessions, payments and direct client chat.";
+  "Explore VERRAA Coach Mode: a command-center dashboard, client roster, check-in feed, workout plans, nutrition, sessions, payments and direct client chat.";
 
 const FEATURES = [
   {
@@ -41,8 +41,8 @@ const FEATURES = [
   },
   {
     icon: Camera,
-    title: "Check-In Inbox",
-    text: "Every check-in lands oldest-first with photos, weight, mood and notes. Review in minutes — nothing rots in a chat thread.",
+    title: "Check-In Feed",
+    text: "Every check-in lands oldest-first with photos, weight, mood and notes. Browse anytime — no review queue, nothing rots in a chat thread.",
   },
   {
     icon: ClipboardList,

@@ -27,6 +27,8 @@ export function OwnerRequestsView() {
   const history = useMemo(() => requests.filter((r) => r.status !== "PENDING"), [requests]);
 
   const coachOf = (coachId: string) => (state.coaches ?? []).find((c) => c.id === coachId);
+  const rosterOf = (coachId: string) => (state.clients ?? []).filter((c) => c.coachId === coachId);
+  const loginCountOf = (coachId: string) => rosterOf(coachId).filter((c) => c.hasLogin).length;
   const currentPlanOf = (coachId: string) => {
     const subs = (state.coachSubscriptions ?? []).filter((s) => s.coachId === coachId);
     const latest = [...subs].sort(
@@ -96,6 +98,10 @@ export function OwnerRequestsView() {
               const coach = coachOf(r.coachId);
               const current = currentPlanOf(r.coachId);
               const busy = busyId === r.id;
+              const targetId = normalizeCoachPlanId(r.requestedPlan);
+              const rosterCount = rosterOf(r.coachId).length;
+              const loginCount = loginCountOf(r.coachId);
+              const freezes = targetId === "STARTER" && loginCount > 0;
               return (
                 <article
                   key={r.id}
@@ -115,6 +121,15 @@ export function OwnerRequestsView() {
                         {current ? <>{getPlanById(plans, current).name} <span className="text-mist-500">→</span> </> : null}
                         <span className="font-extrabold text-volt-300">{planLabel(r.requestedPlan)}</span>
                       </p>
+                      <p className="mt-1 text-[11px] font-semibold text-mist-500">
+                        {rosterCount} client{rosterCount === 1 ? "" : "s"} · {loginCount} login{loginCount === 1 ? "" : "s"}
+                        {targetId === "STARTER" ? " · No Client Mode (manual)" : targetId ? " · Client Mode included" : ""}
+                      </p>
+                      {freezes && (
+                        <p role="note" className="mt-1.5 rounded-xl border border-danger-500/25 bg-danger-500/[0.07] px-3 py-2 text-[12px] font-bold leading-5 text-danger-300">
+                          {loginCount} login{loginCount === 1 ? "" : "s"} will freeze on Starter (No Client Mode) — data is kept, the client app pauses until upgrade.
+                        </p>
+                      )}
                       {r.note && (
                         <p className="mt-1.5 rounded-xl bg-white/[0.03] px-3 py-2 text-[13px] leading-5 text-mist-400 ring-1 ring-white/[0.06]">
                           “{r.note}”

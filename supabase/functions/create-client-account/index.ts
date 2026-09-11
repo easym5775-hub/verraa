@@ -150,6 +150,17 @@ serve(async (req) => {
     } else {
       planId = "FREE"; // no subscription -> FREE trial default for new coaches
     }
+    // --- SERVER-SIDE Client Mode gate (authoritative) ---
+    // STARTER has No Client Mode: new logins are blocked. Coach-managed
+    // creation (createLogin=false) always passes. Legacy unknown plans
+    // preserve existing behaviour (allow). Downgrades that freeze existing
+    // logins are allowed — only NEW logins are blocked here.
+    if (createLogin && planId === "STARTER") {
+      return json(
+        { error: "CLIENT_MODE_NOT_ALLOWED: Your Starter plan has No Client Mode. Clients stay coach-managed (you log progress manually). Upgrade to Professional for Client Mode + auto tracking." },
+        403,
+      );
+    }
     if (planId && planId !== "__LEGACY__") {
       const { data: planRow } = await admin
         .from("coach_plans")
@@ -262,6 +273,29 @@ serve(async (req) => {
     if (!row) return json({ error: "Client not found." }, 404);
     if ((row as { has_login?: boolean }).has_login !== false) {
       return json({ error: "This client already has a login." }, 400);
+    }
+
+    // --- SERVER-SIDE Client Mode gate (authoritative) ---
+    // Upgrading a coach-managed client to a login on Starter is blocked.
+    {
+      const { data: latestSub } = await admin
+        .from("coach_subscriptions")
+        .select("plan_name")
+        .eq("coach_id", coachId)
+        .order("end_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const norm = String(latestSub?.plan_name ?? "").trim().toUpperCase().replace(/[\s_-]+/g, "");
+      const starterAliases = ["STARTER", "START", "BASIC"];
+      if (latestSub?.plan_name && starterAliases.includes(norm)) {
+        return json(
+          { error: "CLIENT_MODE_NOT_ALLOWED: Your Starter plan has No Client Mode. This client stays coach-managed (you log progress manually). Upgrade to Professional for Client Mode + auto tracking." },
+          403,
+        );
+      }
+      // No subscription -> FREE trial default (allows Client Mode).
+      // Legacy unknown plan names -> preserve existing behaviour (allow).
     }
 
     if (username && !username.endsWith(`.${coachSuffix}`)) {

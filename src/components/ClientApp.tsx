@@ -21,6 +21,7 @@ import {
   Image as ImageIcon,
   LogOut,
   MessageCircle,
+  PauseCircle,
   Pencil,
   Play,
   Scale,
@@ -35,8 +36,10 @@ WEEK_SHORT, WEEK_ORDER_SAT_FIRST, formatDayName, formatDayShort } from "../types
 import { dayNum, fmtDate, fmtMoney, fmtTime, getDayLabelMode, activePlan, clientPlans, mealInPlan, relTime, round1, signed, todayISO } from "../lib";
 import { attendance, currentSubscription, progressOf, remainingLabel, subscriptionState } from "../logic";
 import { useApp } from "../store";
+import { backend } from "../services/backend";
 import { Avatar, Badge, ConfirmModal, Dropdown, EmptyState, Modal, MoodPicker, SectionCard, Toggle, btnPrimary, btnSecondary, btnVolt, chip, inputCls, labelCls, textareaCls, useCountUp } from "./ui";
 import { exportDayImage, exportWeekPdf } from "./nutritionExport";
+import { exportWorkoutDayImage, exportWorkoutWeekPdf } from "./workoutExport";
 import { WeightLine } from "./Chart";
 import { StrengthTracker } from "./StrengthTracker";
 import { PhotoGallery } from "./Photos";
@@ -95,10 +98,60 @@ function DayAdherence({ clientId, date, total }: { clientId: string; date: strin
 
 type Tab = "today" | "training" | "nutrition" | "checkin" | "progress" | "photos" | "chat" | "subscription";
 
+/* ---------------- frozen Client Mode (coach downgraded to Starter) ----------------
+   The login still exists and all data is safe — but the coach's plan has
+   No Client Mode, so the app stays paused until they upgrade. Status comes
+   from the authoritative `my_client_mode_status` RPC (null = legacy/unknown
+   backend → treat as not frozen to preserve old behavior). */
+
+function ClientFrozenScreen({ clientName, onLogout }: { clientName: string; onLogout: () => void }) {
+  return (
+    <div className="relative grid min-h-screen place-items-center p-6">
+      <div className="app-glow pointer-events-none fixed inset-0" />
+      <div className="rise w-full max-w-md rounded-[24px] border border-danger-500/25 bg-night-900/70 p-8 text-center backdrop-blur-xl">
+        <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-danger-500/30 bg-danger-500/10 text-danger-300">
+          <PauseCircle className="h-7 w-7" />
+        </span>
+        <h1 className="mt-4 font-display text-2xl font-bold uppercase tracking-tight text-mist-100">
+          Client Mode <span className="text-danger-300">paused</span>
+        </h1>
+        <p className="mt-2 text-sm font-semibold leading-6 text-mist-300">
+          Hi {clientName.split(" ")[0]} — your coach&apos;s plan doesn&apos;t include Client Mode right now,
+          so progress is tracked manually by your coach.
+        </p>
+        <p className="mt-1.5 text-[13px] font-medium leading-5 text-mist-500">
+          Nothing is deleted. Your app reopens automatically once your coach upgrades to Professional.
+        </p>
+        <button className={`${btnPrimary} mt-5 w-full`} onClick={onLogout}>
+          <LogOut className="h-4 w-4" /> Back to sign in
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function ClientApp({ onLogout }: { onLogout: () => void }) {
   const { state, me, markAllNotificationsRead } = useApp();
   const [tab, setTab] = useState<Tab>("today");
   const [bellOpen, setBellOpen] = useState(false);
+  const [modeFrozen, setModeFrozen] = useState(false);
+
+  // Authoritative freeze check — the coach may have downgraded to Starter
+  // (No Client Mode) after this login was created.
+  useEffect(() => {
+    let cancelled = false;
+    void backend
+      .getMyClientModeStatus()
+      .then((s) => {
+        if (!cancelled && s?.frozen) setModeFrozen(true);
+      })
+      .catch(() => {
+        /* offline / legacy backend → keep legacy behavior (not frozen) */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const clientId = me?.userId ?? "";
   const client = state.clients.find((c) => c.id === clientId);
@@ -137,6 +190,10 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
         </EmptyState>
       </div>
     );
+  }
+
+  if (modeFrozen) {
+    return <ClientFrozenScreen clientName={client.name} onLogout={onLogout} />;
   }
 
   const tabs: { id: Tab; label: string }[] = [
@@ -1047,6 +1104,9 @@ function TodayTab({
 }) {
   const dn = dayNum();
   const todayPlan = plans.filter((p) => p.day === dn);
+  const { state: appState, toast: appToast } = useApp();
+  const [workoutExportOpen, setWorkoutExportOpen] = useState(false);
+  const clientName = appState.clients.find((c) => c.id === clientId)?.name ?? "My workout";
   // Flexible menus: today shows the picked plan-day, not the calendar day.
   const todayMeals = meals.filter((m) => m.day === (todayPickDay ?? dn));
   const plannedDayNames = useMemo(
@@ -1058,6 +1118,61 @@ function TodayTab({
   );
   const kcal = todayMeals.reduce((s, m) => s + m.calories, 0);
   const exOf = (id: string) => exercises.find((e) => e.id === id);
+
+  /* Workout plan export — same poster system the nutrition tab uses. */
+  const buildWorkoutExportDay = (day: number) => {
+    const list = plans
+      .filter((p) => p.day === day)
+      .map((p) => {
+        const ex = exOf(p.exerciseId);
+        return {
+          name: ex?.name ?? "Exercise",
+          category: ex?.category,
+          sets: p.sets,
+          reps: p.reps,
+          rest: p.rest,
+          notes: p.notes || undefined,
+          hasVideo: !!ex?.videoUrl,
+        };
+      });
+    return {
+      day,
+      dayName: `Day ${day} · ${WEEK_DAYS[day - 1]}`,
+      items: list,
+      totals: {
+        exercises: list.length,
+        sets: list.reduce((s, x) => s + x.sets, 0),
+        reps: list.reduce((s, x) => s + x.sets * x.reps, 0),
+      },
+    };
+  };
+
+  const handleWorkoutWeekPdf = async () => {
+    const days = WEEK_ORDER_SAT_FIRST.map(buildWorkoutExportDay);
+    if (!days.some((d) => d.items.length > 0)) {
+      appToast("No workout planned yet", "warn");
+      return;
+    }
+    appToast("Preparing PDF…");
+    try {
+      await exportWorkoutWeekPdf({ clientName, planName: "Weekly split" }, days);
+    } catch {
+      appToast("Couldn't create the PDF", "warn");
+    }
+  };
+
+  const handleWorkoutDayImage = async () => {
+    const d = buildWorkoutExportDay(dn);
+    if (d.items.length === 0) {
+      appToast("No workout programmed for today", "warn");
+      return;
+    }
+    try {
+      await exportWorkoutDayImage({ clientName, planName: "Weekly split" }, d);
+    } catch {
+      appToast("Couldn't create the image", "warn");
+    }
+  };
 
   return (
     <div className="grid gap-3 sm:gap-4">
@@ -1122,7 +1237,37 @@ function TodayTab({
         </SectionCard>
       )}
 
-      <SectionCard title="Today's workout" icon={<Dumbbell className="h-4.5 w-4.5" />} bodyCls="p-2.5 sm:p-3">
+      <SectionCard
+        title="Today's workout"
+        icon={<Dumbbell className="h-4.5 w-4.5" />}
+        bodyCls="p-2.5 sm:p-3"
+        action={
+          todayPlan.length > 0 ? (
+            <Dropdown
+              open={workoutExportOpen}
+              onOpenChange={setWorkoutExportOpen}
+              align="end"
+              label="Export workout plan"
+              trigger={
+                <button
+                  onClick={() => setWorkoutExportOpen((v) => !v)}
+                  aria-haspopup="menu"
+                  aria-expanded={workoutExportOpen}
+                  title="Export your workout as PDF / image"
+                  className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-night-600 bg-night-800 px-3 text-xs font-bold text-mist-300 transition hover:border-warn-400 hover:text-warn-300"
+                >
+                  <FileDown className="h-3.5 w-3.5" />
+                  Export
+                </button>
+              }
+              items={[
+                { type: "item", label: "Week PDF (plan images)", hint: "7 pages", icon: FileText, onClick: () => void handleWorkoutWeekPdf() },
+                { type: "item", label: "Day JPG image", hint: WEEK_SHORT[dn - 1], icon: ImageIcon, onClick: () => void handleWorkoutDayImage() },
+              ]}
+            />
+          ) : undefined
+        }
+      >
         {todayPlan.length === 0 ? (
           <EmptyState icon={<Dumbbell className="h-6 w-6" />} title="Rest day" sub="No session programmed today. Sleep well, eat well, come back stronger tomorrow." />
         ) : (

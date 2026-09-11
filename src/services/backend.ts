@@ -17,6 +17,7 @@ import type {
   CheckIn,
   Client,
   ClientExercise,
+  ClientTodo,
   CoachPlan,
   CoachPlanConfig,
   CoachPlanRequest,
@@ -38,9 +39,10 @@ import type {
   WorkoutTemplate,
 } from "../types";
 import { todayISO } from "../lib";
-import { normalizePriority } from "../types";
+import { normalizeCoachNotes, normalizePriority } from "../types";
 import { rememberAwareStorage, setRemember } from "./remember";
 import {
+  ClientModeError,
   DEFAULT_COACH_PLANS,
   PlanLimitError,
   getCoachPlanConfig,
@@ -152,7 +154,7 @@ export const rowToClient = (r: Row): Client => ({
   photo: r.photo ? String(r.photo) : undefined,
   followUpDays: r.follow_up_days === null || r.follow_up_days === undefined || r.follow_up_days === "" ? undefined : Number(r.follow_up_days),
   lastFollowUp: r.last_follow_up ? String(r.last_follow_up) : undefined,
-  coachNotes: jsonField<Client["coachNotes"]>(r.coach_notes, []),
+  coachNotes: normalizeCoachNotes(jsonField<unknown>(r.coach_notes, [])),
   nutritionTargets: r.nutrition_targets ? jsonField<Client["nutritionTargets"]>(r.nutrition_targets, undefined as unknown as Client["nutritionTargets"]) : undefined,
 });
 
@@ -557,6 +559,15 @@ export const rowToNotification = (r: Row): AppNotification => ({
   read: Boolean(r.read),
 });
 
+export const rowToTodo = (r: Row): ClientTodo => ({
+  id: String(r.id),
+  coachId: String(r.coach_id ?? ""),
+  clientId: String(r.client_id ?? ""),
+  text: String(r.text ?? ""),
+  done: Boolean(r.done),
+  createdAt: typeof r.created_at === "number" ? r.created_at : Date.parse(String(r.created_at ?? "")) || 0,
+});
+
 export interface Coach {
   id: string;
   name: string;
@@ -749,6 +760,12 @@ export interface Backend {
   getCoachClientCount(coachId?: string): Promise<number>;
   /** Pre-check (UX only) — final enforcement is server-side (trigger / edge function). */
   canAddClient(coachId?: string): Promise<{ allowed: boolean; count: number; limit: number | null; planId: CoachPlan | null; reason?: string }>;
+  /**
+   * Client Mode status for the SIGNED-IN client (authoritative, via RPC).
+   * Returns null when unavailable (offline / old backend) — callers treat
+   * null as "not frozen" to preserve legacy behavior.
+   */
+  getMyClientModeStatus(): Promise<{ planId: CoachPlan | null; allowsClientMode: boolean; progressMode: "manual" | "auto"; frozen: boolean } | null>;
   /** Authorized plan change (validates downgrade rule, records history). Owners + self. */
   changeCoachPlan(coachId: string, newPlanId: CoachPlan): Promise<Row>;
   /** Owner subscription controls (extend / activate / suspend / plan edit). */
@@ -1224,6 +1241,28 @@ class SupabaseBackend implements Backend {
     return data as Row;
   }
 
+  async getMyClientModeStatus(): Promise<{ planId: CoachPlan | null; allowsClientMode: boolean; progressMode: "manual" | "auto"; frozen: boolean } | null> {
+    try {
+      const { data, error } = await supabase.rpc("my_client_mode_status");
+      if (error) return null;
+      const row = (Array.isArray(data) ? data[0] : data) as {
+        plan_id?: string | null;
+        allows_client_mode?: boolean;
+        progress_mode?: string;
+        frozen?: boolean;
+      } | null;
+      if (!row) return null;
+      return {
+        planId: normalizeCoachPlanId(row.plan_id ?? null),
+        allowsClientMode: row.allows_client_mode !== false,
+        progressMode: row.progress_mode === "manual" ? "manual" : "auto",
+        frozen: Boolean(row.frozen),
+      };
+    } catch {
+      return null;
+    }
+  }
+
   /* ---------------- Plan requests ---------------- */
 
   async loadPlanRequests(): Promise<CoachPlanRequest[]> {
@@ -1549,6 +1588,14 @@ class SupabaseBackend implements Backend {
     } catch {
       /* older project without the table — not fatal */
     }
+    // Coach to-dos (migration 0026) — same best-effort deal.
+    let todoRows: Row[] = [];
+    try {
+      const res = await supabase.from("client_todos").select("*");
+      if (!res.error) todoRows = (res.data ?? []) as Row[];
+    } catch {
+      /* older project without the table — not fatal */
+    }
     return {
       clients: (clients.data as Row[]).map(rowToClient),
       exercises: (exercises.data as Row[]).map(rowToExercise),
@@ -1572,6 +1619,7 @@ class SupabaseBackend implements Backend {
       mealDayPicks: mealDayPickRows.map(rowToMealDayPick),
       progressPhotos: progressPhotoRows.map(rowToProgressPhoto),
       nutritionPlans: nutritionPlanRows.map(rowToNutritionPlan),
+      todos: todoRows.map(rowToTodo),
     };
   }
 
@@ -1608,6 +1656,10 @@ class SupabaseBackend implements Backend {
       const serverMsg = await functionServerMessage(error);
       // Surface structured limit errors even when the function gateway wraps them.
       const msg = serverMsg ?? error.message ?? "";
+      if (/CLIENT_MODE_NOT_ALLOWED|no client mode/i.test(msg)) {
+        const starter = DEFAULT_COACH_PLANS.find((p) => p.id === "STARTER") ?? DEFAULT_COACH_PLANS[0];
+        throw new ClientModeError(starter);
+      }
       if (/PLAN_LIMIT_REACHED|client limit|maximum.*clients/i.test(msg)) {
         const countM = msg.match(/(\d+)\s*\/\s*(\d+)/);
         if (countM) {
@@ -1622,6 +1674,10 @@ class SupabaseBackend implements Backend {
     const body = data as { ok?: boolean; client?: Row; error?: string };
     if (!body?.ok || !body.client) {
       const msg = body?.error ?? "Couldn't create the client account.";
+      if (/CLIENT_MODE_NOT_ALLOWED|no client mode/i.test(msg)) {
+        const starter = DEFAULT_COACH_PLANS.find((p) => p.id === "STARTER") ?? DEFAULT_COACH_PLANS[0];
+        throw new ClientModeError(starter);
+      }
       if (/PLAN_LIMIT_REACHED|client limit/i.test(msg)) {
         const countM = msg.match(/(\d+)\s*\/\s*(\d+)/);
         if (countM) {
@@ -1669,10 +1725,22 @@ class SupabaseBackend implements Backend {
     }
     if (error) {
       const serverMsg = await functionServerMessage(error);
+      const msg = serverMsg ?? error.message ?? "";
+      if (/CLIENT_MODE_NOT_ALLOWED|no client mode/i.test(msg)) {
+        const starter = DEFAULT_COACH_PLANS.find((p) => p.id === "STARTER") ?? DEFAULT_COACH_PLANS[0];
+        throw new ClientModeError(starter);
+      }
       throw friendlyFunctionError(serverMsg ? new Error(serverMsg) : error);
     }
     const body = data as { ok?: boolean; client?: Row; error?: string };
-    if (!body?.ok || !body.client) throw new Error(body?.error ?? "Couldn't create the login.");
+    if (!body?.ok || !body.client) {
+      const msg = body?.error ?? "Couldn't create the login.";
+      if (/CLIENT_MODE_NOT_ALLOWED|no client mode/i.test(msg)) {
+        const starter = DEFAULT_COACH_PLANS.find((p) => p.id === "STARTER") ?? DEFAULT_COACH_PLANS[0];
+        throw new ClientModeError(starter);
+      }
+      throw new Error(msg);
+    }
     return rowToClient(body.client);
   }
 

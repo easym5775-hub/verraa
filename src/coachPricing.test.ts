@@ -5,6 +5,15 @@ import {
   normalizeCoachPlanId,
   getCoachPlanConfig,
   getPlanById,
+  getPlanFeatureDisplay,
+  planAllowsClientMode,
+  getPlanProgressMode,
+  canCoachUseClientMode,
+  getCoachLoginCount,
+  getCoachFrozenLoginCount,
+  isClientModeError,
+  parseClientModeError,
+  ClientModeError,
   resolveCoachSubscription,
   normalizeSubscriptionStatus,
   effectiveCoachStatus,
@@ -252,5 +261,103 @@ describe("clientUsageLabel", () => {
   });
   it("shows count/limit for limited plans", () => {
     expect(clientUsageLabel(5, 20)).toBe("5 / 20");
+  });
+});
+
+describe("planAllowsClientMode", () => {
+  it("blocks Starter (No Client Mode)", () => {
+    expect(planAllowsClientMode("STARTER")).toBe(false);
+  });
+  it("allows Free trial, Professional and Enterprise", () => {
+    expect(planAllowsClientMode("FREE")).toBe(true);
+    expect(planAllowsClientMode("PROFESSIONAL")).toBe(true);
+    expect(planAllowsClientMode("ENTERPRISE")).toBe(true);
+  });
+});
+
+describe("getPlanProgressMode", () => {
+  it("is manual on Starter, auto elsewhere", () => {
+    expect(getPlanProgressMode("STARTER")).toBe("manual");
+    expect(getPlanProgressMode("FREE")).toBe("auto");
+    expect(getPlanProgressMode("PROFESSIONAL")).toBe("auto");
+    expect(getPlanProgressMode("ENTERPRISE")).toBe("auto");
+  });
+});
+
+describe("getPlanFeatureDisplay", () => {
+  it("marks Starter with No Client Mode (excluded) + manual note", () => {
+    const feats = getPlanFeatureDisplay("STARTER");
+    const noMode = feats.find((f) => f.label === "No Client Mode");
+    expect(noMode?.tone).toBe("excluded");
+    const progress = feats.find((f) => f.label === "Progress Tracking");
+    expect(progress?.note).toMatch(/manually/i);
+  });
+  it("marks Professional/Enterprise with Client Mode Available (highlight) + auto note", () => {
+    for (const id of ["PROFESSIONAL", "ENTERPRISE"] as const) {
+      const feats = getPlanFeatureDisplay(id);
+      const mode = feats.find((f) => f.label === "Client Mode Available");
+      expect(mode?.tone).toBe("highlight");
+      const progress = feats.find((f) => f.label === "Progress Tracking");
+      expect(progress?.note).toMatch(/client mode/i);
+    }
+  });
+  it("gives Enterprise unlimited capacity covering Professional", () => {
+    const feats = getPlanFeatureDisplay("ENTERPRISE");
+    expect(feats[0].label).toMatch(/unlimited/i);
+    expect(feats[0].note).toMatch(/professional/i);
+  });
+});
+
+describe("client mode counts", () => {
+  const mkClients = (logins: number, managed = 0): Client[] => [
+    ...Array.from({ length: logins }, (_, i) => ({
+      id: `l${i}`, coachId: "coach-1", username: `u${i}`, hasLogin: true, priority: "Normal" as const, name: `L ${i}`, email: "", phone: "", goal: "Lose weight" as const, startDate: todayISO(), status: "Active" as const, notes: "", coachNotes: [],
+    })),
+    ...Array.from({ length: managed }, (_, i) => ({
+      id: `m${i}`, coachId: "coach-1", username: "", hasLogin: false, priority: "Normal" as const, name: `M ${i}`, email: "", phone: "", goal: "Lose weight" as const, startDate: todayISO(), status: "Active" as const, notes: "", coachNotes: [],
+    })),
+  ];
+  it("counts only logins for the coach", () => {
+    expect(getCoachLoginCount(mkClients(2, 3), "coach-1")).toBe(2);
+    expect(getCoachLoginCount(mkClients(2, 3), "coach-2")).toBe(0);
+  });
+  it("freezes logins only on No-Client-Mode plans", () => {
+    const clients = mkClients(3, 1);
+    expect(getCoachFrozenLoginCount(clients, DEFAULT_COACH_PLANS, makeSub({ planName: "STARTER" }), "coach-1")).toBe(3);
+    expect(getCoachFrozenLoginCount(clients, DEFAULT_COACH_PLANS, makeSub({ planName: "PROFESSIONAL" }), "coach-1")).toBe(0);
+    expect(getCoachFrozenLoginCount(clients, DEFAULT_COACH_PLANS, makeSub({ planName: "ENTERPRISE" }), "coach-1")).toBe(0);
+  });
+  it("canCoachUseClientMode follows the subscription plan", () => {
+    expect(canCoachUseClientMode(DEFAULT_COACH_PLANS, makeSub({ planName: "STARTER" }))).toBe(false);
+    expect(canCoachUseClientMode(DEFAULT_COACH_PLANS, makeSub({ planName: "PROFESSIONAL" }))).toBe(true);
+    expect(canCoachUseClientMode(DEFAULT_COACH_PLANS, makeSub({ planName: "FREE" }))).toBe(true);
+  });
+});
+
+describe("validatePlanChange client-mode freeze", () => {
+  it("allows Starter downgrade with logins but warns about the freeze", () => {
+    const r = validatePlanChange("PROFESSIONAL", "STARTER", 5, DEFAULT_COACH_PLANS, 2);
+    expect(r.ok).toBe(true);
+    expect(r.freezeLogins).toBe(2);
+    expect(r.freezeWarning).toMatch(/freeze/i);
+  });
+  it("no warning when no logins or target has Client Mode", () => {
+    expect(validatePlanChange("PROFESSIONAL", "STARTER", 5, DEFAULT_COACH_PLANS, 0).freezeWarning).toBeUndefined();
+    expect(validatePlanChange("STARTER", "PROFESSIONAL", 5, DEFAULT_COACH_PLANS, 2).freezeWarning).toBeUndefined();
+  });
+  it("client-count block still wins over the freeze warning", () => {
+    const r = validatePlanChange("PROFESSIONAL", "STARTER", 25, DEFAULT_COACH_PLANS, 2);
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe("ClientModeError", () => {
+  it("round-trips through parse", () => {
+    const err = new ClientModeError(DEFAULT_COACH_PLANS[1]);
+    expect(isClientModeError(err)).toBe(true);
+    expect(isClientModeError(new Error("other"))).toBe(false);
+    const parsed = parseClientModeError("CLIENT_MODE_NOT_ALLOWED: blah", DEFAULT_COACH_PLANS);
+    expect(parsed).not.toBeNull();
+    expect(parseClientModeError("something else", DEFAULT_COACH_PLANS)).toBeNull();
   });
 });

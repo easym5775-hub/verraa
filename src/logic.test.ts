@@ -135,6 +135,7 @@ function appState(over: Partial<AppState> = {}): AppState {
     mealLogs: [],
     mealDayPicks: [],
     progressPhotos: [],
+    todos: [],
     ...over,
   };
 }

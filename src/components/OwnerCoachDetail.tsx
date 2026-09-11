@@ -90,6 +90,8 @@ export function OwnerCoachDetail({ coachId, onBack }: { coachId: string; onBack:
 
   const clients = useMemo(() => state.clients.filter((c) => c.coachId === coachId), [state.clients, coachId]);
   const activeClients = clients.filter((c) => c.status === "Active").length;
+  const loginCount = useMemo(() => clients.filter((c) => c.hasLogin).length, [clients]);
+  const planAllowsLogin = cfg ? cfg.id !== "STARTER" : true;
   const limit = cfg ? cfg.maxClients : null;
   const checkInCount = useMemo(
     () => state.checkIns.filter((c) => c.coachId === coachId).length,
@@ -534,7 +536,7 @@ export function OwnerCoachDetail({ coachId, onBack }: { coachId: string; onBack:
           <Users className="h-5 w-5" />,
           "Clients",
           limit === null ? `${clients.length}` : `${clients.length} / ${limit}`,
-          `${activeClients} active`,
+          `${activeClients} active · ${loginCount} login${loginCount === 1 ? "" : "s"}${planAllowsLogin ? "" : " · No Client Mode"}`,
         )}
         {stat(
           <CreditCard className="h-5 w-5" />,
@@ -677,7 +679,13 @@ export function OwnerCoachDetail({ coachId, onBack }: { coachId: string; onBack:
                         <Avatar name={c.name} className="h-8 w-8 text-[10px]" />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-bold text-mist-100">{c.name}</p>
-                          <p className="truncate text-[11px] text-mist-500">@{c.username}</p>
+                          <p className="truncate text-[11px] text-mist-500">
+                            {c.hasLogin ? (
+                              <>@{c.username}{!planAllowsLogin ? " · frozen" : ""}</>
+                            ) : (
+                              "No login (coach-managed)"
+                            )}
+                          </p>
                         </div>
                       </div>
                     </td>
@@ -809,7 +817,7 @@ export function OwnerCoachDetail({ coachId, onBack }: { coachId: string; onBack:
         open={planOpen}
         onClose={() => { setPlanOpen(false); setPlanError(""); }}
         title="Change Subscription Plan"
-        description="Downgrades below the current roster size are blocked."
+        description="Downgrades below the current roster size are blocked. Moving to Starter freezes existing logins (No Client Mode) — data is kept."
       >
         <div className="grid gap-3">
           {plans.filter((p) => p.isActive).map((p) => (
@@ -821,8 +829,13 @@ export function OwnerCoachDetail({ coachId, onBack }: { coachId: string; onBack:
             >
               <p className="font-bold text-mist-200">{p.name} Plan</p>
               <p className="mt-0.5 text-xs text-mist-500 tnum">
-                {formatEGP(p.price)}/month · {p.maxClients === null ? "Unlimited clients" : `Up to ${p.maxClients} clients`}
+                {formatEGP(p.price)}/month · {p.maxClients === null ? "Unlimited clients" : `Up to ${p.maxClients} clients`} · {p.id === "STARTER" ? "No Client Mode (manual)" : "Client Mode included"}
               </p>
+              {p.id === "STARTER" && loginCount > 0 && (
+                <p className="mt-1.5 text-[11px] font-bold leading-4 text-danger-300">
+                  {loginCount} login{loginCount === 1 ? "" : "s"} will freeze — the client app pauses until upgrade.
+                </p>
+              )}
             </button>
           ))}
         </div>

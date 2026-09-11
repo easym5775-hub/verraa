@@ -68,6 +68,10 @@ vi.mock("./store", () => ({
     myCoachSubscription: null,
     myClientCount: 2,
     myClientLimit: 5,
+    myPlanAllowsClientMode: true,
+    myProgressMode: "auto",
+    myLoginCount: 0,
+    myFrozenLoginCount: 0,
   }),
 }));
 

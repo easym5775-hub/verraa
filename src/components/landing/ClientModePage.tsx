@@ -210,7 +210,7 @@ export function ClientModePage() {
           to="/coach-mode"
           eyebrow="The other side"
           title="Now see your command center — Coach Mode."
-          text="The dashboard, roster, check-in inbox, plans, payments and everything you run the business on."
+          text="The dashboard, roster, check-in feed, plans, payments and everything you run the business on."
           cta="Explore Coach Mode"
         />
       </div>

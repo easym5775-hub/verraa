@@ -1,0 +1,55 @@
+# ================================================================
+# VERRAA — keep-alive (free Supabase pause prevention, no Vercel needed).
+#
+# Runs once a day and fires the same tiny query the Vercel endpoint
+# uses: GET {SUPABASE_URL}/rest/v1/coach_plans?select=id&limit=1
+# A few real DB requests per day is enough for Supabase to NOT count
+# the project as inactive, so it won't auto-pause after 7 days.
+#
+# Setup (one time, 2 minutes):
+#   GitHub repo -> Settings -> Secrets and variables -> Actions
+#   -> New repository secret:
+#     SUPABASE_URL       = https://<project>.supabase.co   (same as VITE_SUPABASE_URL)
+#     SUPABASE_ANON_KEY  = <anon public key>               (same as VITE_SUPABASE_ANON_KEY)
+#
+# Then: Actions tab -> "keep-alive" -> Run workflow (to test manually).
+# Cost: zero. One ~1KB request per day.
+# ================================================================
+
+name: keep-alive
+
+on:
+  schedule:
+    # Daily 08:30 UTC (after the Vercel Cron at 08:00 — redundancy).
+    - cron: "30 8 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping Supabase (tiny read on coach_plans)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Missing SUPABASE_URL / SUPABASE_ANON_KEY secrets. Add them under Repo Settings -> Secrets -> Actions."
+            exit 1
+          fi
+          URL="${SUPABASE_URL%/}/rest/v1/coach_plans?select=id&limit=1"
+          echo "GET $URL"
+          HTTP=$(curl -sS -o /tmp/out.json -w "%{http_code}" --max-time 25 \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H "Accept: application/json" \
+            "$URL")
+          echo "HTTP $HTTP"
+          head -c 300 /tmp/out.json; echo
+          if [ "$HTTP" -ge 200 ] && [ "$HTTP" -lt 300 ]; then
+            echo "keep-alive OK"
+          else
+            echo "::error::Supabase answered HTTP $HTTP"
+            exit 1
+          fi

@@ -17,6 +17,7 @@ import {
   PauseCircle,
   Send,
   Sparkles,
+  X,
 } from "lucide-react";
 import type { CoachPlan, CoachPlanConfig, CoachView } from "../types";
 import { useApp } from "../store";
@@ -27,6 +28,7 @@ import {
   effectiveCoachStatus,
   formatEGP,
   getPlanById,
+  getPlanFeatureDisplay,
   normalizeCoachPlanId,
   planRenewalLabel,
 } from "../coachPricing";
@@ -202,11 +204,12 @@ export function CurrentPlanCard({ onViewPlans }: { onViewPlans?: () => void }) {
 /* ---------------- Plans & Pricing page (Coach Mode only) ---------------- */
 
 export function CoachPricingView({ go }: { go: (v: CoachView) => void }) {
-  const { coachPlans, myCoachSubscription, myClientCount, myPendingRequest, requestPlan, toast } = useApp();
+  const { coachPlans, myCoachSubscription, myClientCount, myLoginCount, myPendingRequest, requestPlan, toast } = useApp();
   const [target, setTarget] = useState<CoachPlan | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const loginCount = (myLoginCount as number | undefined) ?? 0;
 
   const plans = useMemo(
     () => (coachPlans.length > 0 ? [...coachPlans].sort((a, b) => a.price - b.price) : [...DEFAULT_COACH_PLANS]),
@@ -243,6 +246,9 @@ export function CoachPricingView({ go }: { go: (v: CoachView) => void }) {
   const targetPlan = target ? withFeatures(getPlanById(plans, target)) : null;
   const targetTooSmall =
     targetPlan && targetPlan.maxClients !== null && myClientCount > targetPlan.maxClients;
+  // Downgrade to a No-Client-Mode plan is allowed but freezes existing logins.
+  const targetFreezesLogins =
+    target === "STARTER" && loginCount > 0;
 
   return (
     <div>
@@ -371,14 +377,53 @@ export function CoachPricingView({ go }: { go: (v: CoachView) => void }) {
               )}
 
               <ul className="mt-5 grid flex-1 content-start gap-2.5">
-                {plan.features?.map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-[13px] font-semibold text-mist-300">
-                    <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-volt-400/10 text-volt-300 ring-1 ring-volt-400/25">
-                      <Check className="h-3 w-3" strokeWidth={3} />
-                    </span>
-                    {f}
-                  </li>
-                ))}
+                {getPlanFeatureDisplay(id).map((f) => {
+                  const excluded = f.tone === "excluded";
+                  const highlight = f.tone === "highlight";
+                  return (
+                    <li
+                      key={f.label}
+                      className={`flex items-start gap-2 text-[13px] ${
+                        excluded
+                          ? "font-extrabold text-danger-300"
+                          : highlight
+                            ? "font-extrabold text-moss-300"
+                            : "font-semibold text-mist-300"
+                      }`}
+                    >
+                      <span
+                        className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full ring-1 ${
+                          excluded
+                            ? "bg-danger-500/10 text-danger-300 ring-danger-500/30"
+                            : highlight
+                              ? "bg-moss-400/15 text-moss-300 ring-moss-400/40"
+                              : "bg-volt-400/10 text-volt-300 ring-volt-400/25"
+                        }`}
+                        aria-hidden="true"
+                      >
+                        {excluded ? (
+                          <X className="h-3 w-3" strokeWidth={3} />
+                        ) : highlight ? (
+                          <BadgeCheck className="h-3 w-3" strokeWidth={2.5} />
+                        ) : (
+                          <Check className="h-3 w-3" strokeWidth={3} />
+                        )}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block leading-5">{f.label}</span>
+                        {f.note && (
+                          <span
+                            className={`mt-0.5 block text-[11px] font-semibold leading-4 ${
+                              highlight ? "text-moss-400/90" : "text-mist-500"
+                            }`}
+                          >
+                            {f.note}
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
 
               <div className="mt-6">
@@ -430,6 +475,12 @@ export function CoachPricingView({ go }: { go: (v: CoachView) => void }) {
             {targetTooSmall && (
               <p role="alert" className="rounded-xl border border-warn-400/25 bg-warn-400/[0.07] px-3.5 py-2.5 text-[13px] font-semibold leading-5 text-warn-200">
                 Heads up: you have {myClientCount} clients but {targetPlan.name} allows {targetPlan.maxClients} — the admin can&apos;t approve until your roster fits.
+              </p>
+            )}
+            {targetFreezesLogins && (
+              <p role="alert" className="rounded-xl border border-danger-500/25 bg-danger-500/[0.07] px-3.5 py-2.5 text-[13px] font-semibold leading-5 text-danger-200">
+                {loginCount} client login{loginCount === 1 ? "" : "s"} will freeze on {targetPlan.name} (No Client Mode).
+                Their data stays safe — they just can&apos;t open the client app until you upgrade.
               </p>
             )}
             <div>

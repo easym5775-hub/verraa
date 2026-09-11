@@ -65,7 +65,7 @@ const PAINS: Pain[] = [
 const FIXES = [
   {
     icon: Camera,
-    fix: "A check-in inbox — every submission in one place, oldest first. Nothing gets buried.",
+    fix: "A check-in feed — every submission in one place, oldest first. Nothing gets buried.",
   },
   {
     icon: BellRing,

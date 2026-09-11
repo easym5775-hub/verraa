@@ -60,7 +60,7 @@ export const SEO_PAGES: Record<SeoPageKey, SeoPage> = {
   "coach-mode": {
     title: "Coach Mode — VERRAA: Dashboard, Clients, Plans & Payments",
     description:
-      "Explore VERRAA Coach Mode: a command-center dashboard, client roster, check-in inbox, workout plans, nutrition, sessions, payments and direct client chat.",
+      "Explore VERRAA Coach Mode: a command-center dashboard, client roster, check-in feed, workout plans, nutrition, sessions, payments and direct client chat.",
     path: "/coach-mode",
     index: true,
   },

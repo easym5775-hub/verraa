@@ -19,6 +19,7 @@ import type {
   CheckIn,
   Client,
   ClientExercise,
+  ClientTodo,
   CoachNote,
   CoachPlan,
   CoachPlanConfig,
@@ -32,6 +33,7 @@ import type {
   MealLog,
   MealLogStatus,
   NewClientInput,
+  NoteCategory,
   NutritionPlan,
   NutritionTargets,
   Payment,
@@ -47,9 +49,16 @@ import type {
 import { WEEK_DAYS, workoutExerciseKey } from "./types";
 import { errorMessage, todayISO, uid, uuid } from "./lib";
 import {
+  ClientModeError,
+  canCoachUseClientMode,
   getCoachClientCount,
+  getCoachFrozenLoginCount,
+  getCoachLoginCount,
   getCoachPlan,
+  getPlanProgressMode,
+  isClientModeError,
   isPlanLimitError,
+  parseClientModeError,
   parsePlanLimitError,
   resolveCoachSubscription,
 } from "./coachPricing";
@@ -182,8 +191,13 @@ interface Store {
   deleteSession: (id: string) => void;
   setSessionStatus: (id: string, status: SessionStatus) => void;
 
-  addCoachNote: (clientId: string, text: string) => void;
-  updateCoachNote: (clientId: string, noteId: string, text: string) => void;
+  addTodo: (clientId: string, text: string) => void;
+  toggleTodo: (id: string) => void;
+  deleteTodo: (id: string) => void;
+  clearCompletedTodos: (clientId: string) => void;
+
+  addCoachNote: (clientId: string, text: string, category?: NoteCategory) => void;
+  updateCoachNote: (clientId: string, noteId: string, text: string, category?: NoteCategory) => void;
   deleteCoachNote: (clientId: string, noteId: string) => void;
   toggleCoachNotePin: (clientId: string, noteId: string) => void;
   setFollowUpDays: (clientId: string, days: number) => void;
@@ -204,6 +218,14 @@ interface Store {
   myClientCount: number;
   myClientLimit: number | null;
   myCanAddClient: boolean;
+  /** False on Starter (No Client Mode) — logins are blocked, existing ones freeze. */
+  myPlanAllowsClientMode: boolean;
+  /** "manual" on Starter (coach logs), "auto" elsewhere (via Client Mode). */
+  myProgressMode: "manual" | "auto";
+  /** This coach's clients that have a login. */
+  myLoginCount: number;
+  /** Logins frozen by the current plan (0 unless on Starter with logins). */
+  myFrozenLoginCount: number;
   myPendingRequest: CoachPlanRequest | null;
   /** File a plan request for the admin to review (replaces self-serve switching). */
   requestPlan: (planId: CoachPlan, note?: string) => Promise<void>;
@@ -236,6 +258,7 @@ const EMPTY: AppState = {
   mealLogs: [],
   mealDayPicks: [],
   progressPhotos: [],
+  todos: [],
 };
 
 export function StoreProvider({ children }: { children: ReactNode }) {
@@ -426,15 +449,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const createClient = useCallback(
     async (input: NewClientInput): Promise<Client> => {
       try {
+        // Plan gate: Starter has No Client Mode — block logins before hitting the server.
+        if (input.createLogin !== false) {
+          const s = stateRef.current;
+          const coachIdNow = meRef.current?.role === "coach" ? meRef.current.coachId : "";
+          const plansNow = s.coachPlans && s.coachPlans.length > 0 ? s.coachPlans : undefined;
+          const subNow = coachIdNow ? resolveCoachSubscription(s.coachSubscriptions, coachIdNow) : null;
+          if (coachIdNow && !canCoachUseClientMode(plansNow, subNow)) {
+            throw new ClientModeError(getCoachPlan(plansNow, subNow));
+          }
+        }
         const client = await backend.createClientAccount(input);
         setState((s) => ({ ...s, clients: [client, ...s.clients] }));
         toast(client.hasLogin ? `${client.name} added — their login works right away` : `${client.name} added (coach-managed, no login)`);
         return client;
       } catch (e) {
-        // Normalize backend limit rejections (edge function / trigger)
-        // into a structured PlanLimitError so the UI can offer an upgrade path
+        // Normalize backend plan rejections (edge function / trigger)
+        // into structured errors so the UI can offer an upgrade path
         // instead of a dead-end toast.
         if (isPlanLimitError(e)) throw e;
+        if (isClientModeError(e)) throw e;
+        const parsedMode = parseClientModeError(errorMessage(e), stateRef.current.coachPlans);
+        if (parsedMode) throw parsedMode;
         const parsed = parsePlanLimitError(errorMessage(e), stateRef.current.coachPlans);
         if (parsed) throw parsed;
         throw e;
@@ -478,6 +514,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           mealLogs: (s.mealLogs ?? []).filter((x) => x.clientId !== id),
           mealDayPicks: (s.mealDayPicks ?? []).filter((x) => x.clientId !== id),
           progressPhotos: (s.progressPhotos ?? []).filter((x) => x.clientId !== id),
+          todos: (s.todos ?? []).filter((x) => x.clientId !== id),
         }),
         () => backend.deleteClientAccount(id),
       );
@@ -496,10 +533,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const createClientLogin = useCallback(
     async (clientId: string, username: string, password: string): Promise<void> => {
-      const updated = await backend.createClientLogin(clientId, username, password);
-      // The row id changes to the new auth user id — swap by old id.
-      setState((s) => ({ ...s, clients: s.clients.map((x) => (x.id === clientId ? updated : x)) }));
-      toast(`${updated.name} can now sign in as @${updated.username}`);
+      // Plan gate: Starter has No Client Mode — block upgrades before hitting the server.
+      {
+        const s = stateRef.current;
+        const coachIdNow = meRef.current?.role === "coach" ? meRef.current.coachId : "";
+        const plansNow = s.coachPlans && s.coachPlans.length > 0 ? s.coachPlans : undefined;
+        const subNow = coachIdNow ? resolveCoachSubscription(s.coachSubscriptions, coachIdNow) : null;
+        if (coachIdNow && !canCoachUseClientMode(plansNow, subNow)) {
+          throw new ClientModeError(getCoachPlan(plansNow, subNow));
+        }
+      }
+      try {
+        const updated = await backend.createClientLogin(clientId, username, password);
+        // The row id changes to the new auth user id — swap by old id.
+        setState((s) => ({ ...s, clients: s.clients.map((x) => (x.id === clientId ? updated : x)) }));
+        toast(`${updated.name} can now sign in as @${updated.username}`);
+      } catch (e) {
+        if (isClientModeError(e)) throw e;
+        const parsedMode = parseClientModeError(errorMessage(e), stateRef.current.coachPlans);
+        if (parsedMode) throw parsedMode;
+        throw e;
+      }
     },
     [toast],
   );
@@ -1385,6 +1439,65 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [mutate],
   );
 
+  /* ---------------- coach to-dos (per client, private) ---------------- */
+
+  const addTodo = useCallback(
+    (clientId: string, text: string) => {
+      const todo: ClientTodo = { id: uuid(), coachId: coachId(), clientId, text, done: false, createdAt: Date.now() };
+      mutate(
+        (s) => ({ ...s, todos: [todo, ...(s.todos ?? [])] }),
+        () =>
+          backend.insert("client_todos", {
+            id: todo.id,
+            coach_id: todo.coachId,
+            client_id: todo.clientId,
+            text: todo.text,
+            done: false,
+          }),
+        "Task added",
+      );
+    },
+    [mutate],
+  );
+
+  const toggleTodo = useCallback(
+    (id: string) => {
+      const cur = stateRef.current.todos?.find((x) => x.id === id);
+      if (!cur) return;
+      const done = !cur.done;
+      mutate(
+        (s) => ({ ...s, todos: (s.todos ?? []).map((x) => (x.id === id ? { ...x, done } : x)) }),
+        () => backend.update("client_todos", id, { done }),
+        done ? "Task done" : "Task reopened",
+      );
+    },
+    [mutate],
+  );
+
+  const deleteTodo = useCallback(
+    (id: string) => {
+      mutate(
+        (s) => ({ ...s, todos: (s.todos ?? []).filter((x) => x.id !== id) }),
+        () => backend.remove("client_todos", id),
+        "Task deleted",
+      );
+    },
+    [mutate],
+  );
+
+  const clearCompletedTodos = useCallback(
+    (clientId: string) => {
+      const doneIds = (stateRef.current.todos ?? []).filter((x) => x.clientId === clientId && x.done).map((x) => x.id);
+      if (doneIds.length === 0) return;
+      mutate(
+        (s) => ({ ...s, todos: (s.todos ?? []).filter((x) => !(x.clientId === clientId && x.done)) }),
+        () => Promise.all(doneIds.map((todoId) => backend.remove("client_todos", todoId))),
+        "Completed tasks cleared",
+      );
+    },
+    [mutate],
+  );
+
   /* ---------------- coach notes / follow-up / nutrition ---------------- */
 
   const patchClient = useCallback(
@@ -1402,8 +1515,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   const addCoachNote = useCallback(
-    (clientId: string, text: string) => {
-      const note: CoachNote = { id: uid(), text, createdAt: Date.now(), by: meRef.current?.name };
+    (clientId: string, text: string, category: NoteCategory = "general") => {
+      const note: CoachNote = { id: uid(), text, createdAt: Date.now(), by: meRef.current?.name, category };
       const cur = stateRef.current.clients.find((c) => c.id === clientId);
       patchClient(clientId, { coachNotes: [...(cur?.coachNotes ?? []), note] }, "Note added");
     },
@@ -1411,11 +1524,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   const updateCoachNote = useCallback(
-    (clientId: string, noteId: string, text: string) => {
+    (clientId: string, noteId: string, text: string, category?: NoteCategory) => {
       const cur = stateRef.current.clients.find((c) => c.id === clientId);
       patchClient(
         clientId,
-        { coachNotes: (cur?.coachNotes ?? []).map((n) => (n.id === noteId ? { ...n, text } : n)) },
+        {
+          coachNotes: (cur?.coachNotes ?? []).map((n) =>
+            n.id === noteId ? { ...n, text, ...(category ? { category } : {}) } : n,
+          ),
+        },
         "Note updated",
       );
     },
@@ -1566,6 +1683,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const myClientLimit: number | null = myCoachPlan.maxClients;
   const myCanAddClient: boolean =
     myClientLimit === null ? true : myClientCount < myClientLimit;
+  /* ---- Client Mode capability (plan-gated) ---- */
+  const myPlanAllowsClientMode: boolean = canCoachUseClientMode(
+    coachPlans.length > 0 ? coachPlans : undefined,
+    myCoachSubscription,
+  );
+  const myProgressMode = getPlanProgressMode(myCoachPlan.id);
+  const myLoginCount: number = coachIdForPricing ? getCoachLoginCount(state.clients, coachIdForPricing) : 0;
+  const myFrozenLoginCount: number = coachIdForPricing
+    ? getCoachFrozenLoginCount(state.clients, coachPlans.length > 0 ? coachPlans : undefined, myCoachSubscription, coachIdForPricing)
+    : 0;
 
   /** Coach's own pending plan request, if any. */
   const myPendingRequest: CoachPlanRequest | null = coachIdForPricing
@@ -1650,6 +1777,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         updateSession,
         deleteSession,
         setSessionStatus,
+        addTodo,
+        toggleTodo,
+        deleteTodo,
+        clearCompletedTodos,
         addCoachNote,
         updateCoachNote,
         deleteCoachNote,
@@ -1668,6 +1799,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         myClientCount,
         myClientLimit,
         myCanAddClient,
+        myPlanAllowsClientMode,
+        myProgressMode,
+        myLoginCount,
+        myFrozenLoginCount,
         myPendingRequest,
         requestPlan,
         reviewPlanRequest,
