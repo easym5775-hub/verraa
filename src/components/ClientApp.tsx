@@ -30,14 +30,14 @@ import {
   UtensilsCrossed,
   X,
 } from "lucide-react";
-import type { AppNotification, Client, Meal, MealLogStatus, MealRequestStatus, MealType, DayLabelMode } from "../types";
+import type { AppNotification, Client, DietCheckinStatus, Meal, MealRequestStatus, MealType, DayLabelMode } from "../types";
 import { CAT_META, GOAL_META, MEAL_META, MEAL_TYPES, NOTIFICATION_META, SUB_PAYMENT_META, SUB_STATE_META, WEEK_DAYS,
 WEEK_SHORT, WEEK_ORDER_SAT_FIRST, formatDayName, formatDayShort } from "../types";
 import { dayNum, fmtDate, fmtMoney, fmtTime, getDayLabelMode, activePlan, clientPlans, mealInPlan, relTime, round1, signed, todayISO } from "../lib";
 import { attendance, currentSubscription, progressOf, remainingLabel, subscriptionState } from "../logic";
 import { useApp } from "../store";
 import { backend } from "../services/backend";
-import { Avatar, Badge, ConfirmModal, Dropdown, EmptyState, Modal, MoodPicker, SectionCard, Toggle, btnPrimary, btnSecondary, btnVolt, chip, inputCls, labelCls, textareaCls, useCountUp } from "./ui";
+import { Avatar, Badge, Dropdown, EmptyState, Modal, MoodPicker, SectionCard, Toggle, btnPrimary, btnSecondary, btnVolt, chip, inputCls, labelCls, textareaCls, useCountUp } from "./ui";
 import { exportDayImage, exportWeekPdf } from "./nutritionExport";
 import { exportWorkoutDayImage, exportWorkoutWeekPdf } from "./workoutExport";
 import { WeightLine } from "./Chart";
@@ -50,49 +50,164 @@ const MEAL_REQ_META: Record<MealRequestStatus, { chip: string; label: string }> 
   REJECTED: { chip: "border-danger-500/25 bg-danger-500/10 text-danger-300", label: "Rejected" },
 };
 
-/* ---------------- meal compliance buttons (✓ ate it / ✕ skipped) ---------------- */
+/* ---------------- diet check-in (Today tab) ----------------
+   One answer per calendar day: ON_TRACK, or off track (PARTIAL with a
+   missed-meals count, or OFF_TRACK for the whole day) plus a note to
+   the coach explaining how the diet broke. */
 
-function MealLogButtons({ meal, date, clientId }: { meal: Meal; date: string; clientId: string }) {
-  const { state, setMealLog } = useApp();
-  const status = (state.mealLogs ?? []).find((l) => l.clientId === clientId && l.mealId === meal.id && l.date === date)?.status ?? null;
-  // Tapping the active mark clears it; tapping the other one switches.
-  const tap = (s: MealLogStatus) => setMealLog({ meal, date, clientId, status: status === s ? null : s });
-  return (
-    <span className="flex shrink-0 items-center gap-1">
-      <button
-        onClick={() => tap("EATEN")}
-        title="I ate this meal"
-        aria-label={`Mark ${meal.description} as eaten`}
-        aria-pressed={status === "EATEN"}
-        className={`grid h-8 w-8 cursor-pointer place-items-center rounded-lg border transition active:scale-95 ${status === "EATEN" ? "border-moss-400 bg-moss-400 text-night-950" : "border-night-600 text-mist-500 hover:border-moss-400/60 hover:text-moss-300"}`}
-      >
-        <Check className="h-4 w-4" strokeWidth={2.8} />
-      </button>
-      <button
-        onClick={() => tap("SKIPPED")}
-        title="I skipped it / cheated"
-        aria-label={`Mark ${meal.description} as skipped`}
-        aria-pressed={status === "SKIPPED"}
-        className={`grid h-8 w-8 cursor-pointer place-items-center rounded-lg border transition active:scale-95 ${status === "SKIPPED" ? "border-danger-500 bg-danger-500 text-white" : "border-night-600 text-mist-500 hover:border-danger-500/60 hover:text-danger-300"}`}
-      >
-        <X className="h-4 w-4" strokeWidth={2.8} />
-      </button>
-    </span>
-  );
-}
+type DietChoice = DietCheckinStatus;
 
-/** Today adherence chip: "3/5 on track". */
-function DayAdherence({ clientId, date, total }: { clientId: string; date: string; total: number }) {
-  const { state } = useApp();
-  if (total === 0) return null;
-  const logs = (state.mealLogs ?? []).filter((l) => l.clientId === clientId && l.date === date);
-  const eaten = logs.filter((l) => l.status === "EATEN").length;
-  const done = logs.length >= total;
+function DietCheckinCard({ clientId, plannedTotal }: { clientId: string; plannedTotal: number }) {
+  const { state, saveDietCheckin } = useApp();
+  const today = todayISO();
+  const existing = (state.dietCheckins ?? []).find((d) => d.clientId === clientId && d.date === today) ?? null;
+  const [open, setOpen] = useState(!existing);
+  // To-do style: clean row first; tapping ✕ opens the "what happened" form.
+  const [failed, setFailed] = useState(!!existing && existing.status !== "ON_TRACK");
+  const [choice, setChoice] = useState<"PARTIAL" | "OFF_TRACK">(existing && existing.status !== "ON_TRACK" ? existing.status : "PARTIAL");
+  const [missed, setMissed] = useState(existing?.missed || 1);
+  const [note, setNote] = useState(existing?.note ?? "");
+  const [error, setError] = useState("");
+
+  // Reset the form when the day rolls over.
+  useEffect(() => {
+    setOpen(!existing);
+    setFailed(!!existing && existing.status !== "ON_TRACK");
+    if (existing) {
+      if (existing.status !== "ON_TRACK") setChoice(existing.status);
+      setMissed(existing.missed || 1);
+      setNote(existing.note ?? "");
+    } else {
+      setNote("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [today, existing?.id]);
+
+  const maxMissed = Math.max(1, plannedTotal || 1);
+
+  const submitClean = () => {
+    setError("");
+    saveDietCheckin({ clientId, date: today, status: "ON_TRACK", missed: 0, total: plannedTotal, note: undefined });
+    setOpen(false);
+  };
+
+  const submitFailed = () => {
+    if (!note.trim()) {
+      setError("Tell your coach what happened — what did you eat instead?");
+      return;
+    }
+    setError("");
+    const m = choice === "PARTIAL" ? Math.min(Math.max(1, missed), maxMissed) : Math.max(plannedTotal, 1);
+    saveDietCheckin({ clientId, date: today, status: choice, missed: m, total: Math.max(plannedTotal, m), note: note.trim() });
+    setOpen(false);
+  };
+
+  const STATUS_META: Record<DietChoice, { label: string; chip: string }> = {
+    ON_TRACK: { label: "On track", chip: "border-moss-400/25 bg-moss-400/10 text-moss-300" },
+    PARTIAL: { label: "Partly off", chip: "border-warn-400/25 bg-warn-400/10 text-warn-300" },
+    OFF_TRACK: { label: "Fully off", chip: "border-danger-500/25 bg-danger-500/10 text-danger-300" },
+  };
+
+  if (existing && !open) {
+    const m = STATUS_META[existing.status];
+    return (
+      <div className="flex items-center gap-3 rounded-2xl border border-night-700 bg-night-850 p-3.5 sm:p-4">
+        <span className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-extrabold ${m.chip}`}>
+          {m.label}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-extrabold text-mist-100">Today's diet logged</span>
+          <span className="mt-0.5 block truncate text-xs font-semibold text-mist-500">
+            {existing.status === "PARTIAL"
+              ? `${existing.missed} of ${existing.total} meals missed`
+              : existing.status === "OFF_TRACK"
+                ? "Whole day off track"
+                : "Fully on track"}
+            {existing.note ? ` · “${existing.note}”` : ""}
+          </span>
+        </span>
+        <button onClick={() => setOpen(true)} className={`${btnSecondary} h-10 shrink-0 !text-[13px]`}>
+          Update
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${done && eaten === total ? "border-moss-400/30 bg-moss-400/10 text-moss-300" : "border-white/[0.08] bg-white/[0.03] text-mist-200"}`}>
-      <Check className={`h-3.5 w-3.5 ${eaten === total && done ? "text-moss-300" : "text-mist-400"}`} />
-      {eaten}/{total} on track
-    </span>
+    <div className="rounded-2xl border border-night-700 bg-night-850 p-4 sm:p-5">
+      {/* to-do row */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={submitClean}
+          title="I nailed my diet today"
+          aria-label="Mark today's diet as done"
+          className="grid h-12 w-12 shrink-0 cursor-pointer place-items-center rounded-2xl bg-volt-400 text-night-950 shadow-[0_8px_24px_-8px_rgba(205,241,75,0.6)] transition active:scale-95 hover:bg-volt-300"
+        >
+          <Check className="h-6 w-6" strokeWidth={2.8} />
+        </button>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-extrabold text-mist-100">Your diet today</span>
+          <span className="mt-0.5 block text-xs font-semibold text-mist-500">
+            {failed ? "Tell your coach what happened below" : "Tap ✓ when done, ✕ if you broke it"}
+          </span>
+        </span>
+        <button
+          onClick={() => setFailed((v) => !v)}
+          title="I broke my diet"
+          aria-label="Mark today's diet as not done"
+          aria-expanded={failed}
+          className={`grid h-12 w-12 shrink-0 cursor-pointer place-items-center rounded-2xl border transition active:scale-95 ${failed ? "border-danger-500 bg-danger-500 text-white" : "border-night-600 text-mist-500 hover:border-danger-500/60 hover:text-danger-300"}`}
+        >
+          <X className="h-6 w-6" strokeWidth={2.8} />
+        </button>
+      </div>
+
+      {/* what-happened form (only after ✕) */}
+      {failed && (
+        <div className="mt-3 rounded-xl border border-danger-500/25 bg-danger-500/[0.04] p-3">
+          <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="How off track">
+            {(["PARTIAL", "OFF_TRACK"] as const).map((c) => {
+              const active = choice === c;
+              return (
+                <button
+                  key={c}
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setChoice(c)}
+                  className={`cursor-pointer rounded-xl border px-2 py-2.5 text-xs font-extrabold transition active:scale-95 ${active ? (c === "PARTIAL" ? "border-warn-400/40 bg-warn-400/10 text-warn-300" : "border-danger-500/50 bg-danger-500/10 text-danger-300") : "border-night-600 bg-night-800 text-mist-400 hover:border-night-500"}`}
+                >
+                  {c === "PARTIAL" ? "Missed some" : "Whole day off"}
+                </button>
+              );
+            })}
+          </div>
+
+          {choice === "PARTIAL" && (
+            <div className="mt-2.5 flex items-center gap-3">
+              <p className="flex-1 text-xs font-bold text-mist-400">How many meals did you miss?</p>
+              <button onClick={() => setMissed((v) => Math.max(1, v - 1))} aria-label="Fewer missed meals"
+                className="grid h-10 w-10 cursor-pointer place-items-center rounded-xl border border-night-600 text-lg font-bold text-mist-200 transition hover:border-night-500 active:scale-95">−</button>
+              <p className="min-w-10 text-center font-display text-xl font-bold text-mist-100 tnum">{Math.min(missed, maxMissed)}</p>
+              <button onClick={() => setMissed((v) => Math.min(maxMissed, v + 1))} aria-label="More missed meals"
+                className="grid h-10 w-10 cursor-pointer place-items-center rounded-xl border border-night-600 text-lg font-bold text-mist-200 transition hover:border-night-500 active:scale-95">+</button>
+            </div>
+          )}
+
+          <label className={`${labelCls} mt-2.5 block`}>Tell your coach how you broke it *</label>
+          <textarea
+            className={`${textareaCls} mt-1.5 min-h-16`}
+            placeholder="e.g. skipped lunch, had pizza and soda at night…"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+          />
+          {error && <p className="mt-2 text-xs font-bold text-danger-400">{error}</p>}
+          <button onClick={submitFailed} className={`${btnPrimary} mt-2.5 h-12 w-full text-[15px]`}>
+            <Check className="h-5 w-5" strokeWidth={2.4} /> Submit
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -174,10 +289,7 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
     [state.notifications, clientId],
   );
   const unread = notifications.filter((n) => !n.read).length;
-  const todayPickDay = useMemo(
-    () => (state.mealDayPicks ?? []).find((p) => p.clientId === clientId && p.date === todayISO())?.day ?? null,
-    [state.mealDayPicks, clientId],
-  );
+
 
   if (!client) {
     return (
@@ -340,7 +452,7 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
       <main id="main-content" className="relative z-10 mx-auto w-full max-w-4xl px-4 pb-32 pt-4 sm:px-6 sm:pt-6 lg:pb-12 lg:py-8">
         {/* Single cheap opacity fade per tab — replaces staggered rise animations (see .client-app CSS). */}
         <div key={tab} className="animate-fade">
-          {tab === "today" && <TodayTab clientId={clientId} todayPickDay={todayPickDay} plans={plans} meals={meals} exercises={state.exercises} onCheckIn={() => goTab("checkin")} onOpenTraining={() => goTab("training")} onOpenNutrition={() => goTab("nutrition")} sessionsToday={sessions.filter((s) => s.date === todayISO())} />}
+          {tab === "today" && <TodayTab clientId={clientId} plans={plans} meals={meals} exercises={state.exercises} onCheckIn={() => goTab("checkin")} onOpenTraining={() => goTab("training")} sessionsToday={sessions.filter((s) => s.date === todayISO())} />}
           {tab === "training" && <StrengthTracker clientId={clientId} />}
           {tab === "nutrition" && (
             <NutritionTab
@@ -493,131 +605,31 @@ function DailySummary({ meals, dayName, targets }: { meals: Meal[]; dayName: str
   );
 }
 
-/** Full-week menu list — every day with its meals, each pickable for today. */
-function WeekMenuList({ meals, labelMode, current, onSelect }: {
-  meals: Meal[];
-  labelMode: DayLabelMode;
-  current?: number | null;
-  onSelect: (day: number) => void;
-}) {
-  const today = dayNum();
-  const typeOrder: Record<MealType, number> = { Breakfast: 0, Lunch: 1, Dinner: 2, Snack: 3 };
-  return (
-    <div className="grid gap-2.5">
-      {WEEK_ORDER_SAT_FIRST.map((d) => {
-        const dm = [...meals.filter((m) => m.day === d)].sort((a, b) => typeOrder[a.type] - typeOrder[b.type]);
-        const kcal = dm.reduce((s, m) => s + m.calories, 0);
-        const empty = dm.length === 0;
-        const isCurrent = current === d;
-        return (
-          <div key={d} className={`rounded-xl border p-3 ${isCurrent ? "border-volt-400/50 bg-volt-400/[0.05]" : "border-night-700 bg-night-800"}`}>
-            <div className="flex items-center gap-2.5">
-              <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl font-display text-sm font-bold ${isCurrent ? "bg-volt-400 text-night-950" : "bg-night-700 text-volt-300"}`}>
-                {formatDayShort(d, labelMode)}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-bold text-mist-100">
-                  {formatDayName(d, labelMode)}
-                  {d === today && <span className="ms-1.5 rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-bold text-mist-400">today</span>}
-                </span>
-                <span className="mt-0.5 block text-[11px] font-semibold text-mist-500 tnum">
-                  {empty ? "No plan" : `${dm.length} meal${dm.length === 1 ? "" : "s"} · ${kcal.toLocaleString("en-US")} kcal`}
-                </span>
-              </span>
-              {isCurrent ? (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-volt-400 px-2.5 py-1 text-[11px] font-extrabold text-night-950">
-                  <Check className="h-3 w-3" strokeWidth={3} /> Following
-                </span>
-              ) : !empty ? (
-                <button onClick={() => onSelect(d)} className={`${btnVolt} h-9 shrink-0 !px-3.5 !text-[13px]`}>
-                  Select for today
-                </button>
-              ) : null}
-            </div>
-            {dm.length > 0 && (
-              <div className="mt-2 grid gap-2">
-                {MEAL_TYPES.map((t) => {
-                  const list = dm.filter((m) => m.type === t);
-                  if (list.length === 0) return null;
-                  return (
-                    <div key={t}>
-                      <p className="mb-1 flex items-center gap-1.5 px-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-mist-500">
-                        <span className={`h-1.5 w-1.5 rounded-full ${MEAL_META[t].dot}`} />
-                        {t} · {list.length}
-                      </p>
-                      <ul className="grid gap-1.5 sm:grid-cols-2">
-                        {list.map((m) => (
-                          <li key={m.id} className="rounded-lg bg-night-850 px-2.5 py-2">
-                            <p className="truncate text-[13px] font-semibold text-mist-100">{m.description}</p>
-                            <span className="mt-1 flex gap-2.5 text-[11px] font-bold tnum">
-                              <span className="text-warn-300">{m.calories} kcal</span>
-                              <span className="text-volt-300">P {m.protein}g</span>
-                              <span className="text-sky-300">C {m.carbs}g</span>
-                              <span className="text-warn-300">F {m.fats}g</span>
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function NutritionTab({ clientId, client, allMeals, planName }: { clientId: string; client: Client; allMeals: Meal[]; planName?: string }) {
-  const { state, requestMealEdit, cancelMealRequest, setMealDayPick, toast } = useApp();
-  const [selectedDay, setSelectedDay] = useState<number>(dayNum()); // Browsing day (stored numbering)
+  const { state, requestMealEdit, cancelMealRequest, toast } = useApp();
+  const [selectedDay, setSelectedDay] = useState<number>(dayNum()); // Default to today's day (stored numbering)
   const [labelMode] = useState<DayLabelMode>(() => getDayLabelMode()); // Follows the coach's label choice
   const [reqMeal, setReqMeal] = useState<Meal | null>(null);
-  const [pickOpen, setPickOpen] = useState(false);
-  const [confirmSwitch, setConfirmSwitch] = useState<number | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const autoJumped = useRef(false);
   const meals = useMemo(() => allMeals.filter((m) => m.clientId === clientId), [allMeals, clientId]);
-  const todayStr = todayISO();
-  const todayPick = useMemo(
-    () => (state.mealDayPicks ?? []).find((p) => p.clientId === clientId && p.date === todayStr),
-    [state.mealDayPicks, clientId, todayStr],
-  );
-  const logsToday = useMemo(
-    () => (state.mealLogs ?? []).some((l) => l.clientId === clientId && l.date === todayStr),
-    [state.mealLogs, clientId, todayStr],
-  );
   const myRequests = useMemo(
     () => (state.mealRequests ?? []).filter((r) => r.clientId === clientId).sort((a, b) => b.createdAt - a.createdAt),
     [state.mealRequests, clientId],
   );
   const pendingFor = (mealId: string) => myRequests.filter((r) => r.mealId === mealId && r.status === "PENDING");
 
-  // Follow the picked menu: whenever the pick changes, jump the view to it.
-  const lastPickRef = useRef<number | null>(null);
+  // If today has no plan but another day does (the coach usually builds
+  // Monday first), jump once to the first planned day so the client
+  // actually lands on their meals instead of an empty day.
   useEffect(() => {
-    if (todayPick && lastPickRef.current !== todayPick.day) {
-      lastPickRef.current = todayPick.day;
-      setSelectedDay(todayPick.day);
+    if (autoJumped.current || meals.length === 0) return;
+    autoJumped.current = true;
+    if (!meals.some((m) => m.day === dayNum())) {
+      const first = WEEK_ORDER_SAT_FIRST.find((d) => meals.some((m) => m.day === d));
+      if (first) setSelectedDay(first);
     }
-  }, [todayPick]);
-
-  const doPick = (day: number, clearLogs: boolean) => {
-    setMealDayPick({ date: todayStr, day, clearLogs, clientId });
-    setPickOpen(false);
-    setConfirmSwitch(null);
-  };
-
-  const chooseDay = (day: number) => {
-    if (todayPick && todayPick.day === day) {
-      setPickOpen(false);
-      return;
-    }
-    // Switching menus wipes today's marks — warn first when marks exist.
-    if (logsToday) setConfirmSwitch(day);
-    else doPick(day, false);
-  };
+  }, [meals]);
 
   // Filter meals for selected day
   const dayMeals = useMemo(() => meals.filter((m) => m.day === selectedDay), [meals, selectedDay]);
@@ -709,9 +721,7 @@ function NutritionTab({ clientId, client, allMeals, planName }: { clientId: stri
   
   // Nutrition targets
   const targets = client.nutritionTargets;
-  // Logging (✓/✕) is only allowed on the picked menu — browsing other
-  // days is just looking at the menu.
-  const viewingPicked = !!todayPick && selectedDay === todayPick.day;
+  const isToday = selectedDay === dayNum();
   
   // Group meals by type for display
   const mealsByType = useMemo(() => {
@@ -731,46 +741,15 @@ function NutritionTab({ clientId, client, allMeals, planName }: { clientId: stri
         <div className="relative">
           <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-mist-500 sm:text-[11px]">Weekly nutrition plan{planName ? ` · ${planName}` : ""}</p>
           <h1 className="mt-1 font-display text-[30px] font-bold uppercase leading-[0.95] text-mist-100 sm:text-[44px]">
-            {viewingPicked ? "TODAY" : formatDayName(selectedDay, labelMode)}{" "}
-            <span className={viewingPicked ? "text-volt-400" : "text-mist-400"}>{WEEK_SHORT[selectedDay - 1]}</span>
+            {isToday ? "TODAY" : formatDayName(selectedDay, labelMode)}{" "}
+            <span className={isToday ? "text-volt-400" : "text-mist-400"}>{WEEK_SHORT[selectedDay - 1]}</span>
           </h1>
           <p className="mt-1.5 text-[13px] text-mist-400">
-            {viewingPicked ? `Following ${formatDayName(selectedDay, labelMode)} menu` : `Browsing ${formatDayName(selectedDay, labelMode)} menu`} · {sortedMeals.length} meal{sortedMeals.length === 1 ? "" : "s"}
+            {isToday ? "Your meals for today" : `Meals for ${formatDayName(selectedDay, labelMode)}`} · {sortedMeals.length} meal{sortedMeals.length === 1 ? "" : "s"}
           </p>
-          {viewingPicked && dayMeals.length > 0 && (
-            <div className="mt-2.5">
-              <DayAdherence clientId={clientId} date={todayISO()} total={dayMeals.length} />
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Following banner */}
-      {todayPick && (
-        <div className="flex items-center gap-3 rounded-2xl border border-volt-400/25 bg-volt-400/[0.07] p-3.5 sm:p-4">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-volt-400 font-display text-base font-bold text-night-950">
-            {formatDayShort(todayPick.day, labelMode)}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-extrabold text-mist-100">Following {formatDayName(todayPick.day, labelMode)} menu today</span>
-            <span className="mt-0.5 block text-xs font-semibold text-mist-400">Your ✓/✕ marks count on this menu only</span>
-          </span>
-          <button onClick={() => setPickOpen(true)} className={`${btnSecondary} h-10 shrink-0 !text-[13px]`}>
-            Change
-          </button>
-        </div>
-      )}
-
-      {!todayPick ? (
-        <SectionCard title="Which menu today?" description="Browse the full week, then pick the day you'll eat from" icon={<UtensilsCrossed className="h-4.5 w-4.5" />} bodyCls="p-3 sm:p-4">
-          {meals.length === 0 ? (
-            <EmptyState icon={<UtensilsCrossed className="h-6 w-6" />} title="No meals planned yet" sub="Your coach hasn't assigned any meals — check back soon." />
-          ) : (
-            <WeekMenuList meals={meals} labelMode={labelMode} current={null} onSelect={chooseDay} />
-          )}
-        </SectionCard>
-      ) : (
-      <>
       {/* Week Navigation — fixed 7-col grid, no scroll on mobile */}
       <div className="rounded-xl border border-night-700 bg-night-850 p-2 sm:p-3">
         <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
@@ -808,11 +787,6 @@ function NutritionTab({ clientId, client, allMeals, planName }: { clientId: stri
         <div className="mb-2 flex items-center justify-between gap-2 px-1">
           <h2 className="text-[13px] font-bold uppercase tracking-[0.14em] text-mist-100">Meals · {formatDayName(selectedDay, labelMode)}</h2>
           <div className="flex shrink-0 items-center gap-2">
-            {todayPick && todayPick.day !== selectedDay && dayMeals.length > 0 && (
-              <button onClick={() => chooseDay(selectedDay)} className={`${btnVolt} h-9 shrink-0 !px-3.5 !text-[13px]`}>
-                Select for today
-              </button>
-            )}
             <Dropdown
               open={exportOpen}
               onOpenChange={setExportOpen}
@@ -901,7 +875,6 @@ function NutritionTab({ clientId, client, allMeals, planName }: { clientId: stri
                           {pendingFor(meal.id).length > 0 && (
                             <Badge className={`shrink-0 ${MEAL_REQ_META.PENDING.chip}`}>Pending{pendingFor(meal.id).length > 1 ? ` × ${pendingFor(meal.id).length}` : ""}</Badge>
                           )}
-                          {viewingPicked && <MealLogButtons meal={meal} date={todayISO()} clientId={clientId} />}
                           <button
                             onClick={() => setReqMeal(meal)}
                             title="Request a change"
@@ -1000,23 +973,6 @@ function NutritionTab({ clientId, client, allMeals, planName }: { clientId: stri
           </div>
         </div>
       </SectionCard>
-      </>
-      )}
-
-      <Modal open={pickOpen} onClose={() => setPickOpen(false)} title="Switch menu" description="Browse the full week, then pick the day you'll eat from.">
-        <div className="max-h-[62vh] overflow-y-auto pe-0.5">
-          <WeekMenuList meals={meals} labelMode={labelMode} current={todayPick?.day ?? null} onSelect={chooseDay} />
-        </div>
-      </Modal>
-
-      <ConfirmModal
-        open={confirmSwitch !== null}
-        onClose={() => setConfirmSwitch(null)}
-        title="Switch menu?"
-        message="Switching days clears today's marks (✓/✕) and you start fresh on the new menu."
-        confirmLabel="Switch & clear"
-        onConfirm={() => confirmSwitch !== null && doPick(confirmSwitch, true)}
-      />
 
       <MealRequestModal meal={reqMeal} dayLabel={reqMeal ? formatDayName(reqMeal.day, labelMode) : ""} clientId={clientId} onClose={() => setReqMeal(null)} />
     </div>
@@ -1083,23 +1039,19 @@ function MealRequestModal({ meal, dayLabel, clientId, onClose }: {
 
 function TodayTab({
   clientId,
-  todayPickDay,
   plans,
   meals,
   exercises,
   onCheckIn,
   onOpenTraining,
-  onOpenNutrition,
   sessionsToday,
 }: {
   clientId: string;
-  todayPickDay: number | null;
   plans: { id: string; day: number; exerciseId: string; sets: number; reps: number; rest: number; notes: string }[];
   meals: Meal[];
   exercises: { id: string; name: string; category: "Chest" | "Back" | "Legs" | "Arms" | "Core" | "Cardio"; videoUrl: string }[];
   onCheckIn: () => void;
   onOpenTraining: () => void;
-  onOpenNutrition: () => void;
   sessionsToday: { id: string; time: string; type: string; status: string }[];
 }) {
   const dn = dayNum();
@@ -1107,8 +1059,7 @@ function TodayTab({
   const { state: appState, toast: appToast } = useApp();
   const [workoutExportOpen, setWorkoutExportOpen] = useState(false);
   const clientName = appState.clients.find((c) => c.id === clientId)?.name ?? "My workout";
-  // Flexible menus: today shows the picked plan-day, not the calendar day.
-  const todayMeals = meals.filter((m) => m.day === (todayPickDay ?? dn));
+  const todayMeals = meals.filter((m) => m.day === dn);
   const plannedDayNames = useMemo(
     () =>
       WEEK_ORDER_SAT_FIRST.filter((d) => d !== dn && meals.some((m) => m.day === d)).map(
@@ -1195,7 +1146,7 @@ function TodayTab({
               <Flame className="h-3.5 w-3.5 text-warn-300" />
               {kcal > 0 ? `${kcal.toLocaleString("en-US")} kcal` : "No meals yet"}
             </span>
-            {todayPickDay && todayMeals.length > 0 && <DayAdherence clientId={clientId} date={todayISO()} total={todayMeals.length} />}
+
             {sessionsToday.length > 0 && (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[11px] font-bold text-mist-200">
                 <ClipboardList className="h-3.5 w-3.5 text-sky-300" />
@@ -1307,28 +1258,14 @@ function TodayTab({
         )}
       </SectionCard>
 
+      <DietCheckinCard clientId={clientId} plannedTotal={todayMeals.length} />
+
       <SectionCard
         title="Today's meals"
         icon={<UtensilsCrossed className="h-4.5 w-4.5" />}
         bodyCls="p-2.5 sm:p-3"
-        action={todayPickDay ? (
-          <button onClick={onOpenNutrition} className="cursor-pointer rounded-lg px-2 py-1 text-xs font-bold text-volt-300 transition hover:text-volt-200">
-            {WEEK_DAYS[todayPickDay - 1]} menu · Change
-          </button>
-        ) : undefined}
       >
-        {!todayPickDay ? (
-          <button onClick={onOpenNutrition} className="group flex w-full cursor-pointer items-center gap-3 rounded-xl border border-dashed border-night-500 p-4 text-start transition hover:border-volt-400/50">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-night-700 text-volt-300">
-              <UtensilsCrossed className="h-5 w-5" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-extrabold text-mist-100">Choose today's menu</span>
-              <span className="mt-0.5 block text-xs font-semibold text-mist-500">Pick which day you'll eat from</span>
-            </span>
-            <ArrowRight className="h-5 w-5 shrink-0 text-volt-300 transition-transform group-hover:translate-x-0.5 rtl:rotate-180" />
-          </button>
-        ) : todayMeals.length === 0 ? (
+        {todayMeals.length === 0 ? (
           <EmptyState icon={<UtensilsCrossed className="h-6 w-6" />} title="No meal plan yet" sub="Your coach hasn't assigned meals — check back soon.">
             {plannedDayNames.length > 0 && (
               <p className="text-xs font-semibold text-mist-500">
@@ -1352,10 +1289,7 @@ function TodayTab({
                     <div className="grid gap-2">
                       {list.map((m) => (
                         <div key={m.id} className="rounded-xl border border-night-700 bg-night-850 p-2.5">
-                          <div className="flex items-start gap-2">
-                            <p className="min-w-0 flex-1 text-sm font-semibold leading-5 text-mist-100">{m.description}</p>
-                            <MealLogButtons meal={m} date={todayISO()} clientId={clientId} />
-                          </div>
+                          <p className="text-sm font-semibold leading-5 text-mist-100">{m.description}</p>
                           <p className="mt-1.5 flex gap-3 text-[11px] font-bold tnum">
                             <span className="text-warn-300">{m.calories} kcal</span>
                             <span className="text-volt-300">P {m.protein}g</span>

@@ -147,9 +147,11 @@ export interface AdherenceDay {
   letter: string; // "M"
   planned: number;
   eaten: number;
-  skipped: { mealType: string; mealDescription: string }[];
+  /** The client's note explaining how the diet broke (if any). */
+  note: string | null;
+  /** ON_TRACK | PARTIAL | OFF_TRACK — null when unanswered. */
+  status: string | null;
   rate: number | null;
-  followed: string | null; // e.g. "Wednesday" — the menu the client picked that day
 }
 
 function rateColor(rate: number): string {
@@ -221,7 +223,7 @@ export function AdherenceTrend({ days }: { days: AdherenceDay[] }) {
     setHover(best);
   };
 
-  const unlogged = day && day.rate !== null ? Math.max(0, day.planned - day.eaten - day.skipped.length) : 0;
+
 
   return (
     <div>
@@ -302,35 +304,25 @@ export function AdherenceTrend({ days }: { days: AdherenceDay[] }) {
               {day.weekday} <span className="font-semibold text-mist-500">· {fmtShort(day.date)}</span>
             </p>
             {day.rate === null ? (
-              <span className="text-[11px] font-bold text-mist-500">Rest day — no meals planned</span>
+              <span className="text-[11px] font-bold text-mist-500">No answer logged</span>
+            ) : day.status === "ON_TRACK" ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-moss-300">
+                <Check className="h-3.5 w-3.5" /> Fully on track
+              </span>
+            ) : day.status === "PARTIAL" ? (
+              <span className="text-[11px] font-bold text-warn-300 tnum">
+                {day.planned - day.eaten} of {day.planned} meals missed
+              </span>
             ) : (
-              <span className="text-[11px] font-bold text-mist-400 tnum">
-                {day.eaten}/{day.planned} on track{day.followed ? ` · ${day.followed} menu` : ""}
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-danger-300">
+                <X className="h-3.5 w-3.5" strokeWidth={2.8} /> Whole day off track
               </span>
             )}
           </div>
-          {day.rate !== null && (
-            <div className="mt-1.5 grid gap-1">
-              {day.skipped.length === 0 && unlogged === 0 && (
-                <p className="flex items-center gap-1.5 text-xs font-bold text-moss-300">
-                  <Check className="h-3.5 w-3.5" /> Perfect day — everything on track
-                </p>
-              )}
-              {day.skipped.map((s, i) => (
-                <p key={i} className="flex items-start gap-1.5 text-xs leading-5 text-danger-300">
-                  <X className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2.8} />
-                  <span>
-                    <span className="font-bold">{s.mealType}</span>
-                    <span className="text-danger-300/80"> — {s.mealDescription}</span>
-                  </span>
-                </p>
-              ))}
-              {unlogged > 0 && (
-                <p className="text-[11px] font-semibold text-mist-500">
-                  {unlogged} meal{unlogged === 1 ? "" : "s"} not logged yet
-                </p>
-              )}
-            </div>
+          {day.rate !== null && day.note && (
+            <p className="mt-1.5 rounded-lg bg-night-850 px-2.5 py-1.5 text-xs italic leading-5 text-mist-300">
+              “{day.note}”
+            </p>
           )}
         </div>
       )}

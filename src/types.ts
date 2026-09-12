@@ -373,38 +373,23 @@ export interface MealEditRequest {
   reviewedAt?: number;
 }
 
-/* ---------------- meal compliance (client logs per meal per day) ----------------
-   The client taps ✓ (ate it) or ✕ (skipped / cheated) on each meal.
-   One row per meal per calendar date — tapping again switches or clears.
-   meal_id is FK-free so history survives meal deletes. */
+/* ---------------- diet check-in (one answer per day) ----------------
+   Each day the client answers: were they on track? ON_TRACK, PARTIAL
+   (with a missed-meals count) or OFF_TRACK for the whole day — plus a
+   note to the coach explaining how the diet broke. One row per
+   client per date (resubmitting updates it). */
 
-export type MealLogStatus = "EATEN" | "SKIPPED";
+export type DietCheckinStatus = "ON_TRACK" | "PARTIAL" | "OFF_TRACK";
 
-export interface MealLog {
+export interface DietCheckin {
   id: string;
   coachId: string;
   clientId: string;
-  mealId?: string;
-  date: string; // ISO — the calendar day this log belongs to
-  day: number; // snapshot of the plan day
-  mealType: MealType;
-  mealDescription: string;
-  status: MealLogStatus;
-  createdAt: number;
-}
-
-/* ---------------- flexible menus (client picks which day to eat) ----------------
-   The weekly plan is an open menu, not a calendar sentence. Each day the
-   client picks which plan-day (1..7) they follow; compliance marks are
-   logged against that day's meals with the calendar date. Switching days
-   clears that date's marks (after an explicit warning). */
-
-export interface MealDayPick {
-  id: string;
-  coachId: string;
-  clientId: string;
-  date: string; // ISO — the calendar day this pick belongs to
-  day: number; // 1..7 — the plan-day followed
+  date: string; // ISO — the calendar day this answer belongs to
+  status: DietCheckinStatus;
+  missed: number; // missed meals (PARTIAL only, else 0)
+  total: number; // planned meals that day (snapshot for trend math)
+  note?: string;
   createdAt: number;
 }
 
@@ -463,8 +448,7 @@ export interface AppState {
   workoutSessions: WorkoutSession[];
   workoutEntries: WorkoutEntry[];
   mealRequests: MealEditRequest[];
-  mealLogs: MealLog[];
-  mealDayPicks: MealDayPick[];
+  dietCheckins: DietCheckin[];
   progressPhotos: ProgressPhoto[];
   todos: ClientTodo[];
 }

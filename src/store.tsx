@@ -28,10 +28,9 @@ import type {
   Exercise,
   ExerciseCategory,
   Meal,
-  MealDayPick,
+  DietCheckin,
+  DietCheckinStatus,
   MealEditRequest,
-  MealLog,
-  MealLogStatus,
   NewClientInput,
   NoteCategory,
   NutritionPlan,
@@ -46,7 +45,7 @@ import type {
   WorkoutEntry,
   WorkoutSession,
 } from "./types";
-import { WEEK_DAYS, workoutExerciseKey } from "./types";
+import { workoutExerciseKey } from "./types";
 import { errorMessage, todayISO, uid, uuid } from "./lib";
 import {
   ClientModeError,
@@ -68,9 +67,8 @@ import {
   checkInToRow,
   clientExerciseToRow,
   clientToRow,
+  dietCheckinToRow,
   exerciseToRow,
-  mealDayPickToRow,
-  mealLogToRow,
   mealRequestToRow,
   mealToRow,
   messageToRow,
@@ -165,15 +163,8 @@ interface Store {
   cancelMealRequest: (id: string) => void;
   reviewMealRequest: (id: string, approve: boolean, coachNote?: string) => void;
 
-  /* ---- Meal compliance (client taps ✓ / ✕ per meal per day) ----
-     status null clears the mark. No success toast — toggles are rapid
-     and the button state itself is the feedback. */
-  setMealLog: (input: { meal: Meal; date: string; status: MealLogStatus | null; clientId?: string }) => void;
-
-  /* ---- Flexible menus: which plan-day the client follows on a date ----
-     clearLogs wipes that date's compliance marks (used when switching
-     days, after an explicit UI warning). */
-  setMealDayPick: (input: { date: string; day: number; clearLogs?: boolean; clientId?: string }) => void;
+  /* ---- Diet check-in (one answer per day, resubmit updates it) ---- */
+  saveDietCheckin: (input: { date: string; status: DietCheckinStatus; missed?: number; total?: number; note?: string; clientId?: string }) => void;
 
   /* ---- Progress photos (Before / After galleries, both sides upload) ---- */
   addProgressPhoto: (input: { kind: ProgressPhotoKind; photo: string; note?: string; date?: string; clientId?: string }) => ProgressPhoto | null;
@@ -255,8 +246,7 @@ const EMPTY: AppState = {
   workoutSessions: [],
   workoutEntries: [],
   mealRequests: [],
-  mealLogs: [],
-  mealDayPicks: [],
+  dietCheckins: [],
   progressPhotos: [],
   todos: [],
 };
@@ -511,8 +501,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           workoutSessions: s.workoutSessions.filter((x) => x.clientId !== id),
           workoutEntries: s.workoutEntries.filter((x) => x.clientId !== id),
           mealRequests: (s.mealRequests ?? []).filter((x) => x.clientId !== id),
-          mealLogs: (s.mealLogs ?? []).filter((x) => x.clientId !== id),
-          mealDayPicks: (s.mealDayPicks ?? []).filter((x) => x.clientId !== id),
+          dietCheckins: (s.dietCheckins ?? []).filter((x) => x.clientId !== id),
           progressPhotos: (s.progressPhotos ?? []).filter((x) => x.clientId !== id),
           todos: (s.todos ?? []).filter((x) => x.clientId !== id),
         }),
@@ -1112,87 +1101,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   /* ---------------- meal compliance ---------------- */
 
-  const setMealLog = useCallback(
-    (input: { meal: Meal; date: string; status: MealLogStatus | null; clientId?: string }) => {
+  /* ---------------- diet check-in ---------------- */
+
+  const saveDietCheckin = useCallback(
+    (input: { date: string; status: DietCheckinStatus; missed?: number; total?: number; note?: string; clientId?: string }) => {
       const clientId = trackerClientId(input.clientId);
       if (!clientId) {
         toast("Couldn't save — not signed in as a client.", "warn");
         return;
       }
-      const existing = (stateRef.current.mealLogs ?? []).find(
-        (x) => x.clientId === clientId && x.mealId === input.meal.id && x.date === input.date,
-      );
-      if (!input.status) {
-        if (!existing) return;
-        mutate(
-          (s) => ({ ...s, mealLogs: (s.mealLogs ?? []).filter((x) => x.id !== existing.id) }),
-          () => backend.remove("meal_logs", existing.id),
-        );
-        return;
-      }
-      if (existing) {
-        if (existing.status === input.status) return;
-        const next: MealLog = { ...existing, status: input.status };
-        mutate(
-          (s) => ({ ...s, mealLogs: (s.mealLogs ?? []).map((x) => (x.id === existing.id ? next : x)) }),
-          () => backend.update("meal_logs", existing.id, mealLogToRow(next)),
-        );
-        return;
-      }
-      const log: MealLog = {
-        id: uuid(),
-        coachId: coachId(),
-        clientId,
-        mealId: input.meal.id,
-        date: input.date,
-        day: input.meal.day,
-        mealType: input.meal.type,
-        mealDescription: input.meal.description,
-        status: input.status,
-        createdAt: Date.now(),
-      };
-      mutate(
-        (s) => ({ ...s, mealLogs: [log, ...(s.mealLogs ?? [])] }),
-        () => backend.insert("meal_logs", { id: log.id, coach_id: log.coachId, ...mealLogToRow(log) }),
-      );
-    },
-    [mutate, toast, trackerClientId],
-  );
-
-  /* ---------------- flexible menus ---------------- */
-
-  const setMealDayPick = useCallback(
-    (input: { date: string; day: number; clearLogs?: boolean; clientId?: string }) => {
-      const clientId = trackerClientId(input.clientId);
-      if (!clientId) {
-        toast("Couldn't save — not signed in as a client.", "warn");
-        return;
-      }
-      const day = Math.min(7, Math.max(1, Math.floor(input.day) || 1));
-      const existing = (stateRef.current.mealDayPicks ?? []).find((x) => x.clientId === clientId && x.date === input.date);
-      // Capture doomed log ids BEFORE the optimistic update (stateRef flips synchronously inside mutate).
-      const doomedIds = input.clearLogs
-        ? (stateRef.current.mealLogs ?? []).filter((x) => x.clientId === clientId && x.date === input.date).map((x) => x.id)
-        : [];
-      const pick: MealDayPick = existing
-        ? { ...existing, day }
-        : { id: uuid(), coachId: coachId(), clientId, date: input.date, day, createdAt: Date.now() };
+      const missed = Math.max(0, Math.floor(input.missed ?? 0));
+      const total = Math.max(missed, Math.floor(input.total ?? 0));
+      const existing = (stateRef.current.dietCheckins ?? []).find((x) => x.clientId === clientId && x.date === input.date);
+      const row: DietCheckin = existing
+        ? { ...existing, status: input.status, missed, total, note: input.note?.trim() || undefined }
+        : {
+            id: uuid(),
+            coachId: coachId(),
+            clientId,
+            date: input.date,
+            status: input.status,
+            missed,
+            total,
+            note: input.note?.trim() || undefined,
+            createdAt: Date.now(),
+          };
       mutate(
         (s) => ({
           ...s,
-          mealDayPicks: existing
-            ? (s.mealDayPicks ?? []).map((x) => (x.id === existing.id ? pick : x))
-            : [pick, ...(s.mealDayPicks ?? [])],
-          mealLogs: input.clearLogs
-            ? (s.mealLogs ?? []).filter((x) => !(x.clientId === clientId && x.date === input.date))
-            : s.mealLogs,
+          dietCheckins: existing
+            ? (s.dietCheckins ?? []).map((x) => (x.id === existing.id ? row : x))
+            : [row, ...(s.dietCheckins ?? [])],
         }),
-        async () => {
-          for (const id of doomedIds) await backend.remove("meal_logs", id);
-          if (existing) await backend.update("meal_day_picks", existing.id, mealDayPickToRow(pick));
-          else await backend.insert("meal_day_picks", { id: pick.id, coach_id: pick.coachId, ...mealDayPickToRow(pick) });
-        },
-        input.clearLogs ? "Switched menu — today's marks cleared" : `Following ${WEEK_DAYS[day - 1]} menu today`,
+        () =>
+          existing
+            ? backend.update("diet_checkins", existing.id, dietCheckinToRow(row))
+            : backend.insert("diet_checkins", { id: row.id, coach_id: row.coachId, ...dietCheckinToRow(row) }),
+        input.status === "ON_TRACK" ? "Nice — diet day logged" : "Saved — your coach will see this",
       );
     },
     [mutate, toast, trackerClientId],
@@ -1763,8 +1708,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         requestMealEdit,
         cancelMealRequest,
         reviewMealRequest,
-        setMealLog,
-        setMealDayPick,
+        saveDietCheckin,
         addProgressPhoto,
         deleteProgressPhoto,
         addSubscription,

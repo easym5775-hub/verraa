@@ -24,9 +24,8 @@ import type {
   Exercise,
   Meal,
   Message,
-  MealDayPick,
+  DietCheckin,
   MealEditRequest,
-  MealLog,
   NewClientInput,
   NutritionPlan,
   Payment,
@@ -466,45 +465,26 @@ export const rowToMealRequest = (r: Row): MealEditRequest => ({
   reviewedAt: r.reviewed_at ? Date.parse(String(r.reviewed_at)) || undefined : undefined,
 });
 
-/* ---------------- meal log row mappers ---------------- */
+/* ---------------- diet check-in row mappers ---------------- */
 
-export const mealLogToRow = (l: MealLog): Row => ({
-  client_id: l.clientId,
-  meal_id: l.mealId ?? null,
-  date: l.date,
-  day: l.day,
-  meal_type: l.mealType,
-  meal_description: l.mealDescription,
-  status: l.status,
+export const dietCheckinToRow = (d: DietCheckin): Row => ({
+  client_id: d.clientId,
+  date: d.date,
+  status: d.status,
+  missed: d.missed,
+  total: d.total,
+  note: d.note ?? null,
 });
 
-export const rowToMealLog = (r: Row): MealLog => ({
-  id: String(r.id),
-  coachId: String(r.coach_id ?? ""),
-  clientId: String(r.client_id ?? ""),
-  mealId: r.meal_id ? String(r.meal_id) : undefined,
-  date: String(r.date ?? todayISO()),
-  day: Number(r.day) || 1,
-  mealType: (r.meal_type as MealLog["mealType"]) ?? "Snack",
-  mealDescription: String(r.meal_description ?? ""),
-  status: (String(r.status ?? "EATEN").toUpperCase() as MealLog["status"]) ?? "EATEN",
-  createdAt: typeof r.created_at === "number" ? r.created_at : Date.parse(String(r.created_at ?? "")) || 0,
-});
-
-/* ---------------- meal day pick row mappers ---------------- */
-
-export const mealDayPickToRow = (p: MealDayPick): Row => ({
-  client_id: p.clientId,
-  date: p.date,
-  day: p.day,
-});
-
-export const rowToMealDayPick = (r: Row): MealDayPick => ({
+export const rowToDietCheckin = (r: Row): DietCheckin => ({
   id: String(r.id),
   coachId: String(r.coach_id ?? ""),
   clientId: String(r.client_id ?? ""),
   date: String(r.date ?? todayISO()),
-  day: Number(r.day) || 1,
+  status: (String(r.status ?? "ON_TRACK").toUpperCase() as DietCheckin["status"]) ?? "ON_TRACK",
+  missed: Number(r.missed) || 0,
+  total: Number(r.total) || 0,
+  note: r.note ? String(r.note) : undefined,
   createdAt: typeof r.created_at === "number" ? r.created_at : Date.parse(String(r.created_at ?? "")) || 0,
 });
 
@@ -1551,25 +1531,18 @@ class SupabaseBackend implements Backend {
       }),
     );
     const [clientExerciseRows, templateRows, workoutSessionRows, workoutEntryRows] = trackerResults;
-    // Meal edit requests (migration 0016) + meal logs (0017) — same best-effort deal.
+    // Meal edit requests (migration 0016) + diet check-ins (0020) — same best-effort deal.
     let mealRequestRows: Row[] = [];
-    let mealLogRows: Row[] = [];
     try {
       const res = await supabase.from("meal_edit_requests").select("*");
       if (!res.error) mealRequestRows = (res.data ?? []) as Row[];
     } catch {
       /* older project without the table — not fatal */
     }
+    let dietCheckinRows: Row[] = [];
     try {
-      const res = await supabase.from("meal_logs").select("*");
-      if (!res.error) mealLogRows = (res.data ?? []) as Row[];
-    } catch {
-      /* older project without the table — not fatal */
-    }
-    let mealDayPickRows: Row[] = [];
-    try {
-      const res = await supabase.from("meal_day_picks").select("*");
-      if (!res.error) mealDayPickRows = (res.data ?? []) as Row[];
+      const res = await supabase.from("diet_checkins").select("*");
+      if (!res.error) dietCheckinRows = (res.data ?? []) as Row[];
     } catch {
       /* older project without the table — not fatal */
     }
@@ -1615,8 +1588,7 @@ class SupabaseBackend implements Backend {
       workoutSessions: (workoutSessionRows ?? []).map(rowToWorkoutSession),
       workoutEntries: (workoutEntryRows ?? []).map(rowToWorkoutEntry),
       mealRequests: mealRequestRows.map(rowToMealRequest),
-      mealLogs: mealLogRows.map(rowToMealLog),
-      mealDayPicks: mealDayPickRows.map(rowToMealDayPick),
+      dietCheckins: dietCheckinRows.map(rowToDietCheckin),
       progressPhotos: progressPhotoRows.map(rowToProgressPhoto),
       nutritionPlans: nutritionPlanRows.map(rowToNutritionPlan),
       todos: todoRows.map(rowToTodo),

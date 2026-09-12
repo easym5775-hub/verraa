@@ -1318,53 +1318,54 @@ function ProgressCard({ checkIns, sessionsCount }: { checkIns: CheckIn[]; sessio
 }
 
 /* ---------------- meal adherence (last 7 days) ----------------
-   Planned meals come from the current weekly plan (by weekday);
-   eaten comes from the client's ✓ marks. Rest days (no plan) are
-   skipped so they don't drag the average down. */
+   Driven by the client's daily diet check-in: ON_TRACK = 100%,
+   PARTIAL = (total − missed) / total, OFF_TRACK = 0%. Days without an
+   answer show as gaps. Rest days (no plan) don't count. */
 
 function MealAdherenceCard({ clientId, meals }: { clientId: string; meals: Meal[] }) {
   const { state } = useApp();
   const days: AdherenceDay[] = useMemo(() => {
-    const logs = (state.mealLogs ?? []).filter((l) => l.clientId === clientId);
-    const picks = (state.mealDayPicks ?? []).filter((p) => p.clientId === clientId);
+    const answers = (state.dietCheckins ?? []).filter((d) => d.clientId === clientId);
     const arr: AdherenceDay[] = [];
     for (let i = 6; i >= 0; i--) {
       const date = addDays(todayISO(), -i);
       const wd = dayNum(new Date(date + "T12:00:00")); // 1 = Monday
-      // Flexible menus: measure against the day the client actually followed
-      // (falls back to the calendar weekday for days picked before this feature).
-      const pickDay = picks.find((p) => p.date === date)?.day;
-      const planned = meals.filter((m) => m.day === (pickDay ?? wd)).length;
-      const dayLogs = logs.filter((l) => l.date === date);
-      const eaten = Math.min(
-        dayLogs.filter((l) => l.status === "EATEN").length,
-        planned,
-      );
+      const a = answers.find((x) => x.date === date);
+      // Answered days measure against the snapshot total stored with the
+      // answer (immune to later plan edits); unanswered days are gaps.
+      const planned = a ? a.total : meals.filter((m) => m.day === wd).length;
+      let rate: number | null = null;
+      let eaten = 0;
+      if (a && a.total > 0) {
+        eaten = a.status === "ON_TRACK" ? a.total : a.status === "PARTIAL" ? Math.max(0, a.total - a.missed) : 0;
+        rate = Math.min(1, eaten / a.total);
+      } else if (a) {
+        rate = a.status === "ON_TRACK" ? 1 : 0;
+        eaten = rate;
+      }
       arr.push({
         date,
         weekday: WEEK_DAYS[wd - 1] ?? `Day ${wd}`,
         letter: (WEEK_SHORT[wd - 1] ?? "?").slice(0, 1),
         planned,
         eaten,
-        skipped: dayLogs
-          .filter((l) => l.status === "SKIPPED")
-          .map((l) => ({ mealType: l.mealType, mealDescription: l.mealDescription })),
-        rate: planned > 0 ? eaten / planned : null,
-        followed: pickDay ? (WEEK_DAYS[pickDay - 1] ?? `Day ${pickDay}`) : null,
+        note: a?.note ?? null,
+        status: a?.status ?? null,
+        rate,
       });
     }
     return arr;
-  }, [state.mealLogs, state.mealDayPicks, meals, clientId]);
+  }, [state.dietCheckins, meals, clientId]);
 
-  const withPlan = days.filter((d) => d.rate !== null);
-  const totP = withPlan.reduce((s, d) => s + d.planned, 0);
-  const totE = withPlan.reduce((s, d) => s + d.eaten, 0);
-  const pct = totP > 0 ? Math.round((totE / totP) * 100) : null;
+  const answered = days.filter((d) => d.rate !== null);
+  const totP = answered.reduce((s, d) => s + d.planned, 0);
+  const totE = answered.reduce((s, d) => s + d.eaten, 0);
+  const pct = answered.length > 0 && totP > 0 ? Math.round((totE / totP) * 100) : answered.length > 0 ? 100 : null;
 
   return (
     <SectionCard title="Meal adherence" description="Last 7 days" icon={<UtensilsCrossed className="h-4.5 w-4.5" />} bodyCls="p-5">
       {pct === null ? (
-        <EmptyState icon={<UtensilsCrossed className="h-6 w-6" />} title="No meals planned" sub="Assign meals first — adherence is measured against the plan." />
+        <EmptyState icon={<UtensilsCrossed className="h-6 w-6" />} title="No diet check-ins yet" sub="Answers appear here when the client logs their diet from the Today tab." />
       ) : (
         <>
           <div className="flex items-baseline gap-2">
@@ -1381,7 +1382,7 @@ function MealAdherenceCard({ clientId, meals }: { clientId: string; meals: Meal[
           <div className="mt-3">
             <AdherenceTrend days={days} />
           </div>
-          <p className="mt-2 text-[11px] font-semibold text-mist-500">Hover or tap the trend to inspect any day — rest days (no plan) don't count.</p>
+          <p className="mt-2 text-[11px] font-semibold text-mist-500">Hover or tap the trend to inspect any day — days without an answer don't count.</p>
         </>
       )}
     </SectionCard>
