@@ -34,19 +34,42 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
+          # Sanitize copy-paste artifacts: CR/LF, surrounding spaces/quotes, trailing slashes.
+          # GitHub Secrets must be the RAW value, no quotes, no `VAR=` prefix.
+          SUPABASE_URL="$(printf '%s' "$SUPABASE_URL" | tr -d '\r\n' | sed -e 's/^[[:space:]"'"'"']*//' -e 's/[[:space:]"'"'"']*$//' -e 's:/*$::')"
+          SUPABASE_ANON_KEY="$(printf '%s' "$SUPABASE_ANON_KEY" | tr -d '\r\n' | sed -e 's/^[[:space:]"'"'"']*//' -e 's/[[:space:]"'"'"']*$//')"
+          # Strip optional `Bearer ` prefix / `VAR=` prefix if pasted by mistake.
+          SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY#Bearer }"
+          SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY#SUPABASE_ANON_KEY=}"
+          SUPABASE_URL="${SUPABASE_URL#SUPABASE_URL=}"
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
             echo "::error::Missing SUPABASE_URL / SUPABASE_ANON_KEY secrets. Add them under Repo Settings -> Secrets -> Actions."
             exit 1
           fi
-          URL="${SUPABASE_URL%/}/rest/v1/coach_plans?select=id&limit=1"
-          echo "GET $URL"
+          if ! printf '%s' "$SUPABASE_URL" | grep -Eq '^https://[^[:space:]/]+(\.[^[:space:]/]+)*$'; then
+            echo "::error::SUPABASE_URL looks malformed (must be exactly https://<project>.supabase.co, no quotes/spaces). URL length: ${#SUPABASE_URL}."
+            exit 1
+          fi
+          if printf '%s' "$SUPABASE_URL" | grep -Eq '[[:space:]]'; then
+            echo "::error::SUPABASE_URL contains a space/newline. Re-copy the exact value."
+            exit 1
+          fi
+          URL="$SUPABASE_URL/rest/v1/coach_plans?select=id&limit=1"
+          echo "GET /rest/v1/coach_plans?select=id&limit=1 (host hidden, url_len=${#URL}, key_len=${#SUPABASE_ANON_KEY})"
+          set +e
           HTTP=$(curl -sS -o /tmp/out.json -w "%{http_code}" --max-time 25 \
             -H "apikey: $SUPABASE_ANON_KEY" \
             -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
             -H "Accept: application/json" \
             "$URL")
-          echo "HTTP $HTTP"
+          CURL_EXIT=$?
+          set -e
+          echo "curl_exit=$CURL_EXIT http=$HTTP"
           head -c 300 /tmp/out.json; echo
+          if [ "$CURL_EXIT" -ne 0 ]; then
+            echo "::error::curl exit $CURL_EXIT (3 = malformed URL). Fix: Secrets -> Actions -> SUPABASE_URL must be exactly https://xyz.supabase.co without quotes/spaces/newline."
+            exit 1
+          fi
           if [ "$HTTP" -ge 200 ] && [ "$HTTP" -lt 300 ]; then
             echo "keep-alive OK"
           else

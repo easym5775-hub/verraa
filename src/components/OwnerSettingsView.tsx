@@ -12,7 +12,7 @@ import { formatEGP, type CoachPlanConfig } from "../coachPricing";
 import { errorMessage } from "../lib";
 
 export function OwnerSettingsView() {
-  const { me, toast } = useApp();
+  const { me, toast, reload } = useApp();
   const [activeTab, setActiveTab] = useState<"profile" | "saas">("profile");
   const [plans, setPlans] = useState<CoachPlanConfig[]>([]);
   const [loadingPlans, setLoadingPlans] = useState(true);
@@ -90,6 +90,9 @@ export function OwnerSettingsView() {
     try {
       await backend.update("coach_plans", plan.id, { is_active: newActive });
       toast(`Plan ${newActive ? "activated" : "deactivated"}`, "ok");
+      // Push the change into the global store too, so every owner view
+      // (and the coach/landing surfaces on next load) reads the same table.
+      await reload();
     } catch (e) {
       // Revert on failure
       setPlans(plans.map(p => p.id === plan.id ? { ...p, isActive: plan.isActive } : p));
@@ -130,7 +133,10 @@ export function OwnerSettingsView() {
         delete next[plan.id];
         return next;
       });
-      toast("Price updated", "ok");
+      toast("Price updated — landing page and coach pricing read the same value", "ok");
+      // Push the change into the global store too, so every owner view
+      // (and the coach/landing surfaces on next load) reads the same table.
+      await reload();
     } catch (e) {
       const msg = errorMessage(e);
       setPlanErrors((prev) => ({ ...prev, [plan.id]: msg }));
@@ -365,8 +371,9 @@ export function OwnerSettingsView() {
 
                   <div className="mt-4 rounded-xl border border-warn-400/20 bg-warn-400/5 p-4">
                     <p className="text-xs text-mist-400">
-                      <span className="font-bold text-warn-300">Note:</span> Plan prices are in EGP/month. Deactivated plans cannot be assigned to new coaches. 
+                      <span className="font-bold text-warn-300">Note:</span> Plan prices are in EGP/month. Deactivated plans cannot be assigned to new coaches.
                       Price changes affect only new subscriptions; existing coach subscriptions retain their original price until changed by the owner.
+                      The landing page and coach pricing read this same table, so edits show everywhere.
                     </p>
                   </div>
                 </>

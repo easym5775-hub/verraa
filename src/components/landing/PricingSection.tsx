@@ -1,14 +1,18 @@
 /* ================================================================
    VERRAA — public pricing (marketing UI only).
-   Values come from the centralized pricing config
-   (DEFAULT_COACH_PLANS); subscription rules stay backend-controlled.
+   Values come from the LIVE `coach_plans` table (the same single source
+   of truth the owner edits in SaaS Settings and coaches see in Coach
+   Mode). `DEFAULT_COACH_PLANS` is only the offline fallback shown while
+   loading or when the database is unreachable.
    Only safe public fields (name / price / capacity) are displayed.
    ================================================================ */
 
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, BadgeCheck, Check, X } from "lucide-react";
 import type { CoachPlanConfig } from "../../coachPricing";
 import { DEFAULT_COACH_PLANS, getPlanFeatureDisplay } from "../../coachPricing";
+import { backend } from "../../services/backend";
 import { btnPrimary, btnSecondary } from "../ui";
 import { Reveal, SectionShell } from "./Reveal";
 
@@ -25,9 +29,28 @@ function priceLabel(plan: CoachPlanConfig): { big: string; suffix: string } {
 }
 
 export function PricingSection() {
-  const plans = PUBLIC_PLAN_IDS.map(
-    (id) => DEFAULT_COACH_PLANS.find((p) => p.id === id)!,
-  ).filter(Boolean);
+  // Live owner-managed prices. Starts as null (== defaults on first paint),
+  // then swaps to the DB values once loaded — so an owner price edit in
+  // SaaS Settings shows here on the visitor's next page load.
+  const [livePlans, setLivePlans] = useState<CoachPlanConfig[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    backend
+      .loadCoachPlans()
+      .then((loaded) => {
+        if (!cancelled) setLivePlans(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setLivePlans([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const source = livePlans && livePlans.length > 0 ? livePlans : DEFAULT_COACH_PLANS;
+  const plans = PUBLIC_PLAN_IDS.map((id) => source.find((p) => p.id === id)!).filter(Boolean);
 
   return (
     <SectionShell
