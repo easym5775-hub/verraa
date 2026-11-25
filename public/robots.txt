@@ -1,6 +1,10 @@
 # VERRAA robots.txt — update Sitemap URL when you set your final domain.
+# Note: "Disallow: /coach" and "/client" also match the public /coach-mode and
+# /client-mode pages (prefix match), so they are explicitly allowed below.
 User-agent: *
 Allow: /
+Allow: /coach-mode
+Allow: /client-mode
 Disallow: /coach
 Disallow: /client
 Disallow: /owner
