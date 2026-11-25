@@ -28,6 +28,7 @@ export type SeoPageKey =
   | "home"
   | "coach-mode"
   | "client-mode"
+  | "online-coaching-software"
   | "login"
   | "signup"
   | "verify"
@@ -69,6 +70,13 @@ export const SEO_PAGES: Record<SeoPageKey, SeoPage> = {
     description:
       "See what your clients experience in VERRAA Client Mode: today's training, meals, 60-second check-ins, strength tracking, progress charts and direct coach chat.",
     path: "/client-mode",
+    index: true,
+  },
+  "online-coaching-software": {
+    title: "Online Coaching Software for Personal Trainers — Clients, Check-Ins & Payments | VERRAA",
+    description:
+      "Manage online coaching clients, check-ins, workout and nutrition plans, subscriptions and payments in one place instead of WhatsApp chats and spreadsheets. Built for personal trainers.",
+    path: "/online-coaching-software",
     index: true,
   },
   signup: {
