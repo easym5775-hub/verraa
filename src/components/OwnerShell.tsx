@@ -172,7 +172,7 @@ export function OwnerShell({
             </nav>
             <div className="ms-auto flex items-center gap-2.5">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-volt-400/20 bg-volt-400/[0.07] px-3 py-1.5 text-xs font-bold text-volt-300">
-                <Dumbbell className="h-3.5 w-3.5" />
+                <span aria-hidden="true" className="text-[17px] font-extrabold leading-none">V</span>
                 Owner mode
               </span>
               <Avatar name="Owner" className="h-9 w-9 text-[11px]" />
