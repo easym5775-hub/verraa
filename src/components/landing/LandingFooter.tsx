@@ -29,6 +29,7 @@ export function LandingFooter() {
               <ul className="mt-3 grid gap-1">
                 <li><FooterLink to="/#features" label="Features" /></li>
                 <li><FooterLink to="/#pricing" label="Pricing" /></li>
+                <li><FooterLink to="/online-coaching-software" label="Online coaching software" /></li>
               </ul>
             </div>
             <div>
