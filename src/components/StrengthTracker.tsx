@@ -46,7 +46,7 @@ interface DraftRow {
 
 function firePRConfetti() {
   try {
-    confetti({ particleCount: 120, spread: 75, origin: { y: 0.3 }, colors: ["#CDF14B", "#ffffff", "#FFC53D"] });
+    confetti({ particleCount: 120, spread: 75, origin: { y: 0.3 }, colors: ["#2d6a49", "#ffffff", "#FFC53D"] });
     window.setTimeout(() => {
       try {
         confetti({ particleCount: 60, angle: 60, spread: 60, origin: { x: 0, y: 0.5 } });
