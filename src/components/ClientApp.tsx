@@ -344,13 +344,13 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
         <span aria-hidden="true" className="absolute inset-x-8 bottom-[-1px] h-px bg-gradient-to-r from-transparent via-volt-400/30 to-transparent" />
         <div className="mx-auto flex h-16 w-full max-w-4xl items-center gap-2.5 px-4 sm:gap-3 sm:px-6">
           <Avatar name={client.name} photo={client.photo} className="h-10 w-10 text-xs" status="online" />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 overflow-hidden">
             <p className="truncate text-sm font-extrabold tracking-tight text-mist-100 sm:text-[15px]">{client.name}</p>
-            <span className={`${chip} mt-0.5 hidden !border-white/[0.08] sm:inline-flex ${GOAL_META[client.goal].chip}`}>{client.goal}</span>
+            <span className={`${chip} mt-0.5 max-sm:!hidden max-w-full !border-white/[0.08] sm:inline-flex whitespace-nowrap ${GOAL_META[client.goal].chip}`}>{client.goal}</span>
             <p className="truncate text-[11px] font-semibold text-mist-500 sm:hidden">{client.goal} · {WEEK_DAYS[dayNum() - 1]}</p>
           </div>
           {/* desktop pills */}
-          <nav aria-label="Client sections" className="ms-auto hidden items-center gap-1 rounded-full border border-white/[0.07] bg-white/[0.02] p-1 lg:flex">
+          <nav aria-label="Client sections" className="ms-auto hidden shrink-0 items-center gap-1 rounded-full border border-white/[0.07] bg-white/[0.02] p-1 lg:flex">
             {tabs.map((t) => (
               <button
                 key={t.id}
@@ -372,7 +372,7 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
             aria-current={tab === "training" ? "page" : undefined}
             className={`grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-xl border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50 lg:hidden ${tab === "training" ? "border-volt-400/50 bg-volt-400/15 text-volt-300" : "border-white/[0.08] bg-white/[0.02] text-mist-400 hover:border-white/[0.14] hover:text-mist-100"}`}
           >
-            <Dumbbell className="h-[18px] w-[18px]" />
+            <span aria-hidden="true" className="text-[17px] font-extrabold leading-none">V</span>
           </button>
           {/* photos shortcut — visible on mobile/tablet where bottom nav hides it */}
           <button

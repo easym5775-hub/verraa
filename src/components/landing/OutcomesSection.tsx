@@ -10,8 +10,8 @@ import { ArrowRight, Clock3, Crown, HeartHandshake, Users } from "lucide-react";
 import { btnSecondary } from "../ui";
 import { Reveal } from "./Reveal";
 
-const UP = "#4ade80";
-const DOWN = "#f87171";
+const UP = "#1f5a3d";
+const DOWN = "#a23b30";
 
 export function OutcomesSection() {
   return (
@@ -120,7 +120,7 @@ function Pill({ text, tone }: { text: string; tone: "up" | "down" }) {
     <span
       className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10.5px] font-extrabold uppercase tracking-[0.12em] ${
         tone === "up"
-          ? "border-green-400/25 bg-green-400/[0.08] text-green-300"
+          ? "border-volt-400/25 bg-volt-400/[0.08] text-volt-400"
           : "border-red-400/25 bg-red-400/[0.08] text-red-300"
       }`}
     >
@@ -234,7 +234,7 @@ function SmoothChart({ direction, id, size = "md" }: { direction: "up" | "down";
           </linearGradient>
         </defs>
         {[18, 38, 58, 78].map((y) => (
-          <line key={y} x1="0" y1={y} x2="200" y2={y} stroke="rgba(233,240,235,0.055)" strokeWidth="1" />
+          <line key={y} x1="0" y1={y} x2="200" y2={y} stroke="rgba(20,33,27,0.07)" strokeWidth="1" />
         ))}
         <path d={area} fill={`url(#${id})`} />
         <path

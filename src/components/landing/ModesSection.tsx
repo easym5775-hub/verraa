@@ -59,12 +59,12 @@ export function ModesSection() {
         >
           <defs>
             <linearGradient id="branch-left" x1="1" y1="0" x2="0" y2="0">
-              <stop offset="0%" stopColor="#cdf14b" stopOpacity="0.75" />
-              <stop offset="100%" stopColor="#cdf14b" stopOpacity="0.12" />
+              <stop offset="0%" stopColor="#1f5a3d" stopOpacity="0.75" />
+              <stop offset="100%" stopColor="#1f5a3d" stopOpacity="0.12" />
             </linearGradient>
             <linearGradient id="branch-right" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#cdf14b" stopOpacity="0.75" />
-              <stop offset="100%" stopColor="#cdf14b" stopOpacity="0.12" />
+              <stop offset="0%" stopColor="#1f5a3d" stopOpacity="0.75" />
+              <stop offset="100%" stopColor="#1f5a3d" stopOpacity="0.12" />
             </linearGradient>
           </defs>
           <path

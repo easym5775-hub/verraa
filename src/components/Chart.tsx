@@ -197,7 +197,7 @@ export function AdherenceTrend({ days }: { days: AdherenceDay[] }) {
       segs.push({
         line,
         area: `${line} L${x(run[run.length - 1]).toFixed(1)},${H - padB} L${x(run[0]).toFixed(1)},${H - padB} Z`,
-        color: "#cdf14b",
+        color: "var(--color-volt-400)",
       });
     }
     run = [];
@@ -246,8 +246,8 @@ export function AdherenceTrend({ days }: { days: AdherenceDay[] }) {
       >
         <defs>
           <linearGradient id="adArea" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#cdf14b" stopOpacity="0.20" />
-            <stop offset="100%" stopColor="#cdf14b" stopOpacity="0" />
+            <stop offset="0%" stopColor="var(--color-volt-400)" stopOpacity="0.20" />
+            <stop offset="100%" stopColor="var(--color-volt-400)" stopOpacity="0" />
           </linearGradient>
         </defs>
         {[0, 0.5, 1].map((f) => (

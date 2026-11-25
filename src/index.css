@@ -742,3 +742,126 @@ button {
     animation: none !important;
   }
 }
+
+/* ---- Calm identity (landing + whole app in the default theme): off-white, one deep-green accent, one sans font.
+   Scoped to .landing-calm so the app (coach/client/owner) is untouched. ---- */
+.landing-calm,
+:root:not([data-theme="light"]) {
+  --font-display: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --color-white: #14211b;
+  --color-night-950: #f6f4ee;
+  --color-night-900: #fbfaf6;
+  --color-night-850: #f0ede4;
+  --color-night-800: #e9e5d9;
+  --color-night-700: #dcd7c8;
+  --color-night-600: #c6c0ad;
+  --color-night-500: #a9a390;
+  --color-night-400: #8a8573;
+  --color-mist-100: #14211b;
+  --color-mist-200: #22332a;
+  --color-mist-300: #3a4c42;
+  --color-mist-400: #52625a;
+  --color-mist-500: #6b7970;
+  --color-volt-200: #2d6a49;
+  --color-volt-300: #2d6a49;
+  --color-volt-400: #1f5a3d;
+  --color-volt-500: #194c33;
+  --color-volt-600: #143f2a;
+  --color-volt-700: #0f3322;
+  --color-moss-300: #2d6a49;
+  --color-moss-400: #2d6a49;
+  --color-moss-500: #1f5a3d;
+  --color-warn-300: #8a5a12;
+  --color-warn-400: #8a5a12;
+  --color-warn-500: #a8721a;
+  --color-danger-300: #a23b30;
+  --color-danger-400: #a23b30;
+  --color-danger-500: #b4463a;
+  background: #f6f4ee;
+  color: #14211b;
+}
+.landing-calm h1,
+.landing-calm h2,
+.landing-calm h3 {
+  text-transform: none;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+.landing-calm .btn-on-green,
+.landing-calm a[class*="bg-volt-400"] { color: #f6f4ee; }
+.landing-calm [class*="shadow-["] { --tw-shadow-color: rgba(20, 33, 27, 0.12); }
+.landing-calm {
+  --shadow-sm: 0 1px 2px rgba(20, 33, 27, 0.06);
+  --shadow-md: 0 1px 3px rgba(20, 33, 27, 0.07);
+  --shadow-lg: 0 2px 8px rgba(20, 33, 27, 0.07);
+  --shadow-xl: 0 2px 10px rgba(20, 33, 27, 0.08);
+}
+.landing-calm [class*="shadow-[0"] { box-shadow: 0 1px 3px rgba(20, 33, 27, 0.08) !important; }
+.landing-calm [class*="bg-[radial-gradient"] { background: none !important; }
+.landing-calm .shadow-xl, .landing-calm .shadow-lg, .landing-calm .shadow-md { box-shadow: 0 1px 3px rgba(20, 33, 27, 0.08) !important; }
+.landing-calm [class*="rounded-full"][class*="h-10"][class*="w-10"] { background: #dcd7c8 !important; color: #14211b !important; }
+:root:not([data-theme="light"]) h1,
+:root:not([data-theme="light"]) h2,
+:root:not([data-theme="light"]) h3 {
+  text-transform: none;
+  letter-spacing: -0.02em;
+}
+:root:not([data-theme="light"]) {
+  --shadow-sm: 0 1px 2px rgba(20, 33, 27, 0.06);
+  --shadow-md: 0 1px 3px rgba(20, 33, 27, 0.07);
+  --shadow-lg: 0 2px 8px rgba(20, 33, 27, 0.07);
+  --shadow-xl: 0 2px 10px rgba(20, 33, 27, 0.08);
+  --shadow-glow-volt: 0 1px 2px rgba(20, 33, 27, 0.12);
+}
+:root:not([data-theme="light"]) .text-stroke {
+  -webkit-text-stroke: 0;
+  color: var(--color-mist-500);
+}
+:root:not([data-theme="light"]) [class*="shadow-glow"] { box-shadow: 0 1px 2px rgba(20, 33, 27, 0.12) !important; }
+:root:not([data-theme="light"]) [class*="rgba(205,241,75"][class*="shadow-"] { box-shadow: 0 1px 2px rgba(20, 33, 27, 0.12) !important; }
+
+/* ---- Calm identity, optional Light theme: same deep-green accent, sans font and flat shadows on bright surfaces. ---- */
+html[data-theme="light"] {
+  --font-display: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --color-night-950: #f6f4ee;
+  --color-night-900: #ffffff;
+  --color-night-850: #faf9f5;
+  --color-night-800: #efece3;
+  --color-night-700: #dcd7c8;
+  --color-night-600: #c6c0ad;
+  --color-volt-200: #2d6a49;
+  --color-volt-300: #2d6a49;
+  --color-volt-400: #1f5a3d;
+  --color-volt-500: #194c33;
+  --color-volt-600: #143f2a;
+  --color-volt-700: #0f3322;
+  --color-moss-300: #2d6a49;
+  --color-moss-400: #2d6a49;
+  --color-moss-500: #1f5a3d;
+  --color-warn-300: #8a5a12;
+  --color-danger-300: #a23b30;
+  --shadow-sm: 0 1px 2px rgba(20, 33, 27, 0.06);
+  --shadow-md: 0 1px 3px rgba(20, 33, 27, 0.07);
+  --shadow-lg: 0 2px 8px rgba(20, 33, 27, 0.07);
+  --shadow-xl: 0 2px 10px rgba(20, 33, 27, 0.08);
+  --shadow-glow-volt: 0 1px 2px rgba(20, 33, 27, 0.12);
+  --chart-line: #1f5a3d;
+  --chart-label: #1f5a3d;
+}
+html[data-theme="light"] body { background-image: none; }
+html[data-theme="light"] [class*="text-volt-400"],
+html[data-theme="light"] [class*="text-volt-300"],
+html[data-theme="light"] [class*="text-volt-200"] { color: #1f5a3d; }
+html[data-theme="light"] [class*="text-night-950"] { color: #f6f4ee; }
+html[data-theme="light"] h1,
+html[data-theme="light"] h2,
+html[data-theme="light"] h3 { text-transform: none; letter-spacing: -0.02em; }
+html[data-theme="light"] .text-stroke { -webkit-text-stroke: 0; color: var(--color-mist-500); }
+html[data-theme="light"] [class*="shadow-glow"],
+html[data-theme="light"] [class*="rgba(205,241,75"][class*="shadow-"] { box-shadow: 0 1px 2px rgba(20, 33, 27, 0.12) !important; }
+html[data-theme="light"] .app-glow, html[data-theme="light"] .dot-grid { display: none; }
+:root:not([data-theme="light"]) [class*="text-sky-200"], :root:not([data-theme="light"]) [class*="text-sky-300"], html[data-theme="light"] [class*="text-sky-200"], html[data-theme="light"] [class*="text-sky-300"] { color: #1d5f7a; }
+:root:not([data-theme="light"]) .app-glow, :root:not([data-theme="light"]) .dot-grid { display: none; }
+:root:not([data-theme="light"]) .shadow-xl, :root:not([data-theme="light"]) .shadow-lg, :root:not([data-theme="light"]) .shadow-md,
+html[data-theme="light"] .shadow-xl, html[data-theme="light"] .shadow-lg, html[data-theme="light"] .shadow-md { box-shadow: 0 1px 3px rgba(20, 33, 27, 0.08) !important; }
+:root:not([data-theme="light"]) body { background-image: none; }

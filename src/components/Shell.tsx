@@ -110,7 +110,7 @@ export function CoachShell({
       >
         <div className="group flex items-center gap-3 px-5 pb-5 pt-6">
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-volt-400 text-night-950 shadow-[0_8px_24px_-10px_rgba(205,241,75,0.55)] transition-transform duration-300 ease-out group-hover:-rotate-6 group-hover:scale-[1.03]">
-            <Dumbbell className="h-5 w-5" strokeWidth={2.4} />
+            <span aria-hidden="true" className="text-[17px] font-extrabold leading-none">V</span>
           </span>
           <div className="min-w-0">
             <p className="font-display text-[22px] font-bold uppercase leading-none tracking-wide text-mist-100">
@@ -236,7 +236,7 @@ export function CoachShell({
         <div className="sticky top-0 z-30 border-b border-white/[0.06] bg-night-950/85 backdrop-blur-xl lg:hidden">
           <div className="flex h-16 items-center gap-2.5 px-4">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-volt-400 text-night-950 shadow-[0_8px_20px_-8px_rgba(205,241,75,0.5)]">
-              <Dumbbell className="h-[18px] w-[18px]" strokeWidth={2.4} />
+              <span aria-hidden="true" className="text-[17px] font-extrabold leading-none">V</span>
             </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-extrabold tracking-tight text-mist-100">{meta.label}</p>

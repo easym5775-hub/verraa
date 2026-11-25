@@ -2,7 +2,7 @@
    VERRAA — centralized Coach Pricing & Subscription source of truth.
 
    All pricing values live here (as DB-backed defaults). UI components
-   must NEVER hardcode 1999 / 5000 / 10000 / 20 / 100 — import from here
+   must NEVER hardcode 999 / 2999 / 5999 / 20 / 100 — import from here
    or, preferably, use the live `coachPlans` loaded from the database
    (which falls back to DEFAULT_COACH_PLANS when offline).
 
@@ -95,7 +95,7 @@ export const DEFAULT_COACH_PLANS: CoachPlanConfig[] = [
   {
     id: "STARTER",
     name: "Starter",
-    price: 1999,
+    price: 999,
     maxClients: 20,
     billingInterval: "monthly",
     isActive: true,
@@ -112,7 +112,7 @@ export const DEFAULT_COACH_PLANS: CoachPlanConfig[] = [
   {
     id: "PROFESSIONAL",
     name: "Professional",
-    price: 5000,
+    price: 2999,
     maxClients: 100,
     billingInterval: "monthly",
     isActive: true,
@@ -129,7 +129,7 @@ export const DEFAULT_COACH_PLANS: CoachPlanConfig[] = [
   {
     id: "ENTERPRISE",
     name: "Enterprise",
-    price: 10000,
+    price: 5999,
     maxClients: null,
     billingInterval: "monthly",
     isActive: true,

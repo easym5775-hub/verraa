@@ -43,15 +43,8 @@ export function LandingPage() {
   }, [location.hash]);
 
   return (
-    <div className="noise relative flex min-h-screen flex-col overflow-x-clip">
+    <div className="landing-calm relative flex min-h-screen flex-col overflow-x-clip">
       <Seo page="home" titleOverride={PAGE_TITLE} descOverride={PAGE_DESC} pathOverride="/" />
-      <div className="app-glow pointer-events-none fixed inset-0" aria-hidden="true" />
-      <div className="dot-grid pointer-events-none fixed inset-0" aria-hidden="true" />
-      <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
-        <div className="orb orb-a -right-32 -top-40" />
-        <div className="orb orb-b -left-24 bottom-1/4" />
-      </div>
-
       <LandingHeader />
       <main id="main-content" className="relative z-10 flex-1">
         <HeroSection />

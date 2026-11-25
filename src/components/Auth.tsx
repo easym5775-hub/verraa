@@ -143,7 +143,7 @@ export function Auth({
         <div className="hidden min-w-0 flex-1 flex-col lg:flex">
           <div className="rise flex items-center gap-3">
             <span className="grid h-12 w-12 place-items-center rounded-2xl bg-volt-400 text-night-950 shadow-[0_10px_30px_-10px_rgba(205,241,75,0.5)]">
-              <Dumbbell className="h-6 w-6" strokeWidth={2.4} />
+              <span aria-hidden="true" className="text-[17px] font-extrabold leading-none">V</span>
             </span>
             <div>
               <p className="font-display text-[28px] font-bold uppercase leading-none tracking-wide text-mist-100">
@@ -208,7 +208,7 @@ export function Auth({
             />
             <div className="mb-6 flex items-center gap-3 lg:hidden">
               <span className="grid h-11 w-11 place-items-center rounded-2xl bg-volt-400 text-night-950">
-                <Dumbbell className="h-5 w-5" strokeWidth={2.4} />
+                <span aria-hidden="true" className="text-[17px] font-extrabold leading-none">V</span>
               </span>
               <div>
                 <p className="font-display text-2xl font-bold uppercase leading-none text-mist-100">Verraa</p>

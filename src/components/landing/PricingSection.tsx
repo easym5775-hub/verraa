@@ -95,7 +95,7 @@ export function PricingSection() {
                     {price.suffix}
                   </span>
                 </p>
-                <p className="mt-2 text-sm font-extrabold text-volt-200">{capacityLabel(plan)}</p>
+                <p className="mt-2 text-sm font-extrabold text-volt-400">{capacityLabel(plan)}</p>
                 <ul className="mt-5 grid flex-1 content-start gap-2.5">
                   {getPlanFeatureDisplay(plan.id).map((f) => {
                     const excluded = f.tone === "excluded";

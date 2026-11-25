@@ -986,7 +986,7 @@ export function OwnerCoachDetail({ coachId, onBack }: { coachId: string; onBack:
               type="checkbox"
               checked={cAuto}
               onChange={(e) => setCAuto(e.target.checked)}
-              className="h-4 w-4 accent-[#cdf14b]"
+              className="h-4 w-4 accent-volt-400"
             />
             Auto-renew
           </label>
