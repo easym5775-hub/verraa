@@ -802,6 +802,8 @@ button {
 /* ---- Calm identity, optional Light theme: same deep-green accent, sans font and flat shadows on bright surfaces. ---- */
 html[data-theme="light"] {
   --font-display: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --color-mist-400: #52625a;
+  --color-mist-500: #5f6f66;
   --color-night-950: #f6f4ee;
   --color-night-900: #ffffff;
   --color-night-850: #faf9f5;
@@ -851,13 +853,13 @@ html[data-theme="light"] .shadow-xl, html[data-theme="light"] .shadow-lg, html[d
   --color-night-800: #1d2923;
   --color-night-700: #28362f;
   --color-night-600: #3a4a41;
-  --color-night-500: #5b6d63;
+  --color-night-500: #6c7e74;
   --color-night-400: #7a8c82;
   --color-mist-100: #eef2ee;
   --color-mist-200: #d5ddd7;
   --color-mist-300: #b3c0b8;
-  --color-mist-400: #8fa096;
-  --color-mist-500: #74857b;
+  --color-mist-400: #a0afa6;
+  --color-mist-500: #8a9b91;
   --color-volt-200: #a8d9bd;
   --color-volt-300: #8cc9a6;
   --color-volt-400: #5fae85;
@@ -891,3 +893,16 @@ html[data-theme="light"] .shadow-xl, html[data-theme="light"] .shadow-lg, html[d
 :root:not([data-theme="light"]) .shadow-xl,
 :root:not([data-theme="light"]) .shadow-lg,
 :root:not([data-theme="light"]) .shadow-md { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35) !important; }
+
+/* Light theme: pale accent text used on tinted chips gets readable darker twins. */
+html[data-theme="light"] [class*="text-rose-300"],
+html[data-theme="light"] [class*="text-red-300"],
+html[data-theme="light"] [class*="text-danger-200"],
+html[data-theme="light"] [class*="text-danger-400"] { color: #a23b30; }
+html[data-theme="light"] [class*="text-amber-300"],
+html[data-theme="light"] [class*="text-orange-300"],
+html[data-theme="light"] [class*="text-warn-200"],
+html[data-theme="light"] [class*="text-warn-400"] { color: #8a5a12; }
+html[data-theme="light"] [class*="text-teal-300"],
+html[data-theme="light"] [class*="text-moss-400"] { color: #1f5a3d; }
+html[data-theme="light"] [class*="text-sky-400"] { color: #1d5f7a; }
