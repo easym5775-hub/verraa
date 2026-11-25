@@ -15,6 +15,7 @@ import { AdminAuth } from "./components/AdminAuth";
 import { LandingPage } from "./components/landing/LandingPage";
 import { CoachModePage } from "./components/landing/CoachModePage";
 import { ClientModePage } from "./components/landing/ClientModePage";
+import { OnlineCoachingSoftwarePage } from "./components/landing/OnlineCoachingSoftwarePage";
 import { PrivacyPage, TermsPage } from "./components/landing/LandingFooter";
 import { CoachShell } from "./components/Shell";
 import { OwnerShell } from "./components/OwnerShell";
@@ -183,6 +184,7 @@ function Root() {
         {/* Public mode pages — static feature explanations, no private data. */}
         <Route path="/coach-mode" element={<CoachModePage />} />
         <Route path="/client-mode" element={<ClientModePage />} />
+        <Route path="/online-coaching-software" element={<OnlineCoachingSoftwarePage />} />
         {/* Existing authentication flows (coach email+password, client username). */}
         <Route path="/login" element={<Auth initialMode="signin" onShowAdmin={() => setShowAdminAuth(true)} />} />
         <Route path="/signup" element={<Auth initialMode="signup" onShowAdmin={() => setShowAdminAuth(true)} />} />
