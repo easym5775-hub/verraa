@@ -12,18 +12,6 @@
     <xhtml:link rel="alternate" hreflang="x-default" href="https://verraa.vercel.app/"/>
   </url>
   <url>
-    <loc>https://verraa.vercel.app/#pricing</loc>
-    <lastmod>2026-09-07</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://verraa.vercel.app/#features</loc>
-    <lastmod>2026-09-07</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://verraa.vercel.app/coach-mode</loc>
     <lastmod>2026-09-07</lastmod>
     <changefreq>monthly</changefreq>
