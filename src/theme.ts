@@ -34,7 +34,7 @@ export function applyTheme(t: Theme): void {
     /* storage unavailable — non-fatal */
   }
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", t === "light" ? "#edf1ec" : "#080c0a");
+  if (meta) meta.setAttribute("content", t === "light" ? "#f6f4ee" : "#0e1512");
 }
 
 export function useTheme(): { theme: Theme; setTheme: (t: Theme) => void; toggle: () => void } {
