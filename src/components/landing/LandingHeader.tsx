@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ArrowRight, Dumbbell, Menu, X } from "lucide-react";
+import { ArrowRight, Menu, X } from "lucide-react";
 import { btnPrimary } from "../ui";
 
 const NAV = [
@@ -67,16 +67,11 @@ export function LandingHeader() {
     >
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-3 px-5 sm:px-6">
         <Link to="/" aria-label="VERRAA — home" className="flex min-w-0 items-center gap-2.5 rounded-xl">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-volt-400 text-night-950 shadow-[0_8px_24px_-10px_rgba(205,241,75,0.55)]">
-            <Dumbbell className="h-[18px] w-[18px]" strokeWidth={2.4} />
-          </span>
           <span className="min-w-0 leading-none">
-            <span className="block font-display text-[21px] font-bold uppercase tracking-wide text-mist-100">
+            <span className="block text-[19px] font-bold uppercase tracking-[0.22em] text-mist-100">
               Verraa
             </span>
-            <span className="mt-0.5 hidden text-[9px] font-bold uppercase tracking-[0.28em] text-mist-500 sm:block">
-              Coaching OS
-            </span>
+            
           </span>
         </Link>
 
