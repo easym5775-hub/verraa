@@ -4,7 +4,6 @@
    ================================================================ */
 
 import { Link } from "react-router-dom";
-import { Dumbbell } from "lucide-react";
 import { LandingHeader } from "./LandingHeader";
 import { Seo } from "../Seo";
 
@@ -16,10 +15,7 @@ export function LandingFooter() {
         <div className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
           <div className="max-w-xs">
             <p className="flex items-center gap-2.5">
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-volt-400 text-night-950">
-                <Dumbbell className="h-[18px] w-[18px]" strokeWidth={2.4} />
-              </span>
-              <span className="font-display text-[21px] font-bold uppercase tracking-wide text-mist-100">
+              <span className="text-[19px] font-bold uppercase tracking-[0.22em] text-mist-100">
                 Verraa
               </span>
             </p>
