@@ -405,8 +405,8 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
 
   return (
     <div>
-      {/* compact header */}
-      <div className="rise">
+      {/* compact header (z-20 keeps the More menu above the tab bar below it) */}
+      <div className="rise relative z-20">
         <button className="mb-3 inline-flex cursor-pointer items-center gap-1.5 text-xs font-bold text-mist-400 transition hover:text-volt-300" onClick={() => go("clients")}>
           <ArrowLeft className="h-3.5 w-3.5 rtl:rotate-180" /> Back to clients
         </button>
