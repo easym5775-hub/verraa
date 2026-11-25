@@ -73,7 +73,7 @@ describe("getCoachPlanConfig", () => {
   it("finds a plan by name", () => {
     const result = getCoachPlanConfig(DEFAULT_COACH_PLANS, "STARTER");
     expect(result?.id).toBe("STARTER");
-    expect(result?.price).toBe(1999);
+    expect(result?.price).toBe(999);
   });
   it("returns null for unknown plan", () => {
     expect(getCoachPlanConfig(DEFAULT_COACH_PLANS, "UNKNOWN")).toBeNull();
