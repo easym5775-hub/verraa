@@ -607,7 +607,7 @@ export function Dropdown({
           ref={menuRef}
           role="menu"
           aria-label={label ?? "Menu"}
-          className={`animate-dropdown absolute top-full z-50 mt-2 min-w-[200px] overflow-hidden rounded-2xl border border-white/10 bg-night-900/95 p-1.5 shadow-xl backdrop-blur-xl ${
+          className={`animate-dropdown absolute top-full z-50 mt-2 min-w-[200px] overflow-hidden rounded-2xl border border-white/10 bg-night-900 p-1.5 shadow-xl ${
             align === "end" ? "end-0" : "start-0"
           }`}
         >
