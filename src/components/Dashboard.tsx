@@ -54,7 +54,7 @@ import {
 import { useApp } from "../store";
 import {
   effectiveCoachStatus,
-  formatEGP,
+  formatUSD,
   planRenewalLabel,
 } from "../coachPricing";
 import { Avatar, Badge, btnPrimary, btnSecondary, btnSm } from "./ui";
@@ -1649,7 +1649,7 @@ function CompactPlanUsage({
         <div className="min-w-0">
           <p className="truncate text-sm font-bold text-mist-100">
             {planName} Plan
-            <span className="ms-2 text-xs font-semibold text-mist-500 tnum">{formatEGP(planPrice)} / mo</span>
+            <span className="ms-2 text-xs font-semibold text-mist-500 tnum">{formatUSD(planPrice)} / mo</span>
           </p>
           <p className="mt-0.5 text-xs text-mist-500">
             {limit === null ? `${count} client slots used · Unlimited` : `${count} of ${limit} client slots used`}
