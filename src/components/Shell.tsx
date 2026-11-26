@@ -104,81 +104,50 @@ export function CoachShell({
       <div className="app-glow pointer-events-none fixed inset-0" />
       <div className="dot-grid pointer-events-none fixed inset-0 opacity-40" />
 
-      {/* sidebar */}
+      {/* sidebar — concept: solid deep-green rail, flat nav, same in both themes */}
       <aside
         aria-label="Coach navigation"
-        className="sticky top-0 z-30 hidden h-screen w-[272px] shrink-0 flex-col border-e border-white/[0.06] bg-night-950/70 backdrop-blur-xl lg:flex"
+        className="coach-side sticky top-0 z-30 hidden h-screen w-[272px] shrink-0 flex-col border-e lg:flex"
       >
-        <div className="group flex items-center gap-3 px-5 pb-5 pt-6">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-volt-400 text-night-950 shadow-[0_8px_24px_-10px_rgba(205,241,75,0.55)] transition-transform duration-300 ease-out group-hover:-rotate-6 group-hover:scale-[1.03]">
-            <span aria-hidden="true" className="text-[17px] font-extrabold leading-none">V</span>
-          </span>
-          <div className="min-w-0">
-            <p className="font-display text-[22px] font-bold uppercase leading-none tracking-wide text-mist-100">
-              Verraa
-            </p>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.24em] text-mist-500">
-              Coaching OS
-            </p>
-          </div>
-          <span
-            className="ms-auto inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wider border-moss-400/20 bg-moss-400/[0.08] text-moss-300"
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-moss-400" />
-            Live
-          </span>
+        <div className="flex items-center gap-2.5 px-5 pb-5 pt-6">
+          <p className="font-display text-[22px] font-bold uppercase leading-none tracking-wide text-white">
+            Verraa
+          </p>
+          <span aria-hidden="true" className="mt-0.5 h-1.5 w-1.5 rounded-full bg-moss-400" />
         </div>
 
-        <nav className="flex-1 space-y-6 overflow-y-auto px-3 pb-4" aria-label="Primary">
-          {SECTIONS.map((section) => (
-            <div key={section.label}>
-              <p className="px-3 pb-2 text-[10.5px] font-bold uppercase tracking-[0.18em] text-mist-500">
-                {section.label}
-              </p>
-              <div className="flex flex-col gap-1">
-                {section.items.map((item) => {
-                  const active = isActive(item.id);
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => go(item.id)}
-                      aria-current={active ? "page" : undefined}
-                      title={item.hint}
-                      className={`group flex min-h-[44px] cursor-pointer items-center gap-3 rounded-xl px-3 text-start text-[13.5px] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-night-950 ${
-                        active
-                          ? "bg-white/[0.06] font-bold text-mist-100 ring-1 ring-white/[0.08] shadow-sm"
-                          : "font-semibold text-mist-400 hover:bg-white/[0.04] hover:text-mist-100"
-                      }`}
-                    >
-                      <span
-                        className={`grid h-8 w-8 shrink-0 place-items-center rounded-[10px] border transition-colors ${
-                          active
-                            ? "border-volt-400/25 bg-volt-400/10 text-volt-300"
-                            : "border-white/[0.06] bg-white/[0.03] text-mist-500 group-hover:text-mist-200"
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                      </span>
-                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                      {item.id === "clients" && (
-                        <span
-                          className={`rounded-full px-2 py-0.5 font-display text-[11px] font-bold leading-4 tnum ${
-                            active ? "bg-volt-400/15 text-volt-200" : "bg-white/[0.05] text-mist-400"
-                          }`}
-                        >
-                          {state.clients.length}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+        <nav className="flex-1 overflow-y-auto px-3 pb-4" aria-label="Primary">
+          <div className="flex flex-col gap-1">
+            {SECTIONS.flatMap((section) => section.items).map((item) => {
+              const active = isActive(item.id);
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => go(item.id)}
+                  aria-current={active ? "page" : undefined}
+                  title={item.hint}
+                  className={`group flex min-h-[44px] cursor-pointer items-center gap-3 rounded-xl px-3 text-start text-[13.5px] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${
+                    active ? "side-active font-bold" : "side-idle font-semibold"
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {item.id === "clients" && (
+                    <span className="rounded-full bg-white/[0.05] px-2 py-0.5 font-display text-[11px] font-bold leading-4 text-mist-400 tnum">
+                      {state.clients.length}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </nav>
 
         <div className="p-3">
+          <div className="flex justify-center pb-3">
+            <LangSwitch />
+          </div>
           <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3.5">
             <div className="flex items-center gap-3">
               <Avatar name={me?.name ?? "Coach"} className="h-10 w-10 text-xs" status="online" />
@@ -189,14 +158,14 @@ export function CoachShell({
             </div>
             <button
               onClick={onLogout}
-              className="mt-3 flex min-h-[36px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-white/[0.07] bg-transparent py-1.5 text-xs font-bold text-mist-400 transition-all duration-200 hover:border-danger-500/30 hover:bg-danger-500/[0.08] hover:text-danger-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-volt-400/50"
+              className="mt-3 flex min-h-[36px] w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-white/[0.07] bg-transparent py-1.5 text-xs font-bold text-mist-400 transition-all duration-200 hover:bg-white/[0.06] hover:text-mist-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             >
               <LogOut className="h-3.5 w-3.5" />
               Sign out
             </button>
           </div>
-          <p className="mt-2.5 px-1 text-center text-[10.5px] font-medium text-mist-500/70">
-            Verraa v1 · crafted for coaches
+          <p className="mt-2.5 px-1 text-center text-[10.5px] font-medium text-mist-500">
+            Coach Mode · VERRAA
           </p>
         </div>
       </aside>
