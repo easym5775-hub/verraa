@@ -22,6 +22,7 @@ import {
 import type { CoachView } from "../types";
 import { useApp } from "../store";
 import { Avatar } from "./ui";
+import { LangSwitch } from "./LangSwitch";
 
 type NavItem = { id: CoachView; label: string; hint: string; icon: (p: { className?: string }) => ReactNode };
 
@@ -227,6 +228,7 @@ export function CoachShell({
                 <span className="h-1.5 w-1.5 rounded-full bg-moss-400" />
                 {state.clients.length} clients
               </span>
+              <LangSwitch />
               <Avatar name={me?.name ?? "Coach"} className="h-9 w-9 text-[11px]" />
             </div>
           </div>
