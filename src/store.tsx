@@ -46,7 +46,7 @@ import type {
   WorkoutSession,
 } from "./types";
 import { workoutExerciseKey } from "./types";
-import { errorMessage, todayISO, uid, uuid } from "./lib";
+import { errorMessage, todayISO, uid, uuid, setActiveCurrency, type Currency } from "./lib";
 import {
   ClientModeError,
   canCoachUseClientMode,
@@ -201,6 +201,8 @@ interface Store {
   markAllNotificationsRead: (clientId: string) => void;
 
   updateCoachName: (name: string) => Promise<void>;
+  currency: Currency;
+  setCurrency: (currency: Currency) => Promise<void>;
 
   /* ---- Coach pricing & limits (centralized, real backend data) ---- */
   coachPlans: CoachPlanConfig[];
@@ -256,6 +258,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [phase, setPhase] = useState<Phase>("booting");
   const [me, setMe] = useState<RoleInfo | null>(null);
+  const [currency, setCurrencyState] = useState<Currency>("EGP");
 
   const stateRef = useRef(state);
   const meRef = useRef(me);
@@ -1598,6 +1601,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [mutate],
   );
 
+  /* ---------------- coach billing currency ---------------- */
+
+  const meId = me?.userId;
+  const meRole = me?.role;
+  useEffect(() => {
+    if (!meId || (meRole !== "coach" && meRole !== "client")) return;
+    let cancelled = false;
+    backend
+      .getCurrency()
+      .then((c) => {
+        if (cancelled) return;
+        setActiveCurrency(c);
+        setCurrencyState(c);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [meId, meRole]);
+
+  setActiveCurrency(currency);
+
+  const setCurrency = useCallback(
+    async (next: Currency) => {
+      const prev = currency;
+      setActiveCurrency(next);
+      setCurrencyState(next);
+      try {
+        await backend.setCurrency(next);
+        toast(`Currency set to ${next}`);
+      } catch (e) {
+        setActiveCurrency(prev);
+        setCurrencyState(prev);
+        toast(`Couldn't save — ${errorMessage(e)}`, "warn");
+      }
+    },
+    [currency, toast],
+  );
+
   /* ---------------- coach profile ---------------- */
 
   const updateCoachName = useCallback(
@@ -1737,6 +1779,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         markNotificationRead,
         markAllNotificationsRead,
         updateCoachName,
+        currency,
+        setCurrency,
         coachPlans,
         myCoachSubscription,
         myCoachPlan,
