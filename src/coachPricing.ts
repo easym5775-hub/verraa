@@ -2,7 +2,7 @@
    VERRAA — centralized Coach Pricing & Subscription source of truth.
 
    All pricing values live here (as DB-backed defaults). UI components
-   must NEVER hardcode 999 / 2999 / 5999 / 20 / 100 — import from here
+   must NEVER hardcode plan prices ($20 / $50 / $100) — import from here
    or, preferably, use the live `coachPlans` loaded from the database
    (which falls back to DEFAULT_COACH_PLANS when offline).
 
@@ -95,7 +95,7 @@ export const DEFAULT_COACH_PLANS: CoachPlanConfig[] = [
   {
     id: "STARTER",
     name: "Starter",
-    price: 999,
+    price: 20,
     maxClients: 20,
     billingInterval: "monthly",
     isActive: true,
@@ -112,7 +112,7 @@ export const DEFAULT_COACH_PLANS: CoachPlanConfig[] = [
   {
     id: "PROFESSIONAL",
     name: "Professional",
-    price: 2999,
+    price: 50,
     maxClients: 100,
     billingInterval: "monthly",
     isActive: true,
@@ -129,7 +129,7 @@ export const DEFAULT_COACH_PLANS: CoachPlanConfig[] = [
   {
     id: "ENTERPRISE",
     name: "Enterprise",
-    price: 5999,
+    price: 100,
     maxClients: null,
     billingInterval: "monthly",
     isActive: true,
@@ -444,7 +444,7 @@ export function parsePlanLimitError(message: string, plans?: CoachPlanConfig[]):
 
 /* ---------------- formatting ---------------- */
 
-export const formatEGP = (n: number): string => `${n.toLocaleString("en-US")} EGP`;
+export const formatUSD = (n: number): string => `$${n.toLocaleString("en-US")}`;
 
 export function planRenewalLabel(endDate?: string | null): string {
   if (!endDate) return "—";
