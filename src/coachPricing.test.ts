@@ -24,7 +24,7 @@ import {
   validatePlanChange,
   isPlanLimitError,
   parsePlanLimitError,
-  formatEGP,
+  formatUSD,
   planRenewalLabel,
   clientUsageLabel,
   DEFAULT_COACH_PLANS,
@@ -73,7 +73,7 @@ describe("getCoachPlanConfig", () => {
   it("finds a plan by name", () => {
     const result = getCoachPlanConfig(DEFAULT_COACH_PLANS, "STARTER");
     expect(result?.id).toBe("STARTER");
-    expect(result?.price).toBe(999);
+    expect(result?.price).toBe(20);
   });
   it("returns null for unknown plan", () => {
     expect(getCoachPlanConfig(DEFAULT_COACH_PLANS, "UNKNOWN")).toBeNull();
@@ -240,9 +240,9 @@ describe("parsePlanLimitError", () => {
   });
 });
 
-describe("formatEGP", () => {
-  it("formats with EGP suffix", () => {
-    expect(formatEGP(1999)).toBe("1,999 EGP");
+describe("formatUSD", () => {
+  it("formats with a $ prefix", () => {
+    expect(formatUSD(1999)).toBe("$1,999");
   });
 });
 
