@@ -134,7 +134,7 @@ export function TermsPage() {
         are subject to the plan limits of their subscription.
       </p>
       <p>
-        Subscription plans are billed monthly in EGP. Plan capacity (for example Starter up to
+        Subscription plans are billed monthly in USD. Plan capacity (for example Starter up to
         20 clients, Professional up to 100 clients, Enterprise for 100+ clients) is enforced by
         the platform; downgrades below the current client count cannot be completed until the
         roster fits the target plan.
