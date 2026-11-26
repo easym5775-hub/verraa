@@ -8,7 +8,7 @@ import { useApp } from "../store";
 import { OwnerPageHeader } from "./OwnerShell";
 import { User, Shield, CreditCard, Save, Loader2, Eye, EyeOff, KeyRound } from "lucide-react";
 import { backend } from "../services/backend";
-import { formatEGP, type CoachPlanConfig } from "../coachPricing";
+import { formatUSD, type CoachPlanConfig } from "../coachPricing";
 import { errorMessage } from "../lib";
 
 export function OwnerSettingsView() {
@@ -315,7 +315,7 @@ export function OwnerSettingsView() {
                             </span>
                           </div>
                           <p className="mt-1 text-xs text-mist-500 truncate">
-                            {formatEGP(plan.price)}/month · {plan.maxClients === null ? "Unlimited clients" : `Up to ${plan.maxClients} clients`}
+                            {formatUSD(plan.price)}/month · {plan.maxClients === null ? "Unlimited clients" : `Up to ${plan.maxClients} clients`}
                             {plan.description && ` · ${plan.description}`}
                           </p>
                         </div>
@@ -343,7 +343,7 @@ export function OwnerSettingsView() {
                               className="w-28 rounded-xl border border-night-600 bg-night-800 px-3 py-1.5 text-sm text-mist-200 focus:border-volt-400/40 focus:outline-none text-right disabled:opacity-50"
                               aria-label={`${plan.name} plan price — Enter to save`}
                             />
-                            <span className="text-xs text-mist-500">EGP</span>
+                            <span className="text-xs text-mist-500">USD</span>
                           </div>
                           <button
                             onClick={() => handleTogglePlanActive(plan)}
@@ -371,7 +371,7 @@ export function OwnerSettingsView() {
 
                   <div className="mt-4 rounded-xl border border-warn-400/20 bg-warn-400/5 p-4">
                     <p className="text-xs text-mist-400">
-                      <span className="font-bold text-warn-300">Note:</span> Plan prices are in EGP/month. Deactivated plans cannot be assigned to new coaches.
+                      <span className="font-bold text-warn-300">Note:</span> Plan prices are in USD/month. Deactivated plans cannot be assigned to new coaches.
                       Price changes affect only new subscriptions; existing coach subscriptions retain their original price until changed by the owner.
                       The landing page and coach pricing read this same table, so edits show everywhere.
                     </p>
