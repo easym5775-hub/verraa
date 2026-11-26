@@ -1060,8 +1060,26 @@ function TodayTab({
   const todayPlan = plans.filter((p) => p.day === dn);
   const { state: appState, toast: appToast } = useApp();
   const [workoutExportOpen, setWorkoutExportOpen] = useState(false);
-  const clientName = appState.clients.find((c) => c.id === clientId)?.name ?? "My workout";
+  const client = appState.clients.find((c) => c.id === clientId);
+  const clientName = client?.name ?? "My workout";
+  const kcalTarget = client?.nutritionTargets?.calories ?? null;
   const todayMeals = meals.filter((m) => m.day === dn);
+
+  /* Today's workout progress — real: a planned exercise counts as done once
+     it has a logged strength entry in one of today's workout sessions. */
+  const doneExKeys = useMemo(() => {
+    const todayIso = todayISO();
+    const sessionIds = new Set(
+      appState.workoutSessions.filter((s) => s.clientId === clientId && s.date === todayIso).map((s) => s.id),
+    );
+    return new Set(
+      appState.workoutEntries
+        .filter((e) => sessionIds.has(e.sessionId))
+        .map((e) => e.exerciseId ?? e.clientExerciseId ?? e.exerciseName),
+    );
+  }, [appState.workoutSessions, appState.workoutEntries, clientId]);
+  const totalSets = todayPlan.reduce((s, p) => s + p.sets, 0);
+  const doneCount = todayPlan.filter((p) => doneExKeys.has(p.exerciseId)).length;
   const plannedDayNames = useMemo(
     () =>
       WEEK_ORDER_SAT_FIRST.filter((d) => d !== dn && meals.some((m) => m.day === d)).map(
@@ -1129,52 +1147,54 @@ function TodayTab({
 
   return (
     <div className="grid gap-3 sm:gap-4">
-      <div className="relative overflow-hidden rounded-2xl border border-night-700 bg-night-850 p-4 sm:p-6">
-        <div className="pointer-events-none absolute inset-0 opacity-[0.35]" style={{ backgroundImage: "repeating-linear-gradient(-45deg, transparent 0 14px, rgba(205,241,75,0.04) 14px 15px)" }} />
+      {/* concept hero: dark-green workout card with real plan data */}
+      <div className="hero-green relative overflow-hidden rounded-2xl p-4 sm:p-6">
         <div className="relative">
-          <div className="flex items-center gap-2">
-            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-mist-500 sm:text-[11px]">Your program</p>
-            <span className="rounded-full bg-volt-400/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-volt-300">{WEEK_DAYS[dn - 1]}</span>
-          </div>
-          <h1 className="mt-1.5 font-display text-[30px] font-bold uppercase leading-[0.95] text-mist-100 sm:text-[44px]">
-            Day {dn}
+          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-mist-400 sm:text-[11px]">
+            {`Today · ${WEEK_DAYS[dn - 1]}`}
+          </p>
+          <h1 className="mt-1.5 font-display text-[28px] font-bold leading-[1.05] tracking-tight text-mist-100 sm:text-[36px]">
+            {todayPlan.length > 0 ? `${todayPlan.length} exercise${todayPlan.length > 1 ? "s" : ""} · ${totalSets} sets` : "Rest day"}
           </h1>
-          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[11px] font-bold text-mist-200">
-              <Dumbbell className="h-3.5 w-3.5 text-volt-300" />
-              {todayPlan.length > 0 ? `${todayPlan.length} exercise${todayPlan.length > 1 ? "s" : ""}` : "Recovery day"}
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[11px] font-bold text-mist-200">
-              <Flame className="h-3.5 w-3.5 text-warn-300" />
-              {kcal > 0 ? `${kcal.toLocaleString("en-US")} kcal` : "No meals yet"}
-            </span>
-
+          {todayPlan.length > 0 ? (
+            <>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/[0.12]">
+                <div
+                  className="h-full rounded-full bg-white transition-all duration-500"
+                  style={{ width: `${(doneCount / todayPlan.length) * 100}%` }}
+                />
+              </div>
+              <p className="mt-1.5 text-[11px] font-bold text-mist-400 tnum">{`${doneCount} of ${todayPlan.length} done`}</p>
+            </>
+          ) : (
+            <p className="mt-2 text-[13px] font-semibold text-mist-400">
+              No session programmed today. Sleep well, eat well, come back stronger tomorrow.
+            </p>
+          )}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {todayPlan.length > 0 && (
+              <button
+                className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white px-5 text-sm font-bold text-night-950 transition-all duration-200 active:translate-y-px active:scale-[0.98] hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                onClick={onOpenTraining}
+              >
+                <Dumbbell className="h-4.5 w-4.5" /> Start workout
+              </button>
+            )}
+            <button
+              className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/[0.18] bg-white/[0.08] px-5 text-sm font-bold text-mist-100 transition-all duration-200 active:translate-y-px active:scale-[0.98] hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+              onClick={onCheckIn}
+            >
+              <Camera className="h-4.5 w-4.5" /> Submit daily check-in
+            </button>
             {sessionsToday.length > 0 && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[11px] font-bold text-mist-200">
-                <ClipboardList className="h-3.5 w-3.5 text-sky-300" />
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.18] bg-white/[0.08] px-2.5 py-1 text-[11px] font-bold text-mist-200">
+                <ClipboardList className="h-3.5 w-3.5" />
                 {sessionsToday.length} session{sessionsToday.length > 1 ? "s" : ""}
               </span>
             )}
           </div>
-          <button className={`${btnPrimary} mt-4 h-12 w-full text-[15px] active:scale-[0.98] sm:w-auto`} onClick={onCheckIn}>
-            <Camera className="h-5 w-5" /> Submit daily check-in
-          </button>
         </div>
       </div>
-
-      <button
-        onClick={onOpenTraining}
-        className="group flex w-full cursor-pointer items-center gap-3 overflow-hidden rounded-2xl border border-volt-400/25 bg-gradient-to-r from-volt-400/[0.12] to-transparent p-4 text-start transition active:scale-[0.99] hover:border-volt-400/45 sm:p-5"
-      >
-        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-volt-400 text-night-950 shadow-[0_8px_24px_-8px_rgba(205,241,75,0.6)]">
-          <Dumbbell className="h-6 w-6" strokeWidth={2.2} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-extrabold text-mist-100">Log today's weights</span>
-          <span className="mt-0.5 block truncate text-xs font-semibold text-mist-400">Strength tracker · last weights + PR celebration</span>
-        </span>
-        <ArrowRight className="h-5 w-5 shrink-0 text-volt-300 transition-transform group-hover:translate-x-0.5 rtl:rotate-180" />
-      </button>
 
       {sessionsToday.length > 0 && (
         <SectionCard title="Today's sessions" icon={<ClipboardList className="h-4.5 w-4.5" />} bodyCls="p-2.5 sm:p-3">
@@ -1225,34 +1245,63 @@ function TodayTab({
           <EmptyState icon={<Dumbbell className="h-6 w-6" />} title="Rest day" sub="No session programmed today. Sleep well, eat well, come back stronger tomorrow." />
         ) : (
           <ul className="grid gap-2">
-            {todayPlan.map((item, i) => {
+            {todayPlan.map((item) => {
               const ex = exOf(item.exerciseId);
+              const done = doneExKeys.has(item.exerciseId);
               return (
-                <li key={item.id} className="flex items-center gap-3 rounded-xl border border-night-700 bg-night-800 p-3 transition active:scale-[0.99] hover:border-night-500">
-                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-night-700 font-display text-lg font-bold text-volt-300">{i + 1}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <p className="truncate text-[15px] font-bold text-mist-100">{ex?.name ?? "Exercise"}</p>
-                      {ex && (
-                        <Badge className={CAT_META[ex.category].chip}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${CAT_META[ex.category].dot}`} />
-                          {ex.category}
-                        </Badge>
-                      )}
+                <li key={item.id}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={onOpenTraining}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onOpenTraining();
+                      }
+                    }}
+                    aria-label={`${ex?.name ?? "Exercise"} — ${item.sets} × ${item.reps}${done ? " (done)" : ""}. Open strength tracker`}
+                    className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-night-700 bg-night-800 p-3 text-start transition active:scale-[0.99] hover:border-night-500"
+                  >
+                    <span
+                      className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 ${
+                        done ? "border-volt-400 bg-volt-400 text-night-950" : "border-night-600 text-mist-500"
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {done ? <Check className="h-4 w-4" strokeWidth={3} /> : <span className="h-2 w-2 rounded-full bg-current opacity-60" />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <p className="truncate text-[15px] font-bold text-mist-100">{ex?.name ?? "Exercise"}</p>
+                        {ex && (
+                          <Badge className={CAT_META[ex.category].chip}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${CAT_META[ex.category].dot}`} />
+                            {ex.category}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs font-semibold text-mist-400">
+                        <span className="font-display text-base text-mist-200 tnum">
+                          {item.sets} × {item.reps} <span className="text-mist-500">reps</span>
+                        </span>
+                        <span>{item.rest > 0 ? `${item.rest}s rest` : "no rest"}</span>
+                      </p>
+                      {item.notes && <p className="mt-1 line-clamp-2 text-[11px] italic text-mist-500">Coach: "{item.notes}"</p>}
                     </div>
-                    <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs font-semibold text-mist-400">
-                      <span className="font-display text-base text-mist-200 tnum">
-                        {item.sets} × {item.reps} <span className="text-mist-500">reps</span>
-                      </span>
-                      <span>{item.rest > 0 ? `${item.rest}s rest` : "no rest"}</span>
-                    </p>
-                    {item.notes && <p className="mt-1 line-clamp-2 text-[11px] italic text-mist-500">Coach: "{item.notes}"</p>}
+                    {ex?.videoUrl && (
+                      <a
+                        href={ex.videoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Watch ${ex.name} video`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-night-700 text-volt-300 transition hover:bg-night-600 active:scale-95"
+                      >
+                        <Play className="h-4 w-4" />
+                      </a>
+                    )}
                   </div>
-                  {ex?.videoUrl && (
-                    <a href={ex.videoUrl} target="_blank" rel="noreferrer" aria-label={`Watch ${ex.name} video`} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-night-700 text-volt-300 transition hover:bg-night-600 active:scale-95">
-                      <Play className="h-4 w-4" />
-                    </a>
-                  )}
                 </li>
               );
             })}
@@ -1267,6 +1316,26 @@ function TodayTab({
         icon={<UtensilsCrossed className="h-4.5 w-4.5" />}
         bodyCls="p-2.5 sm:p-3"
       >
+        {kcal > 0 && (
+          <div className="mb-3 rounded-xl border border-night-700 bg-night-800 p-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-xs font-bold text-mist-400">{kcalTarget ? `${kcal.toLocaleString("en-US")} / ${kcalTarget.toLocaleString("en-US")} kcal` : `${kcal.toLocaleString("en-US")} kcal planned`}</p>
+              {kcalTarget && (
+                <p className="text-[11px] font-bold text-mist-500 tnum">
+                  {Math.min(999, Math.round((kcal / kcalTarget) * 100))}%
+                </p>
+              )}
+            </div>
+            {kcalTarget && (
+              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-night-700">
+                <div
+                  className={`h-full rounded-full ${kcal > kcalTarget ? "bg-warn-400" : "bg-volt-400"}`}
+                  style={{ width: `${Math.min(100, (kcal / kcalTarget) * 100)}%` }}
+                />
+              </div>
+            )}
+          </div>
+        )}
         {todayMeals.length === 0 ? (
           <EmptyState icon={<UtensilsCrossed className="h-6 w-6" />} title="No meal plan yet" sub="Your coach hasn't assigned meals — check back soon.">
             {plannedDayNames.length > 0 && (
@@ -1673,4 +1742,4 @@ function ReadOnly({ k, v }: { k: string; v: string }) {
       <p className="mt-1 font-display text-lg font-bold text-mist-100 tnum">{v}</p>
     </div>
   );
-     }
+}
