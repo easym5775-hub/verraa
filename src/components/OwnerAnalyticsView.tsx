@@ -284,21 +284,21 @@ export function OwnerAnalyticsView() {
           {statCard(
             <Target className="h-5 w-5" />,
             "MRR",
-            `${metrics.revenue.mrr.toLocaleString()} EGP`,
+            `$${metrics.revenue.mrr.toLocaleString()}`,
             "Monthly Recurring Revenue",
             { value: `+${metrics.revenue.newInWindow.toLocaleString()}`, positive: true, icon: <ArrowUpRight className="h-3 w-3" /> }
           )}
           {statCard(
             <Target className="h-5 w-5" />,
             "ARR",
-            `${metrics.revenue.arr.toLocaleString()} EGP`,
+            `$${metrics.revenue.arr.toLocaleString()}`,
             "Annual Recurring Revenue",
             { value: `+${(metrics.revenue.newInWindow * 12).toLocaleString()}`, positive: true, icon: <ArrowUpRight className="h-3 w-3" /> }
           )}
           {statCard(
             <Users className="h-5 w-5" />,
             "ARPU",
-            `${metrics.revenue.arpu.toFixed(0)} EGP`,
+            `$${metrics.revenue.arpu.toFixed(0)}`,
             "Avg Revenue Per User",
             metrics.coaches.newInWindow > 0 ? { value: `+${metrics.coaches.newInWindow} new`, positive: true, icon: <ArrowUpRight className="h-3 w-3" /> } : undefined
           )}
@@ -319,7 +319,7 @@ export function OwnerAnalyticsView() {
           {statCard(
             <TrendingUp className="h-5 w-5" />,
             "New Revenue",
-            `${metrics.revenue.newInWindow.toLocaleString()} EGP`,
+            `$${metrics.revenue.newInWindow.toLocaleString()}`,
             metrics.windowLabel,
             metrics.revenue.newInWindow > 0 ? { value: "Growing", positive: true, icon: <ArrowUpRight className="h-3 w-3" /> } : { value: "Flat", positive: false, icon: <Minus className="h-3 w-3" /> }
           )}
@@ -327,10 +327,10 @@ export function OwnerAnalyticsView() {
 
         {/* Traditional Revenue Metrics */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {statCard(<DollarSign className="h-5 w-5" />, "Total Revenue", `${metrics.revenue.total.toLocaleString()} EGP`)}
-          {statCard(<DollarSign className="h-5 w-5" />, "Active Revenue", `${metrics.revenue.active.toLocaleString()} EGP`, "from active subscriptions")}
-          {statCard(<DollarSign className="h-5 w-5" />, "Avg per Coach", `${(metrics.revenue.total / (metrics.coaches.total || 1)).toFixed(0)} EGP`)}
-          {statCard(<DollarSign className="h-5 w-5" />, "Avg per Client", `${(metrics.revenue.total / (metrics.clients.total || 1)).toFixed(0)} EGP`)}
+          {statCard(<DollarSign className="h-5 w-5" />, "Total Revenue", `$${metrics.revenue.total.toLocaleString()}`)}
+          {statCard(<DollarSign className="h-5 w-5" />, "Active Revenue", `$${metrics.revenue.active.toLocaleString()}`, "from active subscriptions")}
+          {statCard(<DollarSign className="h-5 w-5" />, "Avg per Coach", `$${(metrics.revenue.total / (metrics.coaches.total || 1)).toFixed(0)}`)}
+          {statCard(<DollarSign className="h-5 w-5" />, "Avg per Client", `$${(metrics.revenue.total / (metrics.clients.total || 1)).toFixed(0)}`)}
         </div>
       </div>
 
