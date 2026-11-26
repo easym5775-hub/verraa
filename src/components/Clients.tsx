@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import type { CheckIn, Client, CoachNote, CoachView, Meal, NoteCategory, Payment, Session, SubState, Subscription } from "../types";
 import { FOLLOW_UP_PRESETS, GOAL_META, NOTE_CATEGORIES, NOTE_CATEGORY_META, PAYMENT_STATUS_META, PRIORITIES, SESSION_STATUS_META, STATUS_META, SUB_PAYMENT_META, SUB_STATE_META, WEEK_DAYS, WEEK_SHORT, normalizeCoachNotes, priorityRank } from "../types";
-import { addDays, dayNum, fmtDate, fmtMoney, fmtTime, relDay, relTime, signed, toISO, todayISO, waHref } from "../lib";
+import { addDays, dayNum, diffDays, fmtDate, fmtMoney, fmtTime, relDay, relTime, signed, toISO, todayISO, waHref } from "../lib";
 import {
   attendance,
   currentSubscription,
@@ -375,6 +375,7 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
   };
 
   const today = todayISO();
+  const profileWeek = Math.max(1, Math.ceil(diffDays(client.startDate, today) / 7) || 1);
   const upcomingCount = sessions.filter((s) => s.date >= today && (s.status === "Scheduled" || s.status === "Confirmed")).length;
   const msgCount = app.state.messages.filter((m) => m.clientId === clientId).length;
   const targets = client.nutritionTargets;
@@ -444,7 +445,9 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
                 </span>
                 <PriorityBadge priority={client.priority} />
               </p>
-              <p className="mt-1 text-xs font-semibold text-mist-500">{client.goal}</p>
+              <p className="mt-1 text-xs font-semibold text-mist-500">
+                {`${client.goal} · Week ${profileWeek}`}
+              </p>
               <p className="mt-1.5 text-[11px] font-semibold text-mist-500">
                 Last check-in: <span className="font-bold text-mist-300">{latest ? relDay(latest.date) : "—"}</span>
                 <span aria-hidden="true" className="mx-1.5 text-mist-600">•</span>
@@ -484,7 +487,10 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
               <button className={`${btnSecondary} ${btnSm}`} onClick={focusChat}>
                 <MessageCircle className="h-3.5 w-3.5" /> Message
               </button>
-              <button className={`${btnPrimary} ${btnSm}`} onClick={() => setCheckInOpen(true)}>
+              <button className={`${btnPrimary} ${btnSm}`} onClick={() => go("plans", client.id)}>
+                <Dumbbell className="h-3.5 w-3.5" /> Edit plan
+              </button>
+              <button className={`${btnSecondary} ${btnSm}`} onClick={() => setCheckInOpen(true)}>
                 <Plus className="h-3.5 w-3.5" strokeWidth={2.6} /> Add check-in
               </button>
               <Dropdown
@@ -575,11 +581,11 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
         />
       </div>
 
-      {/* tab bar — one workflow at a time instead of one long scroll */}
+      {/* tab bar — concept underline tabs, one workflow at a time */}
       <div
         role="tablist"
         aria-label="Client sections"
-        className="rise no-scrollbar mt-3 flex gap-1 overflow-x-auto rounded-2xl border border-white/[0.07] bg-night-900/60 p-1.5 backdrop-blur-xl"
+        className="rise no-scrollbar mt-3 flex gap-1 overflow-x-auto border-b border-white/[0.07]"
       >
         {tabs.map((t) => {
           const active = tab === t.id;
@@ -589,30 +595,32 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
               role="tab"
               aria-selected={active}
               onClick={() => setTab(t.id)}
-              className={`flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition ${
-                active ? "bg-volt-400 text-night-950" : "text-mist-400 hover:bg-white/[0.05] hover:text-mist-100"
+              className={`-mb-px flex shrink-0 cursor-pointer items-center gap-1.5 border-b-2 px-3 py-2.5 text-[13px] font-bold transition ${
+                active ? "border-volt-400 text-volt-300" : "border-transparent text-mist-400 hover:text-mist-100"
               }`}
             >
               {t.icon}
               <span>{t.label}</span>
               {t.count !== undefined && (
-                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-extrabold tnum ${active ? "bg-night-950/15 text-night-950" : "bg-white/[0.06] text-mist-300"}`}>
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-extrabold tnum ${active ? "bg-volt-400/15 text-volt-300" : "bg-white/[0.06] text-mist-300"}`}>
                   {t.count}
                 </span>
               )}
-              {t.dot && <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-night-950" : "bg-warn-400"}`} />}
+              {t.dot && <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-volt-400" : "bg-warn-400"}`} />}
             </button>
           );
         })}
       </div>
 
-      {/* Overview — status at a glance */}
+      {/* Overview — concept layout: week training + progress + subscription */}
       {tab === "overview" && (
         <div className="mt-3 grid items-start gap-3 lg:grid-cols-3">
           <div className="grid content-start gap-3 lg:col-span-2">
+            <ThisWeekTrainingCard plans={plans} checkIns={checkIns} go={go} clientId={client.id} />
             <ProgressCard checkIns={checkIns} sessionsCount={att} />
           </div>
           <div className="grid content-start gap-3">
+            <SubscriptionMiniCard subs={subs} onOpenBilling={() => setTab("billing")} />
             <FollowUpCard client={client} checkIns={checkIns} />
           </div>
         </div>
@@ -1283,6 +1291,94 @@ function MealsCard({ mealsCount, go, clientId, targets }: { mealsCount: number; 
       <button className={`${btnSecondary} ${btnSm} mt-3 w-full`} onClick={() => go("meals", clientId)}>
         Open meal planner <ArrowRight className="h-3.5 w-3.5 rtl:rotate-180" />
       </button>
+    </SectionCard>
+  );
+}
+
+/* ---------------- this week's training (concept overview card) ----------------
+   Rows = the client's planned training days this week; Done comes from the
+   client's real check-in for that date (workoutDone). */
+
+function ThisWeekTrainingCard({ plans, checkIns, go, clientId }: { plans: { id: string; day: number }[]; checkIns: CheckIn[]; go: (v: CoachView, id?: string) => void; clientId: string }) {
+  const today = todayISO();
+  const rows = useMemo(() => {
+    const monday = addDays(today, -(dayNum() - 1));
+    return Array.from({ length: 7 }, (_, i) => {
+      const day = i + 1;
+      const date = addDays(monday, i);
+      const count = plans.filter((p) => p.day === day).length;
+      const ci = checkIns.find((c) => c.date === date);
+      return { day, count, done: !!ci?.workoutDone, isToday: date === today };
+    });
+  }, [plans, checkIns, today]);
+  return (
+    <SectionCard
+      title="This week's training"
+      icon={<Dumbbell className="h-4.5 w-4.5" />}
+      bodyCls="p-2.5 sm:p-3"
+      action={
+        <button className={`${btnSecondary} ${btnSm}`} onClick={() => go("plans", clientId)}>
+          Edit plan
+        </button>
+      }
+    >
+      <ul className="divide-y divide-white/[0.06]">
+        {rows.map((r) => (
+          <li key={r.day} className="flex items-center gap-3 px-2 py-2.5">
+            <span className="w-9 shrink-0 text-xs font-bold text-mist-500" data-no-translate>
+              {WEEK_DAYS[r.day - 1].slice(0, 3)}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-mist-200">
+              {r.count > 0 ? `Day ${r.day} · ${r.count} exercise${r.count === 1 ? "" : "s"}` : "Rest"}
+            </span>
+            {r.count === 0 ? (
+              <span className="text-[11px] font-bold text-mist-500">—</span>
+            ) : r.done ? (
+              <span className="rounded-full bg-moss-400/10 px-2 py-0.5 text-[11px] font-bold leading-4 text-moss-300 ring-1 ring-moss-400/25">Done</span>
+            ) : r.isToday ? (
+              <span className="rounded-full bg-warn-400/10 px-2 py-0.5 text-[11px] font-bold leading-4 text-warn-300 ring-1 ring-warn-400/25">Today</span>
+            ) : (
+              <span className="text-[11px] font-bold text-mist-500">Upcoming</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </SectionCard>
+  );
+}
+
+/* ---------------- subscription summary (concept overview card) ---------------- */
+
+function SubscriptionMiniCard({ subs, onOpenBilling }: { subs: Subscription[]; onOpenBilling: () => void }) {
+  const info = subscriptionState(currentSubscription(subs));
+  const sub = info.sub;
+  const pct = sub ? Math.max(0, Math.min(100, (info.daysLeft / 30) * 100)) : 0;
+  return (
+    <SectionCard
+      title="Subscription"
+      icon={<Wallet className="h-4.5 w-4.5" />}
+      bodyCls="p-4"
+      action={
+        <button className={`${btnSecondary} ${btnSm}`} onClick={onOpenBilling}>
+          {!sub ? "Add plan" : info.state === "Expired" ? "Renew" : "Manage"}
+        </button>
+      }
+    >
+      {sub ? (
+        <>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
+            <div
+              className={`h-full rounded-full ${info.state === "Expired" ? "bg-danger-400" : info.state === "Expiring Soon" ? "bg-warn-400" : "bg-volt-400"}`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs font-semibold text-mist-400">
+            {sub.planName} · ends {fmtDate(sub.endDate)} · {remainingLabel(info.daysLeft)}
+          </p>
+        </>
+      ) : (
+        <p className="text-xs font-semibold text-mist-400">No subscription yet — add one from Billing.</p>
+      )}
     </SectionCard>
   );
 }
