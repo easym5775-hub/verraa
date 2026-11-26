@@ -41,6 +41,10 @@ const PATTERNS: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/^(\d+) of (\d+) client slots used$/, (m) => `${m[1]} من ${m[2]} مكان عملاء مستخدم`],
   [/^Show (\d+) more (clients|alerts|activities)$/, (m) => `عرض ${m[1]} أكتر`],
   [/^(\d[\d,]*) EGP$/, (m) => `${m[1]} ج.م`],
+  [/^(\d[\d,]*) USD$/, (m) => `${m[1]} دولار`],
+  [/^(\d[\d,]*) USD outstanding$/, (m) => `${m[1]} دولار مستحقة`],
+  [/^(\d[\d,]*) USD · (.+)$/, (m) => `${m[1]} دولار · ${DICT[m[2]] ?? m[2]}`],
+  [/^(\d[\d,]*) USD · Monthly$/, (m) => `${m[1]} دولار · شهري`],
   [/^(\d[\d,]*) EGP outstanding$/, (m) => `${m[1]} ج.م مستحقة`],
   [/^(\d[\d,]*) EGP · (.+)$/, (m) => `${m[1]} ج.م · ${DICT[m[2]] ?? m[2]}`],
   [/^(\d[\d,]*) paid of (\d[\d,]*)$/, (m) => `مدفوع ${m[1]} من ${m[2]}`],
@@ -113,7 +117,7 @@ export function translateString(s: string): string | null {
     let g = core;
     g = g.replace(/\b(\d{1,2}:\d{2}) ?AM\b/g, "$1 ص").replace(/\b(\d{1,2}:\d{2}) ?PM\b/g, "$1 م");
     g = g.replace(/\b(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/g, (_, d, mo) => `${d} ${MONTHS[mo]}`);
-    g = g.replace(/\bEGP\b/g, "ج.م").replace(/\bkg\b/g, "كجم").replace(/\bkcal\b/g, "سعرة");
+    g = g.replace(/\bEGP\b/g, "ج.م").replace(/\bUSD\b/g, "دولار").replace(/\bkg\b/g, "كجم").replace(/\bkcal\b/g, "سعرة");
     if (g !== core) out = g;
   }
   if (out === undefined) {
