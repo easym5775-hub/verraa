@@ -8,7 +8,7 @@ import { CheckCircle2, Hourglass, Inbox, XCircle } from "lucide-react";
 import { useApp } from "../store";
 import { OwnerPageHeader } from "./OwnerShell";
 import { Badge, Modal, btnPrimary, btnSecondary, btnSm, labelCls, textareaCls } from "./ui";
-import { DEFAULT_COACH_PLANS, formatEGP, getPlanById, normalizeCoachPlanId } from "../coachPricing";
+import { DEFAULT_COACH_PLANS, formatUSD, getPlanById, normalizeCoachPlanId } from "../coachPricing";
 import { errorMessage } from "../lib";
 import type { CoachPlanRequest } from "../types";
 
@@ -67,7 +67,7 @@ export function OwnerRequestsView() {
     if (!id) return raw;
     const p = getPlanById(plans, id);
     const cap = p.maxClients === null ? "unlimited" : p.maxClients === 1 ? "1 client" : `up to ${p.maxClients}`;
-    const price = p.price <= 0 ? "Free" : `${formatEGP(p.price)} EGP/mo`;
+    const price = p.price <= 0 ? "Free" : `${formatUSD(p.price)}/mo`;
     return `${p.name} · ${cap} · ${price}`;
   };
 
