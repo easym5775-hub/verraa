@@ -10,7 +10,7 @@ import { OwnerPageHeader } from "./OwnerShell";
 import { Search, Filter, MoreVertical, CheckCircle, XCircle, Clock, Shield, Users, UserPlus, UserCheck, UserX, Trash2, Eye, EyeOff, Settings, AlertCircle, PlusCircle, Copy, RefreshCw } from "lucide-react";
 import { Avatar, btnPrimary, btnSecondary, Dropdown, DropdownItem, Modal } from "./ui";
 import { backend } from "../services/backend";
-import { DEFAULT_COACH_PLANS, formatEGP, getCoachPlanConfig, normalizeCoachPlanId, type CoachPlan } from "../coachPricing";
+import { DEFAULT_COACH_PLANS, formatUSD, getCoachPlanConfig, normalizeCoachPlanId, type CoachPlan } from "../coachPricing";
 import { copyText, errorMessage, randomPassword } from "../lib";
 
 export function OwnerCoachesView({ onOpenCoach }: { onOpenCoach: (coachId: string) => void }) {
@@ -363,7 +363,7 @@ export function OwnerCoachesView({ onOpenCoach }: { onOpenCoach: (coachId: strin
         open={assignPlanOpen}
         onClose={() => { setAssignPlanOpen(false); setAssignPlanCoachId(null); setAssignPlanError(""); }}
         title="Assign Subscription Plan"
-        description="Select a plan for this coach. Prices in EGP, billed monthly."
+        description="Select a plan for this coach. Prices in USD, billed monthly."
       >
         <div className="grid gap-3">
           {plans.map((p) => (
@@ -375,7 +375,7 @@ export function OwnerCoachesView({ onOpenCoach }: { onOpenCoach: (coachId: strin
             >
               <p className="font-bold text-mist-200">{p.name} Plan</p>
               <p className="mt-0.5 text-xs text-mist-500 tnum">
-                {formatEGP(p.price)}/month · {p.maxClients === null ? "Unlimited clients" : `Up to ${p.maxClients} clients`}
+                {formatUSD(p.price)}/month · {p.maxClients === null ? "Unlimited clients" : `Up to ${p.maxClients} clients`}
               </p>
             </button>
           ))}
@@ -480,7 +480,7 @@ export function OwnerCoachesView({ onOpenCoach }: { onOpenCoach: (coachId: strin
                         <span className={`text-xs ${coach.hasSubscription ? "text-mist-300" : "text-warn-300"}`}>{coach.subscriptionPlan}</span>
                       </div>
                       {coach.hasSubscription && (
-                        <p className="text-[11px] font-bold text-mist-400 tnum">{formatEGP(coach.subscriptionPrice)} / mo</p>
+                        <p className="text-[11px] font-bold text-mist-400 tnum">{formatUSD(coach.subscriptionPrice)} / mo</p>
                       )}
                       <div>{getSubStatusBadge(coach.subscriptionStatus)}</div>
                     </div>
