@@ -4,6 +4,7 @@
    ================================================================ */
 
 import { useEffect, useId, useState, type FormEvent } from "react";
+import { LangSwitch } from "./LangSwitch";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -131,6 +132,7 @@ export function Auth({
   return (
     <div className="noise relative flex min-h-screen flex-col overflow-hidden">
       <Seo page={mode === "signup" ? "signup" : "login"} />
+      <LangSwitch className="absolute end-4 top-4 z-20" />
       <div className="app-glow pointer-events-none fixed inset-0" />
       <div className="dot-grid pointer-events-none fixed inset-0" />
       <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
