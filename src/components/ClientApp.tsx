@@ -34,7 +34,7 @@ import {
 import type { AppNotification, Client, DietCheckinStatus, Meal, MealRequestStatus, MealType, DayLabelMode } from "../types";
 import { CAT_META, GOAL_META, MEAL_META, MEAL_TYPES, NOTIFICATION_META, SUB_PAYMENT_META, SUB_STATE_META, WEEK_DAYS,
 WEEK_SHORT, WEEK_ORDER_SAT_FIRST, formatDayName, formatDayShort } from "../types";
-import { dayNum, fmtDate, fmtMoney, fmtTime, getDayLabelMode, activePlan, clientPlans, mealInPlan, relTime, round1, signed, todayISO } from "../lib";
+import { dayNum, fmtDate, fmtMoney, curCode, fmtTime, getDayLabelMode, activePlan, clientPlans, mealInPlan, relTime, round1, signed, todayISO } from "../lib";
 import { attendance, currentSubscription, progressOf, remainingLabel, subscriptionState } from "../logic";
 import { useApp } from "../store";
 import { backend } from "../services/backend";
@@ -1677,7 +1677,7 @@ function SubscriptionTab({ clientId, onLogout }: { clientId: string; onLogout: (
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <ReadOnly k="Price" v={`${fmtMoney(sub.price)} EGP`} />
+              <ReadOnly k="Price" v={`${fmtMoney(sub.price)} ${curCode()}`} />
               <ReadOnly k="Starts" v={fmtDate(sub.startDate)} />
               <ReadOnly k="Ends" v={fmtDate(sub.endDate)} />
               <div className="rounded-xl border border-night-700 bg-night-800 p-3">
@@ -1714,7 +1714,7 @@ function SubscriptionTab({ clientId, onLogout }: { clientId: string; onLogout: (
               <li key={p.id} className="flex min-w-0 items-center gap-2.5 rounded-xl border border-night-700 bg-night-800 px-3 py-2.5 sm:gap-3 sm:px-3.5">
                 <span className="shrink-0 text-xs font-bold text-mist-300 tnum">{fmtDate(p.date)}</span>
                 <span className="min-w-0 flex-1 truncate font-display text-lg font-bold text-mist-100 tnum">
-                  {fmtMoney(p.amount)} <span className="text-xs font-semibold text-mist-500">EGP</span>
+                  {fmtMoney(p.amount)} <span className="text-xs font-semibold text-mist-500">{curCode()}</span>
                 </span>
                 <span className="hidden shrink-0 text-xs font-semibold text-mist-400 sm:inline">{p.method}</span>
                 <Badge className="shrink-0 border-moss-400/25 bg-moss-400/10 text-moss-300">Paid</Badge>
