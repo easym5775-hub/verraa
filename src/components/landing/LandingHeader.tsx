@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowRight, Menu, X } from "lucide-react";
 import { btnPrimary } from "../ui";
+import { LangSwitch } from "../LangSwitch";
 
 const NAV = [
   { id: "modes", label: "Modes" },
@@ -88,6 +89,7 @@ export function LandingHeader() {
         </nav>
 
         <div className="ms-auto hidden items-center gap-2 md:flex">
+          <LangSwitch />
           <Link
             to="/login"
             className="inline-flex min-h-[40px] cursor-pointer items-center justify-center rounded-xl px-4 text-sm font-bold text-mist-300 transition hover:bg-white/[0.05] hover:text-mist-100"
@@ -100,6 +102,7 @@ export function LandingHeader() {
         </div>
 
         <div className="ms-auto flex items-center gap-2 md:hidden">
+          <LangSwitch />
           <Link to="/signup" className={`${btnPrimary} !min-h-[38px] !px-3.5 !py-1.5 !text-[13px]`}>
             Get Started
           </Link>
