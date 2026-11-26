@@ -4,6 +4,7 @@
    ================================================================ */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { LangSwitch } from "./LangSwitch";
 import {
   ArrowRight,
   Bell,
@@ -392,6 +393,7 @@ export function ClientApp({ onLogout }: { onLogout: () => void }) {
           >
             <CreditCard className="h-[18px] w-[18px]" />
           </button>
+          <LangSwitch />
           {/* bell */}
           <div className="relative shrink-0">
             <button
@@ -1671,4 +1673,4 @@ function ReadOnly({ k, v }: { k: string; v: string }) {
       <p className="mt-1 font-display text-lg font-bold text-mist-100 tnum">{v}</p>
     </div>
   );
-}
+     }
