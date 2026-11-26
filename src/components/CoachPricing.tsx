@@ -26,7 +26,7 @@ import {
   COACH_PLAN_ORDER,
   DEFAULT_COACH_PLANS,
   effectiveCoachStatus,
-  formatEGP,
+  formatUSD,
   getPlanById,
   getPlanFeatureDisplay,
   normalizeCoachPlanId,
@@ -43,7 +43,7 @@ function withFeatures(plan: CoachPlanConfig): CoachPlanConfig {
 
 function planPriceLabel(plan: CoachPlanConfig): { big: string; suffix: string } {
   if (plan.price <= 0) return { big: "Free", suffix: "forever trial" };
-  return { big: plan.price.toLocaleString("en-US"), suffix: "EGP / month" };
+  return { big: `$${plan.price.toLocaleString("en-US")}`, suffix: "/ month" };
 }
 
 /* ---------------- Current Plan card (Coach Dashboard) ---------------- */
@@ -146,7 +146,7 @@ export function CurrentPlanCard({ onViewPlans }: { onViewPlans?: () => void }) {
               "Free trial"
             ) : (
               <>
-                {formatEGP(plan.price)} <span className="text-xs font-semibold text-mist-500">/ month</span>
+                {formatUSD(plan.price)} <span className="text-xs font-semibold text-mist-500">/ month</span>
               </>
             )}
           </p>
@@ -265,7 +265,7 @@ export function CoachPricingView({ go }: { go: (v: CoachView) => void }) {
                 {" "}· currently on <span className="font-bold text-mist-200">{getPlanById(plans, currentId).name}</span>
               </>
             ) : null}
-            . Paid plans activate after admin approval — prices in EGP, billed monthly.
+            . Paid plans activate after admin approval — prices in USD, billed monthly.
           </p>
         </div>
         <button className={`${btnSecondary} ${btnSm} !min-h-[38px]`} onClick={() => go("dashboard")}>
@@ -469,7 +469,7 @@ export function CoachPricingView({ go }: { go: (v: CoachView) => void }) {
                 </p>
               </div>
               <p className="font-display text-2xl font-extrabold text-mist-100 tnum">
-                {targetPlan.price <= 0 ? "Free" : <>{targetPlan.price.toLocaleString("en-US")} <span className="text-xs font-bold text-mist-500">EGP/mo</span></>}
+                {targetPlan.price <= 0 ? "Free" : <>${targetPlan.price.toLocaleString("en-US")} <span className="text-xs font-bold text-mist-500">/mo</span></>}
               </p>
             </div>
             {targetTooSmall && (
