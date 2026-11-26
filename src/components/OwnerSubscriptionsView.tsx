@@ -1,6 +1,6 @@
 /* ================================================================
    VERRAA — Owner Subscriptions Management View.
-   Real database data only: plan, price (EGP), client count/limit,
+   Real database data only: plan, price (USD), client count/limit,
    status, start/end dates. All controls persist + record history.
    ================================================================ */
 
@@ -10,7 +10,7 @@ import { OwnerPageHeader } from "./OwnerShell";
 import { Shield, Calendar, DollarSign, MoreVertical, CheckCircle, Clock, XCircle, Users, RotateCcw, CreditCard, Trash2, History, PauseCircle, PlayCircle, ChevronDown } from "lucide-react";
 import { Dropdown, Modal } from "./ui";
 import { backend } from "../services/backend";
-import { DEFAULT_COACH_PLANS, formatEGP, getCoachPlanConfig, normalizeCoachPlanId, resolveCoachSubscription } from "../coachPricing";
+import { DEFAULT_COACH_PLANS, formatUSD, getCoachPlanConfig, normalizeCoachPlanId, resolveCoachSubscription } from "../coachPricing";
 import type { CoachPlan } from "../types";
 import { errorMessage, todayISO } from "../lib";
 
@@ -289,7 +289,7 @@ export function OwnerSubscriptionsView() {
                 <div className="flex-1">
                   <div className="flex justify-between text-xs">
                     <span className="text-mist-500">Price</span>
-                    <span className="font-bold text-mist-300 tnum">{formatEGP(sub.price)} / month</span>
+                    <span className="font-bold text-mist-300 tnum">{formatUSD(sub.price)} / month</span>
                   </div>
                 </div>
               </div>
@@ -414,7 +414,7 @@ export function OwnerSubscriptionsView() {
             >
               <p className="font-bold text-mist-200">{p.name} Plan</p>
               <p className="mt-0.5 text-xs text-mist-500 tnum">
-                {formatEGP(p.price)}/month · {p.maxClients === null ? "Unlimited clients" : `Up to ${p.maxClients} clients`}
+                {formatUSD(p.price)}/month · {p.maxClients === null ? "Unlimited clients" : `Up to ${p.maxClients} clients`}
               </p>
             </button>
           ))}
