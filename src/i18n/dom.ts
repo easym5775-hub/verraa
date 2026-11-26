@@ -23,6 +23,9 @@ const MONTHS_FULL: Record<string, string> = {
 const DAYS: Record<string, string> = {
   Mon: "الاثنين", Tue: "الثلاثاء", Wed: "الأربعاء", Thu: "الخميس", Fri: "الجمعة", Sat: "السبت", Sun: "الأحد",
 };
+const DAYS_FULL: Record<string, string> = {
+  Monday: "الاثنين", Tuesday: "الثلاثاء", Wednesday: "الأربعاء", Thursday: "الخميس", Friday: "الجمعة", Saturday: "السبت", Sunday: "الأحد",
+};
 
 const PATTERNS: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/^(\d+) days? remaining$/, (m) => `متبقي ${m[1]} يوم`],
@@ -62,6 +65,23 @@ const PATTERNS: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/^(\d[\d,]*) EGP · Monthly$/, (m) => `${m[1]} ج.م · شهري`],
   [/^Monthly$/, () => "شهري"],
   [/^© (\d{4}) VERRAA\. All rights reserved\.$/, (m) => `© ${m[1]} VERRAA. جميع الحقوق محفوظة.`],
+  [/^Today · (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/, (m) => `النهاردة · ${DAYS_FULL[m[1]]}`],
+  [/^(.+) · (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/, (m) => `${m[1]} · ${DAYS_FULL[m[2]]}`],
+  [/^(.+) · Week (\d+)$/, (m) => `${m[1]} · أسبوع ${m[2]}`],
+  [/^(\d+) exercises? · (\d+) sets$/, (m) => `${m[1]} تمارين · ${m[2]} مجموعات`],
+  [/^(\d+) of (\d+) done$/, (m) => `${m[1]} من ${m[2]} خلصوا`],
+  [/^(\d[\d,]*) \/ (\d[\d,]*) kcal$/, (m) => `${m[1]} / ${m[2]} سعرة`],
+  [/^(\d[\d,]*) kcal planned$/, (m) => `${m[1]} سعرة متخطط لها`],
+  [/^(\d+)s rest$/, (m) => `راحة ${m[1]} ث`],
+  [/^Day (\d+) · (\d+) exercises?$/, (m) => `يوم ${m[1]} · ${m[2]} تمارين`],
+  [/^(\d+)% of active clients$/, (m) => `${m[1]}% من العملاء النشطين`],
+  [/^(\d+)% of active$/, (m) => `${m[1]}% من النشطين`],
+  [/^(\d+) due this week$/, (m) => `${m[1]} مستحق الأسبوع ده`],
+  [/^(\d+) expires? today$/, (m) => `${m[1]} ينتهي النهاردة`],
+  [/^(\d+) expires? tomorrow$/, (m) => `${m[1]} ينتهي بكرة`],
+  [/^(\d+) check-ins? this week$/, (m) => `${m[1]} متابعة الأسبوع ده`],
+  [/^(\d+) of (\d+) on (.+)$/, (m) => `${m[1]} من ${m[2]} على ${m[3]}`],
+  [/^(\d+) on roster$/, (m) => `${m[1]} في القائمة`],
 ];
 
 const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "TEXTAREA", "INPUT", "CODE", "PRE", "NOSCRIPT"]);
