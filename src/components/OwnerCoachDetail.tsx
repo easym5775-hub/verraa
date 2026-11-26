@@ -37,7 +37,7 @@ import { useApp } from "../store";
 import { backend } from "../services/backend";
 import {
   DEFAULT_COACH_PLANS,
-  formatEGP,
+  formatUSD,
   getCoachPlanConfig,
   resolveCoachSubscription,
   effectiveCoachStatus,
@@ -542,7 +542,7 @@ export function OwnerCoachDetail({ coachId, onBack }: { coachId: string; onBack:
           <CreditCard className="h-5 w-5" />,
           "Plan",
           cfg ? cfg.name : "No plan",
-          primary ? `${formatEGP(Number(primary.price || 0))} / month` : "no subscription",
+          primary ? `${formatUSD(Number(primary.price || 0))} / month` : "no subscription",
         )}
         {stat(
           <Clock className="h-5 w-5" />,
@@ -605,7 +605,7 @@ export function OwnerCoachDetail({ coachId, onBack }: { coachId: string; onBack:
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[
               ["Plan", cfg ? cfg.name : primary.planName],
-              ["Price", `${formatEGP(Number(primary.price || 0))} / month`],
+              ["Price", `${formatUSD(Number(primary.price || 0))} / month`],
               ["Period", `${primary.startDate || "—"} → ${primary.endDate || "—"}`],
               ["Auto-renew", primary.autoRenew ? "On" : "Off"],
             ].map(([k, v]) => (
@@ -632,7 +632,7 @@ export function OwnerCoachDetail({ coachId, onBack }: { coachId: string; onBack:
                 <li key={s.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-night-700 bg-night-800 px-3.5 py-2.5">
                   <span className="text-xs font-bold text-mist-200">{getCoachPlanConfig(plans, s.planName)?.name ?? s.planName}</span>
                   {statusBadge(s.status)}
-                  <span className="text-[11px] text-mist-500 tnum">{s.startDate || "—"} → {s.endDate || "—"} · {formatEGP(Number(s.price || 0))}</span>
+                  <span className="text-[11px] text-mist-500 tnum">{s.startDate || "—"} → {s.endDate || "—"} · {formatUSD(Number(s.price || 0))}</span>
                   <button
                     disabled={busy}
                     onClick={() => setConfirm({ kind: "delete-sub", id: s.id, label: `${s.planName} (${s.startDate} → ${s.endDate})` })}
@@ -829,7 +829,7 @@ export function OwnerCoachDetail({ coachId, onBack }: { coachId: string; onBack:
             >
               <p className="font-bold text-mist-200">{p.name} Plan</p>
               <p className="mt-0.5 text-xs text-mist-500 tnum">
-                {formatEGP(p.price)}/month · {p.maxClients === null ? "Unlimited clients" : `Up to ${p.maxClients} clients`} · {p.id === "STARTER" ? "No Client Mode (manual)" : "Client Mode included"}
+                {formatUSD(p.price)}/month · {p.maxClients === null ? "Unlimited clients" : `Up to ${p.maxClients} clients`} · {p.id === "STARTER" ? "No Client Mode (manual)" : "Client Mode included"}
               </p>
               {p.id === "STARTER" && loginCount > 0 && (
                 <p className="mt-1.5 text-[11px] font-bold leading-4 text-danger-300">
@@ -916,7 +916,7 @@ export function OwnerCoachDetail({ coachId, onBack }: { coachId: string; onBack:
             >
               {activePlans.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} · {formatEGP(p.price)}/mo · {p.maxClients === null ? "unlimited" : `up to ${p.maxClients}`}
+                  {p.name} · {formatUSD(p.price)}/mo · {p.maxClients === null ? "unlimited" : `up to ${p.maxClients}`}
                 </option>
               ))}
             </select>
@@ -932,7 +932,7 @@ export function OwnerCoachDetail({ coachId, onBack }: { coachId: string; onBack:
               />
             </div>
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wide text-mist-500">Price (EGP)</label>
+              <label className="block text-xs font-bold uppercase tracking-wide text-mist-500">Price (USD)</label>
               <input
                 type="number"
                 min={0}
