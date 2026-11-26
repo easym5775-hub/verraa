@@ -102,6 +102,15 @@ export const fmtTime = (t: string): string => {
 
 export const fmtMoney = (n: number): string => n.toLocaleString("en-US");
 
+/* Coach-chosen currency for client billing (coach + client views). Set by the
+   store from the coach's saved preference; defaults to EGP. */
+export type Currency = "USD" | "EGP";
+let activeCurrency: Currency = "EGP";
+export const setActiveCurrency = (c: Currency): void => {
+  activeCurrency = c === "USD" ? "USD" : "EGP";
+};
+export const curCode = (): Currency => activeCurrency;
+
 export const round1 = (n: number): number => Math.round(n * 10) / 10;
 
 export const signed = (n: number): string => `${n > 0 ? "+" : ""}${round1(n)}`;
