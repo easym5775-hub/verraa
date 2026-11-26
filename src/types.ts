@@ -27,7 +27,7 @@ export type CoachSubscriptionStatus = "ACTIVE" | "EXPIRED" | "SUSPENDED" | "PEND
 export interface CoachPlanConfig {
   id: CoachPlan;
   name: string;
-  price: number; // EGP / month
+  price: number; // USD / month
   maxClients: number | null; // null = unlimited (Enterprise)
   billingInterval: "monthly";
   isActive: boolean;
