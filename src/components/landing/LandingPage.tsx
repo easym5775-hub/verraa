@@ -11,14 +11,10 @@ import { useLocation } from "react-router-dom";
 import { Seo } from "../Seo";
 import { LandingHeader } from "./LandingHeader";
 import { HeroSection } from "./HeroSection";
+import { StepsSection, FeatureBlocks } from "./StepsAndFeatures";
 import { ModesSection } from "./ModesSection";
-import { OutcomesSection } from "./OutcomesSection";
-import { ProblemSolutionSection } from "./ProblemSolutionSection";
-import { BenefitsSection } from "./BenefitsSection";
-import { ProductPreviewSection } from "./ProductPreviewSection";
-import { HowItWorksSection } from "./HowItWorksSection";
 import { PricingSection } from "./PricingSection";
-import { FinalCTA, WhyVerraa } from "./FinalCTA";
+import { FinalCTA } from "./FinalCTA";
 import { LandingFooter } from "./LandingFooter";
 
 const PAGE_TITLE = "VERRAA — Personal Trainer Software & Coaching Client Management Platform";
@@ -48,14 +44,10 @@ export function LandingPage() {
       <LandingHeader />
       <main id="main-content" className="relative z-10 flex-1">
         <HeroSection />
-        <ModesSection />
-        <OutcomesSection />
-        <ProblemSolutionSection />
-        <BenefitsSection />
-        <ProductPreviewSection />
-        <HowItWorksSection />
+        <FeatureBlocks />
+        <StepsSection />
         <PricingSection />
-        <WhyVerraa />
+        <ModesSection />
         <FinalCTA />
       </main>
       <div className="relative z-10">
