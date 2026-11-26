@@ -1,13 +1,20 @@
 import type { ReactNode } from "react";
-import { ArrowRight, CalendarDays, Camera, Users, Wallet } from "lucide-react";
-import { fmtMoney } from "../../lib";
+import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Users } from "lucide-react";
 import { useCountUp } from "../ui";
+
+const CHIP_TONE: Record<string, string> = {
+  good: "bg-moss-400/10 text-moss-300 ring-moss-400/25",
+  warn: "bg-warn-400/10 text-warn-300 ring-warn-400/25",
+  danger: "bg-danger-500/10 text-danger-300 ring-danger-500/25",
+  muted: "bg-white/[0.05] text-mist-400 ring-white/10",
+};
 
 export function KpiCard({
   label,
   value,
   unit,
   sub,
+  chip,
   icon,
   tone,
   onClick,
@@ -17,6 +24,7 @@ export function KpiCard({
   value: string;
   unit?: string;
   sub: string;
+  chip?: { text: string; tone: "good" | "warn" | "danger" | "muted" };
   icon: ReactNode;
   tone?: "warn" | "danger" | "accent";
   onClick?: () => void;
@@ -37,7 +45,13 @@ export function KpiCard({
         {unit && <span className="ms-1.5 text-[13px] font-bold text-mist-500">{unit}</span>}
       </span>
       <span className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-mist-500">
-        <span className="truncate">{sub}</span>
+        {chip ? (
+          <span className={`inline-flex max-w-full items-center truncate rounded-full px-2 py-0.5 text-[11px] font-bold leading-4 ring-1 ${CHIP_TONE[chip.tone]}`}>
+            {chip.text}
+          </span>
+        ) : (
+          <span className="truncate">{sub}</span>
+        )}
         {onClick && actionLabel && (
           <span className="ms-auto inline-flex shrink-0 items-center gap-0.5 font-bold text-volt-300">
             {actionLabel} <ArrowRight className="h-3 w-3 rtl:rotate-180" />
@@ -69,81 +83,79 @@ export function KpiCard({
 }
 
 /* Isolated KPI row: the four count-up animations re-render only this grid,
-   never the dashboard above it (charts, lists). Visual output identical. */
+   never the dashboard above it (charts, lists). Concept layout:
+   Active clients → Checked in today → Need attention → Renewals this week. */
 export function KpiRow({
-  recentCount,
-  sessionsCount,
-  nextSessionLabel,
   activeCount,
-  totalCount,
+  planUsageLabel,
+  todayCheckIns,
+  activePct,
   attentionCount,
-  outstandingTotal,
-  outstandingCount,
-  onViewCheckins,
-  onAddSession,
+  topAttention,
+  renewalsCount,
+  renewalsSub,
   onViewRoster,
-  onCollect,
+  onViewCheckins,
+  onReviewAttention,
+  onViewRenewals,
 }: {
-  recentCount: number;
-  sessionsCount: number;
-  nextSessionLabel: string | null;
   activeCount: number;
-  totalCount: number;
+  planUsageLabel: string;
+  todayCheckIns: number;
+  activePct: number;
   attentionCount: number;
-  outstandingTotal: number;
-  outstandingCount: number;
-  onViewCheckins: () => void;
-  onAddSession: () => void;
+  topAttention: string | null;
+  renewalsCount: number;
+  renewalsSub: string;
   onViewRoster: () => void;
-  onCollect: () => void;
+  onViewCheckins: () => void;
+  onReviewAttention: () => void;
+  onViewRenewals: () => void;
 }) {
-  const animRecent = useCountUp(recentCount);
-  const animSessions = useCountUp(sessionsCount);
   const animActive = useCountUp(activeCount);
-  const animOutstanding = useCountUp(outstandingTotal);
+  const animToday = useCountUp(todayCheckIns);
+  const animAttention = useCountUp(attentionCount);
+  const animRenewals = useCountUp(renewalsCount);
 
   return (
     <div className="rise grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" style={{ animationDelay: "60ms" }} role="list" aria-label="Today's key numbers">
       <KpiCard
         label="Active Clients"
         value={String(Math.round(animActive))}
-        sub={
-          attentionCount > 0
-            ? `${Math.min(attentionCount, activeCount)} need${Math.min(attentionCount, activeCount) === 1 ? "s" : ""} attention`
-            : totalCount - activeCount > 0
-              ? `${totalCount - activeCount} inactive`
-              : "Roster healthy"
-        }
+        sub={planUsageLabel}
+        chip={{ text: planUsageLabel, tone: "muted" }}
         icon={<Users className="h-4 w-4" />}
-        tone="accent"
         onClick={onViewRoster}
-        actionLabel="View roster"
       />
       <KpiCard
-        label="Sessions Today"
-        value={String(Math.round(animSessions))}
-        sub={sessionsCount ? (nextSessionLabel ? `Next at ${nextSessionLabel}` : `${sessionsCount} on the books`) : "Schedule is clear"}
-        icon={<CalendarDays className="h-4 w-4" />}
-        onClick={sessionsCount ? undefined : onAddSession}
-        actionLabel={sessionsCount ? undefined : "Add session"}
-      />
-      <KpiCard
-        label="Recent Check-ins"
-        value={String(Math.round(animRecent))}
-        sub={recentCount ? `${recentCount} in the last 7 days · View feed` : "No check-ins this week"}
-        icon={<Camera className="h-4 w-4" />}
+        label="Checked in today"
+        value={String(Math.round(animToday))}
+        sub={activeCount > 0 ? `${activePct}% of active clients` : "No active clients yet"}
+        chip={
+          activeCount > 0
+            ? { text: `${activePct}% of active`, tone: todayCheckIns > 0 ? "good" : "muted" }
+            : { text: "No active clients", tone: "muted" }
+        }
+        icon={<CheckCircle2 className="h-4 w-4" />}
         onClick={onViewCheckins}
-        actionLabel="View"
       />
       <KpiCard
-        label="Outstanding Payments"
-        value={fmtMoney(Math.round(animOutstanding))}
-        unit="EGP"
-        sub={outstandingCount ? `${outstandingCount} overdue payment${outstandingCount === 1 ? "" : "s"}` : "All settled"}
-        icon={<Wallet className="h-4 w-4" />}
-        tone={outstandingCount > 0 ? "danger" : undefined}
-        onClick={outstandingCount ? onCollect : undefined}
-        actionLabel={outstandingCount ? "Collect" : undefined}
+        label="Need attention"
+        value={String(Math.round(animAttention))}
+        sub={topAttention ?? "All clear"}
+        chip={attentionCount > 0 ? { text: topAttention ?? "Review", tone: "warn" } : { text: "All clear", tone: "good" }}
+        icon={<AlertTriangle className="h-4 w-4" />}
+        tone={attentionCount > 0 ? "warn" : undefined}
+        onClick={onReviewAttention}
+      />
+      <KpiCard
+        label="Renewals this week"
+        value={String(Math.round(animRenewals))}
+        sub={renewalsSub}
+        chip={{ text: renewalsSub, tone: renewalsCount > 0 ? "danger" : "muted" }}
+        icon={<CalendarClock className="h-4 w-4" />}
+        tone={renewalsCount > 0 ? "danger" : undefined}
+        onClick={onViewRenewals}
       />
     </div>
   );
