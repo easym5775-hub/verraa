@@ -731,6 +731,9 @@ export interface Backend {
   createClientLogin(clientId: string, username: string, password: string): Promise<Client>;
   deleteClientAccount(clientId: string): Promise<void>;
   updateCoachName(name: string): Promise<void>;
+  /** Billing currency of the signed-in coach (or of a client's coach). */
+  getCurrency(): Promise<"USD" | "EGP">;
+  setCurrency(currency: "USD" | "EGP"): Promise<void>;
   /** Load all coaches and subscriptions — for owner dashboard. */
   loadAllCoachesAndSubscriptions?(): Promise<{ coaches: Coach[]; subscriptions: CoachSubscription[] }>;
   /* ---- Coach Pricing & Limits (real, backend-enforced) ---- */
@@ -1746,6 +1749,19 @@ class SupabaseBackend implements Backend {
     const userId = await this.getSessionUserId();
     if (!userId) throw new Error("Not signed in.");
     const { error } = await supabase.from("coaches").update({ name }).eq("id", userId);
+    if (error) throw new Error(error.message);
+  }
+
+  async getCurrency(): Promise<"USD" | "EGP"> {
+    const { data, error } = await supabase.rpc("my_currency");
+    if (error) return "EGP";
+    return String(data ?? "").toUpperCase() === "USD" ? "USD" : "EGP";
+  }
+
+  async setCurrency(currency: "USD" | "EGP"): Promise<void> {
+    const userId = await this.getSessionUserId();
+    if (!userId) throw new Error("Not signed in.");
+    const { error } = await supabase.from("coaches").update({ currency }).eq("id", userId);
     if (error) throw new Error(error.message);
   }
 }
