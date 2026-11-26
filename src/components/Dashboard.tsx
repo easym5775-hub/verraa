@@ -19,6 +19,7 @@ import {
   Clock,
   Plus,
   Scale,
+  Search,
   TrendingUp,
   UserPlus,
   Users,
@@ -28,6 +29,7 @@ import type { CheckIn, Client, CoachView, Session } from "../types";
 import { SESSION_STATUS_META, SUB_STATE_META, WEEK_DAYS, priorityRank } from "../types";
 import {
   addDays,
+  dayNum,
   diffDays,
   fmtDate,
   fmtMoney,
@@ -92,6 +94,9 @@ export function Dashboard({
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
+  /* Concept KPI data: check-ins submitted today + this week's renewals. */
+  const checkInsToday = useMemo(() => state.checkIns.filter((c) => c.date === today), [state.checkIns, today]);
+
   /* Narrow slice deps (not the whole state): the store updates slices
      immutably, so untouched slices keep stable refs and this memo survives
      unrelated writes (meals, plans, messages…). */
@@ -100,6 +105,9 @@ export function Dashboard({
     [state.clients, state.sessions, state.checkIns, state.subscriptions],
   );
   const clientById = useMemo(() => new Map(state.clients.map((c) => [c.id, c])), [state.clients]);
+  const renewalsWeek = lists.expiringSoon;
+  const urgentRenewals = renewalsWeek.filter((r) => r.info.daysLeft <= 1).length;
+  const minDaysLeft = renewalsWeek.length ? Math.min(...renewalsWeek.map((r) => r.info.daysLeft)) : 0;
 
   const activeClients = useMemo(() => state.clients.filter((c) => c.status === "Active"), [state.clients]);
 
@@ -517,6 +525,9 @@ export function Dashboard({
           <p className="text-balance mt-1.5 max-w-xl text-[13px] leading-6 text-mist-400">{contextLine}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 pt-1">
+          <button className={`${btnSecondary} ${btnSm} !min-h-[38px]`} onClick={() => go("clients")}>
+            <Search className="h-3.5 w-3.5" /> Search clients…
+          </button>
           <button className={`${btnSecondary} ${btnSm} !min-h-[38px]`} onClick={() => go("checkins")}>
             <Camera className="h-3.5 w-3.5" /> View check-ins
             {recentCheckIns.length > 0 && (
@@ -537,28 +548,53 @@ export function Dashboard({
         </div>
       </header>
 
-      {/* 2 — KPI stats first (Active → Sessions → Check-ins → Payments) */}
+      {/* 2 — concept KPI stats: Active → Checked in today → Need attention → Renewals */}
       <KpiRow
-        recentCount={recentCheckIns.length}
-        sessionsCount={todaySessions.length}
-        nextSessionLabel={nextSession ? fmtTime(nextSession.time) : null}
         activeCount={activeClients.length}
-        totalCount={state.clients.length}
+        planUsageLabel={
+          (myClientLimit ?? 0) > 0
+            ? `${myClientCount} of ${myClientLimit} on ${myCoachPlan.name}`
+            : `${state.clients.length} on roster`
+        }
+        todayCheckIns={checkInsToday.length}
+        activePct={activeClients.length > 0 ? Math.min(100, Math.round((checkInsToday.length / activeClients.length) * 100)) : 0}
         attentionCount={attentionCount}
-        outstandingTotal={outstanding.total}
-        outstandingCount={outstanding.count}
-        onViewCheckins={() => go("checkins")}
-        onAddSession={() => setSessionModal(true)}
+        topAttention={alerts[0] ? alerts[0].title : null}
+        renewalsCount={renewalsWeek.length}
+        renewalsSub={
+          renewalsWeek.length === 0
+            ? "None due this week"
+            : urgentRenewals > 0
+              ? `${urgentRenewals} expire${urgentRenewals === 1 ? "s" : ""} ${minDaysLeft === 0 ? "today" : "tomorrow"}`
+              : `${renewalsWeek.length} due this week`
+        }
         onViewRoster={() => openClientsWithFilter("Active")}
-        onCollect={() => openRecordPayment(null)}
+        onViewCheckins={() => go("checkins")}
+        onReviewAttention={() => openClientsWithFilter("Active")}
+        onViewRenewals={() => openClientsWithFilter("Expiring Soon")}
       />
 
-      {/* 3 — action center (2:1 on desktop, stacked on tablet/mobile) */}
+      {/* 3 — needs attention + this week's check-ins (concept grid) */}
       <div className="grid items-start gap-4 lg:gap-5 xl:grid-cols-3">
         <NeedsAttentionCard
           alerts={alerts}
           onReviewAll={() => openClientsWithFilter("Active")}
           onOpenClient={(id) => go("client", id)}
+        />
+        <WeekCheckinsCard checkIns={state.checkIns} today={today} />
+      </div>
+
+      {/* 4 — clients progress + today's schedule */}
+      <div className="grid items-start gap-4 lg:gap-5 xl:grid-cols-5">
+        <ClientsProgressCard
+          clients={activeClients}
+          sessions={state.sessions}
+          alerts={alerts}
+          today={today}
+          onOpenClient={(id) => go("client", id)}
+          onAddClient={() => setClientModal(true)}
+          onViewAll={() => openClientsWithFilter("Active")}
+          className="xl:col-span-3"
         />
         <TodayScheduleCard
           sessions={todaySessions}
@@ -569,10 +605,11 @@ export function Dashboard({
           onOpenClient={(id) => go("client", id)}
           onComplete={(id) => setSessionStatus(id, "Completed")}
           clientName={(id) => clientById.get(id)?.name ?? "Former client"}
+          className="xl:col-span-2"
         />
       </div>
 
-      {/* 4 — clients to review + recent activity side-by-side (3:2 on desktop).
+      {/* 5 — clients to review + recent activity side-by-side (3:2 on desktop).
           Both are collapsible with a 2-row compact preview to save vertical space. */}
       <div className="grid items-start gap-4 lg:gap-5 xl:grid-cols-5">
         <ClientsToReviewCard
@@ -650,9 +687,6 @@ function NeedsAttentionCard({
       className="xl:col-span-2"
       count={alerts.length > 0 ? alerts.length : "clear"}
       countTone={alerts.length > 0 ? "bg-danger-500/15 text-danger-300 ring-danger-500/20" : "bg-moss-400/10 text-moss-300 ring-moss-400/20"}
-      collapsible={hasAlerts}
-      open={open}
-      onToggle={() => setOpen((v) => !v)}
       action={
         alerts.length > 0 ? (
           <button className={`${btnSecondary} ${btnSm}`} onClick={onReviewAll}>
@@ -746,6 +780,7 @@ function TodayScheduleCard({
   onOpenClient,
   onComplete,
   clientName,
+  className = "",
 }: {
   sessions: Session[];
   upcoming: { date: string; items: Session[] }[];
@@ -755,11 +790,13 @@ function TodayScheduleCard({
   onOpenClient: (id: string) => void;
   onComplete: (id: string) => void;
   clientName: (id: string) => string;
+  className?: string;
 }) {
   return (
     <CardShell
       label="Today's Schedule"
       icon={<Clock className="h-4 w-4" />}
+      className={className}
       delay={140}
       count={sessions.length}
       action={
@@ -857,6 +894,148 @@ function ScheduleRow({ s, name, onOpen, onComplete }: { s: Session; name: string
         <Badge className={meta.chip}>{s.status}</Badge>
       )}
     </li>
+  );
+}
+
+/* ---------------- this week's check-ins (concept bar chart) ----------------
+   Bars = real submitted check-ins per weekday of the current week. */
+
+function WeekCheckinsCard({ checkIns, today }: { checkIns: CheckIn[]; today: string }) {
+  const days = useMemo(() => {
+    const monday = addDays(today, -(dayNum() - 1));
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = addDays(monday, i);
+      return {
+        date,
+        label: WEEK_DAYS[i].slice(0, 3),
+        count: checkIns.filter((c) => c.date === date).length,
+        isToday: date === today,
+        future: date > today,
+      };
+    });
+  }, [checkIns, today]);
+  const max = Math.max(1, ...days.map((d) => d.count));
+  const total = days.reduce((s, d) => s + d.count, 0);
+  return (
+    <CardShell label="This week's check-ins" icon={<Camera className="h-4 w-4" />} delay={120} count={total}>
+      <div className="flex flex-1 items-end gap-2 px-5 pb-4 pt-6" dir="ltr">
+        {days.map((d) => (
+          <div key={d.date} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
+            <span className="text-[10px] font-extrabold leading-3 text-mist-500 tnum">{d.count > 0 ? d.count : ""}</span>
+            <div
+              className={`w-full max-w-[36px] rounded-t-md ${d.future ? "bg-night-700/50" : "bg-volt-400"} ${d.isToday ? "ring-2 ring-volt-400/35" : ""}`}
+              style={{ height: `${d.count === 0 ? 6 : Math.max(14, (d.count / max) * 88)}px`, opacity: d.future ? 0.45 : 1 }}
+              aria-hidden="true"
+            />
+            <span className={`text-[10px] font-bold ${d.isToday ? "text-volt-300" : "text-mist-500"}`} data-no-translate>
+              {d.label}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="border-t border-white/[0.06] px-5 py-2.5 text-[11px] font-semibold text-mist-500">
+        {total > 0 ? `${total} check-in${total === 1 ? "" : "s"} this week` : "No check-ins yet this week"}
+      </p>
+    </CardShell>
+  );
+}
+
+/* ---------------- clients progress (concept roster card) ----------------
+   Every active client with real attendance + their top open alert. */
+
+function ClientsProgressCard({
+  clients,
+  sessions,
+  alerts,
+  today,
+  onOpenClient,
+  onAddClient,
+  onViewAll,
+  className = "",
+}: {
+  clients: Client[];
+  sessions: Session[];
+  alerts: AttentionItem[];
+  today: string;
+  onOpenClient: (id: string) => void;
+  onAddClient: () => void;
+  onViewAll: () => void;
+  className?: string;
+}) {
+  const rows = useMemo(
+    () =>
+      clients.slice(0, 6).map((client) => {
+        const att = attendance(sessions.filter((s) => s.clientId === client.id));
+        const week = Math.max(1, Math.ceil(diffDays(client.startDate, today) / 7) || 1);
+        const alert = alerts.find((a) => a.client.id === client.id) ?? null;
+        return { client, att, week, alert };
+      }),
+    [clients, sessions, alerts, today],
+  );
+  return (
+    <CardShell
+      label="Clients"
+      icon={<Users className="h-4 w-4" />}
+      delay={100}
+      className={className}
+      count={clients.length}
+      action={
+        clients.length > 0 ? (
+          <button className={`${btnSecondary} ${btnSm}`} onClick={onViewAll}>
+            View all <ArrowRight className="h-3.5 w-3.5 rtl:rotate-180" />
+          </button>
+        ) : undefined
+      }
+    >
+      {rows.length === 0 ? (
+        <div className="grid place-items-center px-5 py-8 text-center">
+          <div>
+            <span className="icon-tile mx-auto h-10 w-10 !rounded-full">
+              <UserPlus className="h-4 w-4" />
+            </span>
+            <p className="mt-2.5 text-sm font-bold text-mist-100">Add your first client.</p>
+            <button className={`${btnPrimary} ${btnSm} mt-3`} onClick={onAddClient}>
+              <Plus className="h-3.5 w-3.5" strokeWidth={2.6} /> Add client
+            </button>
+          </div>
+        </div>
+      ) : (
+        <ul className="divide-y divide-white/[0.06]">
+          {rows.map(({ client, att, week, alert }) => {
+            const pct = att.countable > 0 ? att.pct : 0;
+            const tag = alert
+              ? { text: alert.title, cls: alert.severity === "high" ? "bg-danger-500/10 text-danger-300 ring-danger-500/20" : "bg-warn-400/10 text-warn-300 ring-warn-400/25" }
+              : att.countable === 0
+                ? { text: "New", cls: "bg-white/[0.05] text-mist-400 ring-white/10" }
+                : { text: "On track", cls: "bg-moss-400/10 text-moss-300 ring-moss-400/25" };
+            return (
+              <li key={client.id}>
+                <button
+                  onClick={() => onOpenClient(client.id)}
+                  aria-label={`Open ${client.name}'s profile`}
+                  className="group flex w-full cursor-pointer items-center gap-3 px-5 py-3 text-start transition-colors hover:bg-white/[0.025] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-volt-400/50"
+                >
+                  <Avatar name={client.name} photo={client.photo} className="h-9 w-9 text-[11px]" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-bold text-mist-100 transition-colors group-hover:text-volt-200">{client.name}</span>
+                    <span className="block truncate text-xs font-medium text-mist-500">
+                      {`${client.goal} · Week ${week}`}
+                    </span>
+                  </span>
+                  <span className="hidden w-28 shrink-0 items-center gap-2 sm:flex" aria-hidden={att.countable === 0}>
+                    <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
+                      <span className="block h-full rounded-full bg-volt-400" style={{ width: `${pct}%` }} />
+                    </span>
+                    <span className="w-8 text-end text-[11px] font-bold text-mist-500 tnum">{att.countable > 0 ? `${pct}%` : "—"}</span>
+                  </span>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold leading-4 ring-1 ${tag.cls}`}>{tag.text}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </CardShell>
   );
 }
 
@@ -1498,5 +1677,4 @@ function CompactPlanUsage({
 }
 
 /* ---------------- skeleton (lives in ./dashboard/DashboardSkeleton) ---------------- */
-
 
