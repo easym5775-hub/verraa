@@ -19,7 +19,7 @@ export function resolveInitialTheme(): Theme {
   } catch {
     /* storage unavailable — fall through to default */
   }
-  return "dark";
+  return "light";
 }
 
 export function currentTheme(): Theme {
