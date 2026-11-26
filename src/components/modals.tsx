@@ -36,7 +36,7 @@ import {
   WEEK_ORDER_SAT_FIRST,
   formatDayName,
 } from "../types";
-import { buildClientUsername, coachUsernameSuffix, fileToDataUrl, isValidUsername, maxClientPartLength, randomPassword, stripCoachSuffix, todayISO } from "../lib";
+import { buildClientUsername, coachUsernameSuffix, fileToDataUrl, isValidUsername, maxClientPartLength, randomPassword, stripCoachSuffix, todayISO, curCode } from "../lib";
 import { useApp } from "../store";
 import { ClientModeError, isClientModeError, isPlanLimitError, type PlanLimitError } from "../coachPricing";
 import { Modal, Toggle, btnPrimary, btnSecondary, inputCls, labelCls, textareaCls } from "./ui";
@@ -842,7 +842,7 @@ export function SubscriptionFormModal({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelCls}>Price (EGP)</label>
+            <label className={labelCls}>{`Price (${curCode()})`}</label>
             <input className={inputCls} type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} />
           </div>
           <div>
@@ -863,7 +863,7 @@ export function SubscriptionFormModal({
               ))}
             </select>
             <p className="mt-1.5 text-[11px] font-semibold text-mist-500">
-              A {price || 0} EGP payment linked to this subscription will appear in Payments automatically.
+              A {price || 0} {curCode()} payment linked to this subscription will appear in Payments automatically.
             </p>
           </div>
         )}
@@ -950,7 +950,7 @@ export function PaymentFormModal({
         )}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelCls}>Amount (EGP)</label>
+            <label className={labelCls}>{`Amount (${curCode()})`}</label>
             <input className={inputCls} type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} />
           </div>
           <div>
