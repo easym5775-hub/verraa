@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import type { CheckIn, Client, CoachNote, CoachView, Meal, NoteCategory, Payment, Session, SubState, Subscription } from "../types";
 import { FOLLOW_UP_PRESETS, GOAL_META, NOTE_CATEGORIES, NOTE_CATEGORY_META, PAYMENT_STATUS_META, PRIORITIES, SESSION_STATUS_META, STATUS_META, SUB_PAYMENT_META, SUB_STATE_META, WEEK_DAYS, WEEK_SHORT, normalizeCoachNotes, priorityRank } from "../types";
-import { addDays, dayNum, diffDays, fmtDate, fmtMoney, fmtTime, relDay, relTime, signed, toISO, todayISO, waHref } from "../lib";
+import { addDays, dayNum, diffDays, fmtDate, fmtMoney, curCode, fmtTime, relDay, relTime, signed, toISO, todayISO, waHref } from "../lib";
 import {
   attendance,
   currentSubscription,
@@ -364,7 +364,7 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
   if (fu.overdue) attention.push({ tone: "text-danger-300", dot: "bg-danger-400", text: `Follow-up ${fu.label.toLowerCase()}` });
   if (subInfo.state === "Expired") attention.push({ tone: "text-danger-300", dot: "bg-danger-400", text: "Subscription expired" });
   else if (subInfo.state === "Expiring Soon") attention.push({ tone: "text-warn-300", dot: "bg-warn-400", text: "Subscription expiring soon" });
-  if (outstanding > 0) attention.push({ tone: "text-warn-300", dot: "bg-warn-400", text: `${fmtMoney(outstanding)} EGP outstanding` });
+  if (outstanding > 0) attention.push({ tone: "text-warn-300", dot: "bg-warn-400", text: `${fmtMoney(outstanding)} ${curCode()} outstanding` });
   if (latest && !latest.workoutDone && latest.date >= addDays(todayISO(), -2)) attention.push({ tone: "text-warn-300", dot: "bg-warn-400", text: "Skipped last workout" });
   if (checkIns.length === 0) attention.push({ tone: "text-mist-400", dot: "bg-mist-500", text: "No check-ins yet" });
   if (!subInfo.sub) attention.push({ tone: "text-mist-400", dot: "bg-mist-500", text: "No subscription yet" });
@@ -562,7 +562,7 @@ export function ClientProfile({ clientId, go }: { clientId: string; go: (v: Coac
         />
         <Kpi
           label="Outstanding"
-          value={outstanding > 0 ? `${fmtMoney(outstanding)} EGP` : "Clear"}
+          value={outstanding > 0 ? `${fmtMoney(outstanding)} ${curCode()}` : "Clear"}
           sub={subInfo.sub ? `${fmtMoney(paid)} paid of ${fmtMoney(subInfo.sub.price)}` : `${fmtMoney(paid)} paid total`}
           tone={outstanding > 0 ? "warn" : "good"}
           onClick={scrollToBilling}
@@ -800,16 +800,16 @@ function BillingCard({ subs, payments, clientId }: { subs: Subscription[]; payme
               </span>
             </p>
             <p className="text-end text-sm font-extrabold text-mist-100 tnum">
-              {fmtMoney(sub.price)} <span className="text-[11px] font-bold text-mist-500">EGP</span>
+              {fmtMoney(sub.price)} <span className="text-[11px] font-bold text-mist-500">{curCode()}</span>
               <span className={`ms-2 rounded-md px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ${sub.paymentStatus === "Paid" ? "bg-moss-400/10 text-moss-300" : sub.paymentStatus === "Partial" ? "bg-sky-400/10 text-sky-300" : "bg-warn-400/10 text-warn-300"}`}>
                 {sub.paymentStatus}
               </span>
             </p>
           </div>
           <div className="mt-2.5 grid grid-cols-3 gap-2">
-            <KV k="Total paid" v={`${fmtMoney(totalPaid(payments))} EGP`} tone="text-moss-300" />
-            <KV k="Plan price" v={`${fmtMoney(sub.price)} EGP`} />
-            <KV k="Outstanding" v={outstanding > 0 ? `${fmtMoney(outstanding)} EGP` : "—"} tone={outstanding > 0 ? "text-warn-300" : undefined} />
+            <KV k="Total paid" v={`${fmtMoney(totalPaid(payments))} ${curCode()}`} tone="text-moss-300" />
+            <KV k="Plan price" v={`${fmtMoney(sub.price)} ${curCode()}`} />
+            <KV k="Outstanding" v={outstanding > 0 ? `${fmtMoney(outstanding)} ${curCode()}` : "—"} tone={outstanding > 0 ? "text-warn-300" : undefined} />
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
             <button className={`${btnSecondary} ${btnSm}`} title="Renew" onClick={() => renewSubscription(sub)}>
@@ -830,7 +830,7 @@ function BillingCard({ subs, payments, clientId }: { subs: Subscription[]; payme
                     <li key={h.id} className="flex items-center gap-2 text-xs text-mist-400">
                       <span className="font-bold text-mist-200">{h.planName}</span>
                       <span>{fmtDate(h.startDate)} → {fmtDate(h.endDate)}</span>
-                      <span className="ms-auto font-bold text-mist-300 tnum">{fmtMoney(h.price)} EGP</span>
+                      <span className="ms-auto font-bold text-mist-300 tnum">{fmtMoney(h.price)} {curCode()}</span>
                     </li>
                   ))}
                 </ul>
@@ -859,7 +859,7 @@ function BillingCard({ subs, payments, clientId }: { subs: Subscription[]; payme
               return (
                 <li key={p.id} className="group flex items-center gap-2.5 rounded-xl border border-night-700 bg-night-800 px-3 py-2 transition-all duration-200 hover:border-night-500">
                   <span className="w-20 shrink-0 truncate text-xs font-bold text-mist-300">{relDay(p.date)}</span>
-                  <span className="shrink-0 font-display text-base font-bold text-mist-100 tnum">{fmtMoney(p.amount)} <span className="text-[11px] font-semibold text-mist-500">EGP</span></span>
+                  <span className="shrink-0 font-display text-base font-bold text-mist-100 tnum">{fmtMoney(p.amount)} <span className="text-[11px] font-semibold text-mist-500">{curCode()}</span></span>
                   <span className="min-w-0 flex-1 truncate text-xs text-mist-400">{p.method}{linked ? ` · ${linked.planName}` : ""}</span>
                   <Badge className={PAYMENT_STATUS_META[p.status].chip}>{p.status}</Badge>
                   <button className="grid h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-md text-mist-400 opacity-0 transition hover:bg-danger-500/15 hover:text-danger-300 focus-visible:opacity-100 group-hover:opacity-100" title="Delete" onClick={() => setPayDeleting(p)}>
@@ -879,7 +879,7 @@ function BillingCard({ subs, payments, clientId }: { subs: Subscription[]; payme
         open={!!payDeleting}
         onClose={() => setPayDeleting(null)}
         title="Delete payment?"
-        message={<>{payDeleting ? fmtMoney(payDeleting.amount) : 0} EGP from {payDeleting ? relDay(payDeleting.date) : ""} will be removed.</>}
+        message={<>{payDeleting ? fmtMoney(payDeleting.amount) : 0} {curCode()} from {payDeleting ? relDay(payDeleting.date) : ""} will be removed.</>}
         onConfirm={() => payDeleting && deletePayment(payDeleting.id)}
       />
     </SectionCard>
