@@ -25,7 +25,7 @@ function capacityLabel(plan: CoachPlanConfig): string {
 }
 
 function priceLabel(plan: CoachPlanConfig): { big: string; suffix: string } {
-  return { big: plan.price.toLocaleString("en-US"), suffix: "EGP / month" };
+  return { big: `$${plan.price.toLocaleString("en-US")}`, suffix: "/ month" };
 }
 
 export function PricingSection() {
@@ -68,7 +68,7 @@ export function PricingSection() {
           return (
             <Reveal key={plan.id} delay={i * 90} className="h-full">
               <article
-                aria-label={`${plan.name} plan — ${price.big} EGP per month, ${capacityLabel(plan)}`}
+                aria-label={`${plan.name} plan — ${price.big} per month, ${capacityLabel(plan)}`}
                 className={`relative flex h-full flex-col overflow-hidden rounded-[20px] border p-6 backdrop-blur-xl sm:p-7 ${
                   popular
                     ? "border-volt-400/50 bg-night-900/85 shadow-[0_16px_48px_-20px_rgba(205,241,75,0.4)] ring-1 ring-volt-400/30 lg:-my-2 lg:py-9"
@@ -159,7 +159,7 @@ export function PricingSection() {
       </div>
       <Reveal delay={140}>
         <p className="mx-auto mt-6 max-w-xl text-center text-xs leading-5 text-mist-500">
-          Prices in EGP, billed monthly. Your subscription is managed from your coaching
+          Prices in USD, billed monthly. Your subscription is managed from your coaching
           workspace after you sign up.
         </p>
       </Reveal>
