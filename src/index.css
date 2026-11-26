@@ -906,3 +906,16 @@ html[data-theme="light"] [class*="text-warn-400"] { color: #8a5a12; }
 html[data-theme="light"] [class*="text-teal-300"],
 html[data-theme="light"] [class*="text-moss-400"] { color: #1f5a3d; }
 html[data-theme="light"] [class*="text-sky-400"] { color: #1d5f7a; }
+
+/* ---- Arabic: Cairo font, no letter-spacing/uppercase (breaks Arabic joining), mirrored arrows ---- */
+html[lang="ar"] {
+  --font-sans: "Cairo", "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Cairo", "Manrope", ui-sans-serif, system-ui, sans-serif;
+}
+html[lang="ar"] body, html[lang="ar"] button, html[lang="ar"] input, html[lang="ar"] textarea, html[lang="ar"] select {
+  font-family: "Cairo", "Manrope", ui-sans-serif, system-ui, sans-serif;
+}
+html[lang="ar"] * { letter-spacing: 0 !important; text-transform: none !important; }
+html[lang="ar"] .tnum, html[lang="ar"] [dir="ltr"] { direction: ltr; unicode-bidi: isolate; }
+html[dir="rtl"] input[type="email"], html[dir="rtl"] input[type="url"], html[dir="rtl"] input[type="tel"], html[dir="rtl"] input[type="password"] { direction: ltr; text-align: right; }
+html[dir="rtl"] .lucide-chevron-right:not([class*="rtl:"]), html[dir="rtl"] .lucide-chevron-left:not([class*="rtl:"]) { transform: scaleX(-1); }
