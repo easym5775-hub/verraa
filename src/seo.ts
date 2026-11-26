@@ -103,7 +103,7 @@ export const SEO_PAGES: Record<SeoPageKey, SeoPage> = {
   terms: {
     title: "Terms of Service — VERRAA",
     description:
-      "The terms for using VERRAA: plans billed monthly in EGP, plan capacity limits, and coach account responsibilities.",
+      "The terms for using VERRAA: plans billed monthly in USD, plan capacity limits, and coach account responsibilities.",
     path: "/terms",
     index: true,
   },
