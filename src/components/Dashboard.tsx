@@ -33,6 +33,7 @@ import {
   diffDays,
   fmtDate,
   fmtMoney,
+  curCode,
   fmtShort,
   fmtTime,
   relTime,
@@ -273,7 +274,7 @@ export function Dashboard({
         client,
         severity: "med",
         title: "Payment overdue",
-        detail: `${fmtMoney(out2)} EGP · ${sub.planName}`,
+        detail: `${fmtMoney(out2)} ${curCode()} · ${sub.planName}`,
         meta: "Due",
         actionLabel: "Record payment",
         run: () => openRecordPayment(client.id),
@@ -289,7 +290,7 @@ export function Dashboard({
           client,
           severity: "med",
           title: "Payment pending",
-          detail: `${fmtMoney(p.amount)} EGP · ${p.method}`,
+          detail: `${fmtMoney(p.amount)} ${curCode()} · ${p.method}`,
           meta: "Due",
           actionLabel: "Record payment",
           run: () => openRecordPayment(client.id),
@@ -453,7 +454,7 @@ export function Dashboard({
         ts: s.createdAt,
         kind: "subscription",
         text: `${name(s.clientId)} — subscription ${s.planName}`,
-        meta: `${fmtMoney(s.price)} EGP · ends ${fmtDate(s.endDate)}`,
+        meta: `${fmtMoney(s.price)} ${curCode()} · ends ${fmtDate(s.endDate)}`,
       });
     }
     for (const p of state.payments) {
@@ -464,7 +465,7 @@ export function Dashboard({
         ts: new Date(p.date + "T12:00:00").getTime(),
         kind: "payment",
         text: `Payment received from ${name(p.clientId)}`,
-        meta: `${fmtMoney(p.amount)} EGP · ${p.method}`,
+        meta: `${fmtMoney(p.amount)} ${curCode()} · ${p.method}`,
       });
     }
     for (const c of state.clients) {
@@ -1381,7 +1382,7 @@ function BusinessHealthCard({
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">Revenue · this month</p>
               <p className="mt-1 text-[30px] font-extrabold leading-8 tracking-tight text-mist-100 tnum">
-                {fmtMoney(revenueMonth)} <span className="text-sm font-bold text-mist-500">EGP</span>
+                {fmtMoney(revenueMonth)} <span className="text-sm font-bold text-mist-500">{curCode()}</span>
               </p>
             </div>
             {revenuePrev > 0 ? (
@@ -1394,13 +1395,13 @@ function BusinessHealthCard({
           </div>
           {hasRevenue ? (
             <>
-              <div className="mt-3 flex items-end gap-2" role="img" aria-label={`Weekly revenue, last 6 weeks. This month ${fmtMoney(revenueMonth)} EGP.`}>
+              <div className="mt-3 flex items-end gap-2" role="img" aria-label={`Weekly revenue, last 6 weeks. This month ${fmtMoney(revenueMonth)} ${curCode()}.`}>
                 {weeks.map((w, i) => (
                   <div key={w.start} className="flex min-w-0 flex-1 flex-col items-center gap-1">
                     <span className={`text-[11px] font-bold tnum ${w.total > 0 ? "text-mist-300" : "text-white/20"}`}>
                       {w.total > 0 ? `${Math.round(w.total / 100) / 10}k` : ""}
                     </span>
-                    <div className="flex h-14 w-full items-end" title={`Week of ${fmtDate(w.start)}: ${fmtMoney(w.total)} EGP`}>
+                    <div className="flex h-14 w-full items-end" title={`Week of ${fmtDate(w.start)}: ${fmtMoney(w.total)} ${curCode()}`}>
                       <div
                         className={`bar-grow w-full rounded-t-[5px] ${w.current ? "bg-volt-400" : w.total > 0 ? "bg-moss-600" : "bg-white/[0.07]"}`}
                         style={{ height: w.total > 0 ? `${Math.max(8, (w.total / weekMax) * 100)}%` : "4px", animationDelay: `${i * 60}ms` }}
@@ -1433,16 +1434,16 @@ function BusinessHealthCard({
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-mist-500">Forecast · {forecast.nextMonthLabel}</p>
                 <p className="mt-0.5 text-xs font-semibold text-mist-400">
                   {forecast.renewalsDue > 0 ? (
-                    <>{forecast.renewalsDue} renewal{forecast.renewalsDue === 1 ? "" : "s"} · {fmtMoney(forecast.renewalValue)} EGP expected</>
+                    <>{forecast.renewalsDue} renewal{forecast.renewalsDue === 1 ? "" : "s"} · {fmtMoney(forecast.renewalValue)} {`${curCode()} expected`}</>
                   ) : (
                     <>No renewals due</>
                   )}
-                  {forecast.prepaid > 0 && <> · {fmtMoney(forecast.prepaid)} EGP prepaid</>}
+                  {forecast.prepaid > 0 && <> · {fmtMoney(forecast.prepaid)} {`${curCode()} prepaid`}</>}
                 </p>
               </div>
             </div>
             <p className="text-[26px] font-extrabold leading-8 tracking-tight text-mist-100 tnum">
-              {fmtMoney(forecast.projected)} <span className="text-sm font-bold text-mist-500">EGP</span>
+              {fmtMoney(forecast.projected)} <span className="text-sm font-bold text-mist-500">{curCode()}</span>
             </p>
           </div>
           {forecast.endingSoon > 0 ? (
@@ -1453,7 +1454,7 @@ function BusinessHealthCard({
               <CalendarDays className="h-3.5 w-3.5 shrink-0 text-warn-300" aria-hidden="true" />
               <span>
                 <span className="font-extrabold text-warn-300 tnum">{forecast.endingSoon} ending in 30 days</span>
-                {" · "}{fmtMoney(forecast.endingSoonValue)} EGP renewal pipeline — renew now to lock it in
+                {" · "}{fmtMoney(forecast.endingSoonValue)} {`${curCode()} renewal pipeline — renew now to lock it in`}
               </span>
             </button>
           ) : (
@@ -1469,7 +1470,7 @@ function BusinessHealthCard({
           <p className="flex items-center gap-1.5 text-xs font-semibold text-mist-400">
             <AlertTriangle className="h-3.5 w-3.5 text-warn-300" aria-hidden="true" />
             <span>
-              <span className="font-extrabold text-warn-300 tnum">{fmtMoney(outstanding.total)} EGP</span> outstanding across {outstanding.count} item{outstanding.count === 1 ? "" : "s"}
+              <span className="font-extrabold text-warn-300 tnum">{fmtMoney(outstanding.total)} {curCode()}</span> outstanding across {outstanding.count} item{outstanding.count === 1 ? "" : "s"}
             </span>
           </p>
         ) : (
