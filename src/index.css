@@ -919,3 +919,40 @@ html[lang="ar"] * { letter-spacing: 0 !important; text-transform: none !importan
 html[lang="ar"] .tnum, html[lang="ar"] [dir="ltr"] { direction: ltr; unicode-bidi: isolate; }
 html[dir="rtl"] input[type="email"], html[dir="rtl"] input[type="url"], html[dir="rtl"] input[type="tel"], html[dir="rtl"] input[type="password"] { direction: ltr; text-align: right; }
 html[dir="rtl"] .lucide-chevron-right:not([class*="rtl:"]), html[dir="rtl"] .lucide-chevron-left:not([class*="rtl:"]) { transform: scaleX(-1); }
+
+/* ---- Coach sidebar (concept): solid deep green in BOTH themes.
+   The sidebar is the one surface that stays dark in the light theme,
+   matching the approved Coach Mode concept. ---- */
+.coach-side {
+  background-color: #143626;
+  color: #f6f4ee;
+  border-color: rgba(246, 244, 238, 0.1) !important;
+}
+.coach-side [class*="text-mist-100"] { color: #f6f4ee; }
+.coach-side [class*="text-mist-200"] { color: rgba(246, 244, 238, 0.86); }
+.coach-side [class*="text-mist-300"],
+.coach-side [class*="text-mist-400"] { color: rgba(246, 244, 238, 0.62); }
+.coach-side [class*="text-mist-500"] { color: rgba(246, 244, 238, 0.45); }
+.coach-side [class*="border-white/"] { border-color: rgba(246, 244, 238, 0.12); }
+.coach-side [class*="bg-white/"] { background-color: rgba(246, 244, 238, 0.07); }
+.coach-side [class*="divide-white/"] > :not([hidden]) ~ :not([hidden]) { border-color: rgba(246, 244, 238, 0.1); }
+.coach-side [class*="ring-white/"] { --tw-ring-color: rgba(246, 244, 238, 0.14); }
+.coach-side .ring-night-850, .coach-side .ring-night-950 { --tw-ring-color: #143626; }
+.coach-side .side-active { background-color: rgba(246, 244, 238, 0.12); color: #ffffff; }
+.coach-side .side-idle { color: rgba(246, 244, 238, 0.66); }
+.coach-side .side-idle:hover { background-color: rgba(246, 244, 238, 0.07); color: #ffffff; }
+.coach-side [class*="hover:text-mist-100"]:hover { color: #ffffff; }
+.coach-side [class*="hover:text-mist-200"]:hover,
+.coach-side [class*="hover:text-mist-300"]:hover { color: rgba(246, 244, 238, 0.85); }
+
+/* ---- Hero workout card (Client Mode concept): deep green panel ---- */
+.hero-green {
+  background: linear-gradient(135deg, #1f5a3d 0%, #143626 100%);
+  color: #f6f4ee;
+}
+.hero-green [class*="text-mist-100"],
+.hero-green [class*="text-mist-200"] { color: #f6f4ee; }
+.hero-green [class*="text-mist-400"],
+.hero-green [class*="text-mist-500"] { color: rgba(246, 244, 238, 0.66); }
+.hero-green [class*="border-white/"] { border-color: rgba(246, 244, 238, 0.18); }
+.hero-green [class*="bg-white/"] { background-color: rgba(246, 244, 238, 0.12); }
